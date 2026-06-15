@@ -7,13 +7,32 @@ const NAV_ITEMS = [
   { tab: 'settings',  icon: '⚙️', label: '設定' },
 ]
 
-export default function Sidebar({ activeTab, onTabChange, isOpen }) {
+export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout }) {
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="sidebar-logo">
         <div className="logo-icon">🚛</div>
         <div className="logo-name">トランスポート福岡</div>
         <div className="logo-sub">業務効率化システム</div>
+      </div>
+
+      {/* ユーザー表示 */}
+      <div style={{
+        padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,.08)',
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: '50%',
+          background: user?.mode === 'demo' ? '#D97706' : '#1E5FA8',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 12, fontWeight: 800, color: '#fff', flexShrink: 0,
+        }}>
+          {user?.id?.toUpperCase()}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.name}</div>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,.35)' }}>{user?.mode === 'demo' ? 'デモモード' : 'ライブモード'}</div>
+        </div>
       </div>
 
       <nav className="nav-section">
@@ -32,7 +51,23 @@ export default function Sidebar({ activeTab, onTabChange, isOpen }) {
         ))}
       </nav>
 
-      <div className="sidebar-footer">デモ版 v1.0 &nbsp;|&nbsp; 2025年6月</div>
+      <div style={{ marginTop: 'auto' }}>
+        <div
+          onClick={onLogout}
+          style={{
+            padding: '12px 16px', cursor: 'pointer',
+            color: 'rgba(255,255,255,.4)', fontSize: 13, fontWeight: 500,
+            display: 'flex', alignItems: 'center', gap: 10,
+            borderTop: '1px solid rgba(255,255,255,.08)',
+            transition: 'all .15s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+          onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,.4)'}
+        >
+          <span style={{ fontSize: 16 }}>🚪</span>ログアウト
+        </div>
+        <div className="sidebar-footer">デモ版 v1.0 &nbsp;|&nbsp; 2025年6月</div>
+      </div>
     </aside>
   )
 }
