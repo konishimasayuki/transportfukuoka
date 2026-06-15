@@ -9,7 +9,7 @@ import Contracts from './tabs/Contracts'
 import Cases from './tabs/Cases'
 import Call from './tabs/Call'
 import Settings from './tabs/Settings'
- 
+
 const TABS = {
   dashboard: Dashboard,
   sales: Sales,
@@ -19,26 +19,35 @@ const TABS = {
   settings: Settings,
 }
 
-// ユーザー定義
 const USERS = {
   a: { id: 'a', name: 'デモユーザー', mode: 'demo' },
   b: { id: 'b', name: 'トランスポート福岡', mode: 'live' },
 }
 
+const STORAGE_KEY = 'tf_user'
+
 export default function App() {
-  const [user, setUser]         = useState(null)
-  const [activeTab, setActiveTab] = useState('dashboard')
-  const [loading, setLoading]   = useState(false)
+  // localStorageからログイン状態を復元
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      return saved ? JSON.parse(saved) : null
+    } catch { return null }
+  })
+  const [activeTab, setActiveTab]     = useState('dashboard')
+  const [loading, setLoading]         = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const handleLogin = useCallback((u) => {
     setUser(u)
     setActiveTab('dashboard')
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(u)) } catch {}
   }, [])
 
   const handleLogout = useCallback(() => {
     setUser(null)
     setActiveTab('dashboard')
+    try { localStorage.removeItem(STORAGE_KEY) } catch {}
   }, [])
 
   const switchTab = useCallback((tab) => {
@@ -53,7 +62,6 @@ export default function App() {
     setTimeout(() => setLoading(false), 500)
   }, [])
 
-  // 未ログイン
   if (!user) return <Login users={USERS} onLogin={handleLogin} />
 
   const ActiveTab = TABS[activeTab]
