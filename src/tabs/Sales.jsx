@@ -1,14 +1,35 @@
-export default function Sales() {
+export default function Sales({ user }) {
+  const isDemo = user?.mode === 'demo'
+
+  if (!isDemo) {
+    return (
+      <div>
+        <div className="page-hdr"><h1>売上管理</h1><p>売上・経費データを管理します</p></div>
+        <div className="kpi-row kpi-3">
+          <div className="kpi-card c-blue"><div className="kpi-label">今月の売上合計</div><div className="kpi-val">¥0</div></div>
+          <div className="kpi-card c-green"><div className="kpi-label">一括査定手数料合計</div><div className="kpi-val">¥0</div></div>
+          <div className="kpi-card c-orange"><div className="kpi-label">粗利益</div><div className="kpi-val">¥0</div></div>
+        </div>
+        <div className="card">
+          <div className="card-body" style={{ textAlign:'center', padding:'48px 0', color:'#94A3B8' }}>
+            <div style={{ fontSize:36, marginBottom:8 }}>💴</div>
+            <div style={{ fontSize:13, fontWeight:700, marginBottom:4 }}>売上データがありません</div>
+            <div style={{ fontSize:11 }}>成約管理から案件を追加すると自動で集計されます</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // デモデータ
   return (
     <div>
-      <div className="page-hdr"><h1>売上管理</h1><p>月別・サイト別の売上を管理します</p></div>
-
+      <div className="page-hdr"><h1>売上管理</h1><p>月別・サイト別の売上を管理します（デモデータ）</p></div>
       <div className="kpi-row kpi-3">
         <div className="kpi-card c-blue"><div className="kpi-label">今月の売上合計</div><div className="kpi-val">¥1,248,000</div><div className="kpi-change up">▲ 前月比 +18.4%</div></div>
         <div className="kpi-card c-green"><div className="kpi-label">一括査定手数料合計</div><div className="kpi-val">¥34,200</div><div className="kpi-change">67件 × 平均510円</div></div>
         <div className="kpi-card c-orange"><div className="kpi-label">粗利益</div><div className="kpi-val">¥871,000</div><div className="kpi-change up">▲ 利益率 69.8%</div></div>
       </div>
-
       <div className="two-col">
         <div className="card">
           <div className="card-head"><h3>サイト別 売上内訳</h3><span className="c-sub">今月</span></div>
@@ -26,7 +47,6 @@ export default function Sales() {
             </table>
           </div>
         </div>
-
         <div className="card">
           <div className="card-head"><h3>経費内訳</h3><span className="c-sub">¥342,800</span></div>
           <div className="card-body">
@@ -47,7 +67,6 @@ export default function Sales() {
           </div>
         </div>
       </div>
-
       <div className="card">
         <div className="card-head">
           <h3>売上明細</h3>
