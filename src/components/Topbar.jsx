@@ -7,7 +7,7 @@ const TITLES = {
   settings:  '設定',
 }
 
-export default function Topbar({ activeTab, onMenuClick, onRefresh, loading }) {
+export default function Topbar({ activeTab, onMenuClick, onRefresh, loading, user }) {
   const now = new Date()
   const dateStr = now.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
 
@@ -20,6 +20,12 @@ export default function Topbar({ activeTab, onMenuClick, onRefresh, loading }) {
         </div>
         <div className="tb-right">
           <span className="topbar-date">{dateStr}</span>
+          {user?.mode === 'demo' && (
+            <span style={{
+              background: '#FEF3C7', color: '#92400E', fontSize: 10, fontWeight: 700,
+              padding: '3px 8px', borderRadius: 20, border: '1px solid #FCD34D',
+            }}>デモ</span>
+          )}
           <button className="topbar-btn" onClick={onRefresh}>⟳ 更新</button>
         </div>
       </div>
