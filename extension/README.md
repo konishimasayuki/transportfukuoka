@@ -1,0 +1,34 @@
+# リード監視 Chrome拡張（STEP1・骨組み）
+
+一括査定サイト（まずは引越し侍）の顧客一覧ページを事務所PCで開いたまま監視し、
+新規リードを検知して Vercel の受け口 `/api/inbound` へ送信 → Upstash Redis に保存します。
+（通知・AI架電は後フェーズ。STEP1は「検知して保存」まで）
+
+## 構成
+- `manifest.json` … Manifest V3 設定
+- `content.js` … 顧客一覧を MutationObserver で監視し新規行を検知
+- `background.js` … 検知したリードを `/api/inbound` へ送信、本日件数をバッジ表示
+- `popup.html` / `popup.js` … ON/OFF と本日検知件数の表示
+
+## 事務所PCへの導入手順（Chromeデスクトップ）
+1. このリポジトリを事務所PCにダウンロード（GitHubの「Code → Download ZIP」で可・PCなら解凍できます）
+2. Chromeで `chrome://extensions` を開く
+3. 右上の「デベロッパーモード」を ON
+4. 「パッケージ化されていない拡張機能を読み込む」→ `extension` フォルダを選択
+5. 引越し侍の加盟店管理画面（顧客一覧）にログインして開いておく
+6. 拡張アイコンのポップアップで「監視 ON」になっていることを確認
+
+## ⚠ 実装前に必要な調整（STEP2）
+現状はサイトのHTMLが未確認のため、以下が**プレースホルダ**です。
+顧客一覧画面のHTMLをもらい次第、確定します。
+
+- `manifest.json` の `host_permissions` / `content_scripts.matches`
+  → 実際の**加盟店管理画面のURL/ドメイン**に変更（`hikkoshizamurai.jp` は仮）
+- `content.js` の `ROW_SELECTOR` … 「1件＝1行」に当たる要素
+- `content.js` の `extract()` … 氏名・電話番号などの取り出し位置
+  （現状は行テキストから電話番号を正規表現で拾う暫定実装）
+
+## 動作確認（保存できているか）
+- 送信先API: `https://transportfukuoka.vercel.app/api/inbound`
+- 保存済みリードの確認: 同URLに GET でアクセスすると `{ items: [...] }` が返ります
+- 同じ電話番号は重複排除されます（取りこぼし防止）

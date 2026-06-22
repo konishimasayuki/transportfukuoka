@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; width: 240px; padding: 14px; margin: 0; color: #1e293b; }
+    h1 { font-size: 14px; margin: 0 0 12px; }
+    .row { display: flex; align-items: center; justify-content: space-between; margin: 10px 0; font-size: 13px; }
+    .count { font-size: 28px; font-weight: 800; color: #1E5FA8; }
+    .muted { color: #64748b; font-size: 11px; margin-top: 8px; word-break: break-all; }
+    .state-on { color: #16a34a; font-weight: 700; }
+    .state-off { color: #94a3b8; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>🚛 リード監視（引越し侍）</h1>
+  <div class="row">
+    <span>監視</span>
+    <label><input type="checkbox" id="toggle" /> <span id="state" class="state-on">ON</span></label>
+  </div>
+  <div class="row">
+    <span>本日の検知</span>
+    <span class="count" id="count">0</span>
+  </div>
+  <div class="muted" id="status">—</div>
+  <script src="popup.js"></script>
+</body>
+</html>
