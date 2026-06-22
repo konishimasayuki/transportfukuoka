@@ -7,7 +7,7 @@ const NAV_ITEMS = [
   { tab: 'settings',  icon: '⚙️', label: '設定' },
 ]
 
-export default function MobileNav({ activeTab, onTabChange }) {
+export default function MobileNav({ activeTab, onTabChange, onLogout }) {
   return (
     <nav className="mobile-nav">
       {NAV_ITEMS.map(item => (
@@ -21,6 +21,11 @@ export default function MobileNav({ activeTab, onTabChange }) {
           {item.dot && <div className="mn-dot" />}
         </div>
       ))}
+      {/* テスト用ログアウト */}
+      <div className="mn-item" onClick={onLogout}>
+        <span className="mn-icon">🚪</span>
+        ログアウト
+      </div>
     </nav>
   )
 }

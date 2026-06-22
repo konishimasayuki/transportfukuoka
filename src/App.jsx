@@ -80,7 +80,7 @@ export default function App() {
           <ActiveTab user={user} />
         </div>
       </div>
-      <MobileNav activeTab={activeTab} onTabChange={switchTab} />
+      <MobileNav activeTab={activeTab} onTabChange={switchTab} onLogout={handleLogout} />
     </div>
   )
 }
