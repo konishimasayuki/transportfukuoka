@@ -3,7 +3,8 @@ const NAV_ITEMS = [
   { tab: 'sales',     icon: '💴', label: '売上管理' },
   { tab: 'contracts', icon: '✅', label: '成約管理' },
   { tab: 'cases',     icon: '📋', label: '案件管理', badge: 3 },
-  { tab: 'call',      icon: '📞', label: '架電機能', isNew: true },
+  { tab: 'leads',     icon: '📥', label: 'リード', isNew: true },
+  { tab: 'call',      icon: '📞', label: '架電機能' },
   { tab: 'settings',  icon: '⚙️', label: '設定' },
 ]
 

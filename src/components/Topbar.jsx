@@ -3,6 +3,7 @@ const TITLES = {
   sales:     '売上管理',
   contracts: '成約管理',
   cases:     '案件管理',
+  leads:     'リード',
   call:      '架電機能',
   settings:  '設定',
 }

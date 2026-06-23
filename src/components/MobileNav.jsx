@@ -3,6 +3,7 @@ const NAV_ITEMS = [
   { tab: 'sales',     icon: '💴', label: '売上' },
   { tab: 'contracts', icon: '✅', label: '成約' },
   { tab: 'cases',     icon: '📋', label: '案件', dot: true },
+  { tab: 'leads',     icon: '📥', label: 'リード' },
   { tab: 'call',      icon: '📞', label: '架電' },
   { tab: 'settings',  icon: '⚙️', label: '設定' },
 ]

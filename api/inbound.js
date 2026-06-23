@@ -35,7 +35,7 @@ function leadKey(lead) {
 export default async function handler(req, res) {
   // Chrome拡張など別オリジンからの送信を許可
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
@@ -66,6 +66,21 @@ export default async function handler(req, res) {
       }
       await setItems([newItem, ...items])
       return res.json({ ok: true, duplicate: false })
+    }
+
+    if (req.method === 'PUT') {
+      const body = req.body || {}
+      if (!body.key && !body.phone && !body.id) {
+        return res.status(400).json({ error: 'key / phone / id required' })
+      }
+      const items = await getItems()
+      const updated = items.map(i => (
+        (body.key && i.key === body.key) ||
+        (body.phone && i.phone === body.phone) ||
+        (body.id && i.id === body.id)
+      ) ? { ...i, ...body, updatedAt: new Date().toISOString() } : i)
+      await setItems(updated)
+      return res.json({ ok: true })
     }
 
     if (req.method === 'DELETE') {
