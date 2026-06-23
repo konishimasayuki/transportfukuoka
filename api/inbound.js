@@ -35,7 +35,7 @@ function leadKey(lead) {
 export default async function handler(req, res) {
   // Chrome拡張など別オリジンからの送信を許可
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
@@ -66,6 +66,26 @@ export default async function handler(req, res) {
       }
       await setItems([newItem, ...items])
       return res.json({ ok: true, duplicate: false })
+    }
+
+    if (req.method === 'DELETE') {
+      const body = req.body || {}
+      const items = await getItems()
+      let filtered
+      if (body.all === true) {
+        filtered = []
+      } else if (body.phone || body.key || body.id) {
+        filtered = items.filter(i => !(
+          (body.phone && i.phone === body.phone) ||
+          (body.key && i.key === body.key) ||
+          (body.id && i.id === body.id)
+        ))
+      } else {
+        return res.status(400).json({ error: 'phone / key / id or all:true required' })
+      }
+      const removed = items.length - filtered.length
+      await setItems(filtered)
+      return res.json({ ok: true, removed })
     }
 
     res.status(405).json({ error: 'Method not allowed' })
