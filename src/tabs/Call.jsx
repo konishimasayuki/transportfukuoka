@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const DEMO_LOGS = [
   { icon:'📞', bg:'#F0FDF4', name:'山田 太郎', meta:'引越し侍 / 090-XXXX-1234 / 10:23', badge:'bg', status:'通話成立' },
@@ -97,9 +97,44 @@ function CallUI({ callOn, setCallOn, sites, logs, stats }) {
   )
 }
 
+const fmtTime = (iso) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
 export default function Call({ user }) {
   const isDemo = user?.mode === 'demo'
   const [callOn, setCallOn] = useState(true)
+  const [leads, setLeads]   = useState([])
+
+  // ライブモード：保存済みリードを取得し、15秒ごとに最新化
+  useEffect(() => {
+    if (isDemo) return
+    let alive = true
+    const load = async () => {
+      try {
+        const res = await fetch('/api/inbound')
+        const data = await res.json()
+        if (alive) setLeads(data.items || [])
+      } catch (e) { console.error(e) }
+    }
+    load()
+    const t = setInterval(load, 15000)
+    return () => { alive = false; clearInterval(t) }
+  }, [isDemo])
+
+  const liveLogs = leads.map(l => ({
+    icon: '🆕', bg: '#EFF6FF',
+    name: l.name || '（名前なし）',
+    meta: [l.site, l.phone, l.receivedAt || fmtTime(l.savedAt)].filter(Boolean).join(' / '),
+    badge: 'bb', status: '新規',
+  }))
+
+  const liveSites = [
+    { name: 'ズバット', status: callOn ? '監視中' : '待機中', dotColor: callOn ? '#22c55e' : '#94A3B8', count: `取得済み ${leads.length}件`, newCount: null },
+  ]
 
   return (
     <div>
@@ -107,13 +142,9 @@ export default function Call({ user }) {
       <CallUI
         callOn={callOn}
         setCallOn={setCallOn}
-        sites={isDemo ? DEMO_SITES : [
-          { name:'引越し侍', status:'待機中', dotColor:'#94A3B8', count:'設定後に開始', newCount:null },
-          { name:'価格.com', status:'待機中', dotColor:'#94A3B8', count:'設定後に開始', newCount:null },
-          { name:'スーモ',   status:'待機中', dotColor:'#94A3B8', count:'設定後に開始', newCount:null },
-        ]}
-        logs={isDemo ? DEMO_LOGS : []}
-        stats={isDemo ? { total:7, success:5 } : { total:0, success:0 }}
+        sites={isDemo ? DEMO_SITES : liveSites}
+        logs={isDemo ? DEMO_LOGS : liveLogs}
+        stats={isDemo ? { total:7, success:5 } : { total: leads.length, success: 0 }}
       />
     </div>
   )

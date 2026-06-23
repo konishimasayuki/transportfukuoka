@@ -62,7 +62,7 @@ export default async function handler(req, res) {
         ...body,
         key,
         id: body.id || Date.now().toString(),
-        receivedAt: new Date().toISOString(),
+        savedAt: new Date().toISOString(),
       }
       await setItems([newItem, ...items])
       return res.json({ ok: true, duplicate: false })
