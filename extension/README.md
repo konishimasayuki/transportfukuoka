@@ -18,16 +18,14 @@
 5. ズバットの加盟店管理画面（顧客一覧）にログインして開いておく
 6. 拡張アイコンのポップアップで「監視 ON」になっていることを確認
 
-## ⚠ 実装前に必要な調整（STEP2）
-現状はサイトのHTMLが未確認のため、以下が**プレースホルダ**です。
-顧客一覧画面のHTMLをもらい次第、確定します。
+## 実装状況（ズバット）
+実DOMに合わせてセレクタ確定済み（Vue製SPA）。
+- 対象URL: `https://hikkoshi-kanri.zba.jp/*`
+- 一覧の行: `.usersBlock table tbody tr`
+- 列順(td): 0:名前 1:人数 2:引越し元 3:引越し先 4:電話番号 5:受付日時 6:引越し希望日
+- 起動時の既存行は「既知」登録のみ（誤って全件取り込まない）。起動後の新規だけ送信。
 
-- `manifest.json` の `host_permissions` / `content_scripts.matches`
-  → ズバット加盟店管理画面 `https://hikkoshi-kanri.zba.jp/*` に設定済み
-  （顧客一覧が別パス/別サブドメインなら調整）
-- `content.js` の `ROW_SELECTOR` … 「1件＝1行」に当たる要素
-- `content.js` の `extract()` … 氏名・電話番号などの取り出し位置
-  （現状は行テキストから電話番号を正規表現で拾う暫定実装）
+※ ズバットがHTML構造を変えた場合は上記セレクタの調整が必要。
 
 ## 動作確認（保存できているか）
 - 送信先API: `https://transportfukuoka.vercel.app/api/inbound`
