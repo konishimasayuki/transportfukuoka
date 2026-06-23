@@ -130,7 +130,20 @@ export default function Call({ user }) {
     String(b.receivedAt || b.savedAt || '').localeCompare(String(a.receivedAt || a.savedAt || ''))
   )
 
-  const liveLogs = sortedLeads.map(l => ({
+  // 「本日」判定：受付日時(MM/DD)が今日と一致（無ければ保存日時で判定）
+  const now = new Date()
+  const todayMD = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`
+  const isToday = (l) => {
+    if (l.receivedAt && /^\d{2}\/\d{2}/.test(l.receivedAt)) return l.receivedAt.slice(0, 5) === todayMD
+    if (l.savedAt) {
+      const d = new Date(l.savedAt)
+      if (!isNaN(d.getTime())) return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}` === todayMD
+    }
+    return false
+  }
+  const todaysLeads = sortedLeads.filter(isToday)
+
+  const liveLogs = todaysLeads.map(l => ({
     icon: '🆕', bg: '#EFF6FF',
     name: l.name || '（名前なし）',
     meta: [l.site, l.phone, l.receivedAt || fmtTime(l.savedAt)].filter(Boolean).join(' / '),
@@ -149,7 +162,7 @@ export default function Call({ user }) {
         setCallOn={setCallOn}
         sites={isDemo ? DEMO_SITES : liveSites}
         logs={isDemo ? DEMO_LOGS : liveLogs}
-        stats={isDemo ? { total:7, success:5 } : { total: leads.length, success: 0 }}
+        stats={isDemo ? { total:7, success:5 } : { total: todaysLeads.length, success: 0 }}
       />
     </div>
   )
