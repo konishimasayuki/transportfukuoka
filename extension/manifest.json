@@ -2,10 +2,10 @@
   "manifest_version": 3,
   "name": "トランスポート福岡 リード監視",
   "version": "0.1.0",
-  "description": "一括査定サイトの顧客一覧を監視し、新規リードをサーバーへ送信します（まずは引越し侍）。",
+  "description": "一括査定サイトの顧客一覧を監視し、新規リードをサーバーへ送信します（まずはズバット）。",
   "permissions": ["storage"],
   "host_permissions": [
-    "https://*.hikkoshizamurai.jp/*",
+    "https://hikkoshi-kanri.zba.jp/*",
     "https://transportfukuoka.vercel.app/*"
   ],
   "background": {
@@ -17,7 +17,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*.hikkoshizamurai.jp/*"],
+      "matches": ["https://hikkoshi-kanri.zba.jp/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
