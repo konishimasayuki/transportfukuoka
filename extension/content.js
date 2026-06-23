@@ -1,7 +1,12 @@
 // =====================================================================
 // ズバット（hikkoshi-kanri.zba.jp）顧客一覧 監視スクリプト
-// 顧客一覧（Vue製SPA）を MutationObserver で監視し、新規行を検知して
+// 顧客一覧（Vue/Nuxt製SPA）を MutationObserver で監視し、新規行を検知して
 // background 経由でサーバー(/api/inbound)へ送信する。検知時は「保存のみ」。
+//
+// 信頼性方針：
+//  - 送信が成功した時だけ seen(既知) に登録 → 失敗は未送信のまま次回再送
+//  - 20秒ごとの定期再スキャンで取りこぼしを自動リトライ
+//  - 実データ行を見るまで baseline しない（描画途中の誤送信を防ぐ）
 //
 // 一覧の列順（td.clickable-cell）:
 //   0:名前 1:人数 2:引越し元 3:引越し先 4:電話番号
@@ -9,18 +14,13 @@
 // =====================================================================
 
 const SITE = 'ズバット'
-
-// 顧客一覧の「1件＝1行」
 const ROW_SELECTOR = '.usersBlock table tbody tr'
-
-// 電話番号パターン（090-1234-5678 / 0922345678 等）
 const PHONE_RE = /0\d{1,4}-?\d{1,4}-?\d{3,4}/
 
 function cellText(tds, i) {
   return (tds[i] && tds[i].innerText ? tds[i].innerText : '').replace(/\s+/g, ' ').trim()
 }
 
-// 想定列(5列目)を優先しつつ、列ズレ時は全セルから電話番号を探す
 function findPhone(tds) {
   const guess = cellText(tds, 4).match(PHONE_RE)
   if (guess) return guess[0]
@@ -35,7 +35,7 @@ function extract(row) {
   const tds = row.querySelectorAll('td')
   if (!tds.length) return null
   const phone = findPhone(tds)
-  if (!phone) return null // 電話番号が無い行は対象外（ヘッダ/空行など）
+  if (!phone) return null // 電話番号が無い行は対象外（ヘッダ/空行/描画途中）
   return {
     phone,
     name:       cellText(tds, 0),
@@ -48,8 +48,26 @@ function extract(row) {
 }
 
 let enabled = true
-let baselined = false // 起動後に初めて一覧を見た時点を基準にする
+let baselined = false
+let scanning = false
 const seen = new Set()
+
+function persistSeen() {
+  chrome.storage.local.set({ seenKeys: Array.from(seen).slice(-3000) })
+}
+
+// background へ送信し、成功/失敗を待つ（失敗時は ok:false）
+function sendLead(l) {
+  return new Promise(resolve => {
+    chrome.runtime.sendMessage(
+      { type: 'NEW_LEAD', lead: { site: SITE, key: l.phone, ...l, detectedAt: new Date().toISOString() } },
+      (res) => {
+        if (chrome.runtime.lastError) { resolve({ ok: false }); return }
+        resolve(res || { ok: false })
+      }
+    )
+  })
+}
 
 async function init() {
   const st = await chrome.storage.local.get(['enabled', 'seenKeys'])
@@ -57,6 +75,7 @@ async function init() {
   ;(st.seenKeys || []).forEach(k => seen.add(k))
   doScan()
   observe()
+  setInterval(doScan, 20000) // 取りこぼし自動リトライ＋定期チェック
   console.log(`[リード監視:${SITE}] 起動 enabled=${enabled}`)
 }
 
@@ -68,35 +87,43 @@ function observe() {
 let timer = null
 function scheduleScan() {
   clearTimeout(timer)
-  timer = setTimeout(doScan, 300) // 連続変化を間引く
+  timer = setTimeout(doScan, 300)
 }
 
-function doScan() {
-  const rows = document.querySelectorAll(ROW_SELECTOR)
-  if (!rows.length) return // SPA描画前は何もしない（空を基準にしない）
+async function doScan() {
+  if (scanning) return
+  scanning = true
+  try {
+    const rows = document.querySelectorAll(ROW_SELECTOR)
+    if (!rows.length) return
 
-  // 初回（基準化前）は今ある行を「既知」として登録するだけで送信しない。
-  // これでページ表示時の既存リード全件を誤って取り込むのを防ぐ。
-  const initial = !baselined
-  let added = false
+    const leads = []
+    rows.forEach(row => { const l = extract(row); if (l) leads.push(l) })
+    if (!leads.length) return // 実データ行がまだ無い（描画中）→ 基準化しない
 
-  rows.forEach(row => {
-    const lead = extract(row)
-    if (!lead) return
-    if (seen.has(lead.phone)) return
-    seen.add(lead.phone)
-    added = true
-    if (!initial && enabled) {
-      chrome.runtime.sendMessage({
-        type: 'NEW_LEAD',
-        lead: { site: SITE, key: lead.phone, ...lead, detectedAt: new Date().toISOString() },
-      })
-      console.log(`[リード監視:${SITE}] 新規検知`, lead.phone, lead.name)
+    // 初回：今ある既存行は「既知」登録のみ（送信しない）
+    if (!baselined) {
+      leads.forEach(l => seen.add(l.phone))
+      baselined = true
+      persistSeen()
+      return
     }
-  })
 
-  baselined = true
-  if (added) chrome.storage.local.set({ seenKeys: Array.from(seen).slice(-2000) })
+    // 基準化後：未送信の新規を送信。成功したものだけ seen に入れる（失敗は次回再送）
+    for (const l of leads) {
+      if (seen.has(l.phone) || !enabled) continue
+      const res = await sendLead(l)
+      if (res && res.ok) {
+        seen.add(l.phone)
+        persistSeen()
+        console.log(`[リード監視:${SITE}] 送信OK`, l.phone, l.name)
+      } else {
+        console.warn(`[リード監視:${SITE}] 送信失敗→次回再送`, l.phone, l.name)
+      }
+    }
+  } finally {
+    scanning = false
+  }
 }
 
 chrome.storage.onChanged.addListener(ch => {
