@@ -125,7 +125,12 @@ export default function Call({ user }) {
     return () => { alive = false; clearInterval(t) }
   }, [isDemo])
 
-  const liveLogs = leads.map(l => ({
+  // 受付日時の新しい順（最新が一番上）に並べ替え
+  const sortedLeads = [...leads].sort((a, b) =>
+    String(b.receivedAt || b.savedAt || '').localeCompare(String(a.receivedAt || a.savedAt || ''))
+  )
+
+  const liveLogs = sortedLeads.map(l => ({
     icon: '🆕', bg: '#EFF6FF',
     name: l.name || '（名前なし）',
     meta: [l.site, l.phone, l.receivedAt || fmtTime(l.savedAt)].filter(Boolean).join(' / '),
