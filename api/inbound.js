@@ -1,6 +1,18 @@
+import { placeCall, twilioReady } from './_twilio.js'
+
 const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
 const KEY = 'transportfukuoka:leads'
+
+// 新規リード検知時の自動架電（既定OFF。TWILIO_AUTOCALL=on で有効）
+// 安全策：営業時間（JST 9:00〜20:00）内のみ・失敗しても保存は止めない
+async function maybeAutoCall(lead) {
+  if (process.env.TWILIO_AUTOCALL !== 'on') return
+  if (!twilioReady() || !lead.phone) return
+  const jstHour = (new Date().getUTCHours() + 9) % 24
+  if (jstHour < 9 || jstHour >= 20) return
+  try { await placeCall(lead.phone) } catch (e) { console.error('autocall failed:', e.message) }
+}
 
 async function redis(command) {
   if (!REDIS_URL || !REDIS_TOKEN) {
@@ -65,6 +77,7 @@ export default async function handler(req, res) {
         savedAt: new Date().toISOString(),
       }
       await setItems([newItem, ...items])
+      await maybeAutoCall(newItem)
       return res.json({ ok: true, duplicate: false })
     }
 
