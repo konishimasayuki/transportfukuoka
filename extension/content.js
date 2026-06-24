@@ -156,11 +156,13 @@ function scrapeDetail() {
   return d
 }
 
-// 詳細ページ：SPA描画を待ちつつ1回だけ送信
-function initDetail() {
+// 詳細ページから取得して1回だけ送信（SPA描画待ちのリトライ付き）
+function captureDetail() {
+  const url = location.href
   let done = false
   const trySend = async () => {
     if (done) return true
+    if (location.href !== url) return true // 別ページへ移動した
     const d = scrapeDetail()
     if (!d.phone) return false // まだ描画中
     done = true
@@ -169,10 +171,18 @@ function initDetail() {
     return true
   }
   trySend()
-  const obs = new MutationObserver(() => { trySend().then(ok => { if (ok) obs.disconnect() }) })
-  obs.observe(document.body, { childList: true, subtree: true })
-  const iv = setInterval(async () => { if (await trySend()) clearInterval(iv) }, 1000)
+  const iv = setInterval(async () => { if (await trySend()) clearInterval(iv) }, 800)
   setTimeout(() => clearInterval(iv), 15000)
+}
+
+// SPA(Nuxt)は遷移で content script が再実行されないため、URL変化を監視して詳細を取得
+let lastDetailUrl = ''
+function checkDetailRoute() {
+  if (!location.pathname.startsWith('/users/detail/')) return
+  if (location.href === lastDetailUrl) return
+  lastDetailUrl = location.href
+  console.log(`[リード監視:${SITE}] 詳細ページ検知 → 取得`, location.pathname)
+  captureDetail()
 }
 
 async function init() {
@@ -181,16 +191,15 @@ async function init() {
   everBaselined = st.everBaselined === true
   ;(st.seenKeys || []).forEach(k => seen.add(k))
 
-  // 詳細ページなら詳細取得モード（一覧監視はしない）
-  if (location.pathname.startsWith('/users/detail/')) {
-    initDetail()
-    console.log(`[リード監視:${SITE}] 詳細ページ → 詳細取得モード`)
-    return
-  }
-
+  // 一覧監視（詳細ページでは行が無いので空振りするだけ＝無害）
   doScan()
   observe()
   setInterval(doScan, 20000) // 取りこぼし自動リトライ＋定期チェック
+
+  // 詳細ページ取得（初回＋SPA遷移を1秒ごとに検知）
+  checkDetailRoute()
+  setInterval(checkDetailRoute, 1000)
+
   console.log(`[リード監視:${SITE}] 起動 enabled=${enabled}`)
 }
 
