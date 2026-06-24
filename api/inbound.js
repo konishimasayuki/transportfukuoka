@@ -65,9 +65,22 @@ export default async function handler(req, res) {
       const items = await getItems()
       const key = leadKey(body)
 
-      // 既に取り込み済みなら何もしない（取りこぼし防止の重複排除）
-      if (items.some(i => leadKey(i) === key)) {
-        return res.json({ ok: true, duplicate: true })
+      // 既に取り込み済み：空でない新フィールドだけマージ（詳細ページ取得で情報を充実させる）
+      const idx = items.findIndex(i => leadKey(i) === key)
+      if (idx !== -1) {
+        const next = { ...items[idx] }
+        let changed = false
+        for (const [k, v] of Object.entries(body)) {
+          if (k === 'key' || k === 'id' || k === 'savedAt') continue
+          const empty = v == null || v === '' || (Array.isArray(v) && v.length === 0)
+          if (!empty && JSON.stringify(next[k]) !== JSON.stringify(v)) { next[k] = v; changed = true }
+        }
+        if (changed) {
+          next.updatedAt = new Date().toISOString()
+          items[idx] = next
+          await setItems(items)
+        }
+        return res.json({ ok: true, duplicate: true, merged: changed })
       }
 
       const newItem = {

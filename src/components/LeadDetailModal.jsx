@@ -4,7 +4,7 @@ const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
 
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }
-const box     = { background: '#fff', borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
+const box     = { background: '#fff', borderRadius: 14, width: '100%', maxWidth: 440, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
 
 function DetailRow({ label, value }) {
   return (
@@ -34,6 +34,37 @@ export default function LeadDetailModal({ item, onClose, onStatusChange }) {
           <DetailRow label="人数" value={item.count || '—'} />
           {item.email && <DetailRow label="メール" value={<a href={`mailto:${item.email}`} style={{ color: '#1E5FA8', fontWeight: 700, textDecoration: 'none' }}>{item.email}</a>} />}
           {item.memo && <DetailRow label="メモ" value={item.memo} />}
+
+          {item.detail && (
+            <>
+              <div style={{ borderTop: '1px solid #EEF2F7', margin: '4px 0', paddingTop: 10, fontSize: 12, fontWeight: 700, color: '#1E5FA8' }}>ズバット詳細</div>
+              {item.kana && <DetailRow label="フリガナ" value={item.kana} />}
+              {(item.fromZip || item.fromAddress || item.fromType) &&
+                <DetailRow label="引越し元(詳細)" value={[item.fromZip, item.fromAddress, item.fromType && `（${item.fromType}）`].filter(Boolean).join(' ')} />}
+              {(item.toZip || item.toAddress || item.toType) &&
+                <DetailRow label="引越し先(詳細)" value={[item.toZip, item.toAddress, item.toType && `（${item.toType}）`].filter(Boolean).join(' ')} />}
+              {item.moveDateDetail && <DetailRow label="希望日(詳細)" value={item.moveDateDetail} />}
+              {item.orderId && <DetailRow label="依頼者番号" value={item.orderId} />}
+              {item.requestedAt && <DetailRow label="依頼日" value={item.requestedAt} />}
+              {item.request && <DetailRow label="ご要望" value={item.request} />}
+              {(item.telStatus || item.mailStatus) &&
+                <DetailRow label="ズバット状況" value={[item.telStatus, item.mailStatus].filter(Boolean).join(' / ')} />}
+              {Array.isArray(item.kazai) && item.kazai.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 13, color: '#64748B', fontWeight: 600, margin: '4px 0' }}>
+                    家財{item.boxCount ? `（ダンボール ${item.boxCount}）` : ''}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {item.kazai.map((k, i) => (
+                      <span key={i} style={{ fontSize: 12, background: '#F1F5FB', borderRadius: 6, padding: '3px 8px' }}>{k.name}×{k.qty}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(!item.kazai || item.kazai.length === 0) && item.boxCount && <DetailRow label="ダンボール" value={item.boxCount} />}
+            </>
+          )}
+
           <DetailRow label="ステータス" value={
             onStatusChange ? (
               <select

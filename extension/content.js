@@ -80,11 +80,114 @@ function sendLead(l) {
   })
 }
 
+// ===== 詳細ページ（/users/detail/...）の取得 =====
+function dtext(el) {
+  return (el && el.innerText ? el.innerText : '').replace(/\s+/g, ' ').trim()
+}
+
+// 詳細ページから情報を抽出。リードの from/to/moveDate 等は一覧側が書くので
+// ここでは「詳細にしか無い項目」中心に集める（一覧の再スキャンと衝突させない）。
+function scrapeDetail() {
+  const d = { site: SITE, detail: true }
+
+  // プロフィール（PC: label/value）
+  const prof = {}
+  document.querySelectorAll('.profileBlock_content_row_col_item').forEach(it => {
+    const label = dtext(it.querySelector('.profileBlock_content_row_col_item_label'))
+    const value = dtext(it.querySelector('.profileBlock_content_row_col_item_value'))
+    if (label) prof[label] = value
+  })
+  const telRaw = prof['電話番号'] || ''
+  const m = telRaw.match(PHONE_RE)
+  d.phone = m ? m[0] : telRaw
+  d.name = prof['名前'] || ''
+  d.kana = prof['フリガナ'] || ''
+  d.email = prof['メールアドレス'] || ''
+  d.count = prof['引越し人数'] || ''
+  d.orderId = prof['依頼者番号'] || ''
+  d.requestedAt = prof['依頼日'] || ''
+  d.moveDateDetail = prof['引越し希望日'] || ''
+  d.request = prof['その他ご要望'] || ''
+  d.option = prof['依頼作業(オプション)'] || ''
+
+  // 住所（SP infoBlock をセクション見出しで判定：構造が素直）
+  document.querySelectorAll('.infoBlock_wrapper').forEach(w => {
+    const header = dtext(w.querySelector('.infoBlock_wrapper_header'))
+    if (header !== '引越し元' && header !== '引越し先') return
+    const rows = {}
+    w.querySelectorAll('.infoBlock_wrapper_row').forEach(r => {
+      const l = dtext(r.querySelector('.infoBlock_wrapper_row_label'))
+      const c = dtext(r.querySelector('.infoBlock_wrapper_row_cont'))
+      if (l) rows[l] = c
+    })
+    if (header === '引越し元') {
+      d.fromZip = rows['郵便番号'] || ''
+      d.fromAddress = rows['住所'] || ''
+      d.fromType = rows['建物種別'] || ''
+    } else {
+      d.toZip = rows['郵便番号'] || ''
+      d.toAddress = rows['住所'] || rows['市区町村'] || ''
+      d.toType = rows['建物種別'] || ''
+    }
+  })
+
+  // 対応状況（PC）
+  document.querySelectorAll('.statusBlockPc_content_row_col_item').forEach(it => {
+    const label = dtext(it.querySelector('.statusBlockPc_content_row_col_item_label'))
+    const value = dtext(it.querySelector('.statusBlockPc_content_row_col_item_value'))
+    if (label === '電話連絡') d.telStatus = value
+    if (label === 'メール対応') d.mailStatus = value
+  })
+
+  // 家財状況（PC：数量>0 のみ。ダンボールは別枠）
+  const kazai = []
+  document.querySelectorAll('.kazaiBlock[data-device="pc"] .kazaiBlock_wrapper_row_item').forEach(it => {
+    const name = dtext(it.querySelector('.kazaiBlock_wrapper_row_item_label'))
+    const qtyT = dtext(it.querySelector('.kazaiBlock_wrapper_row_item_cont'))
+    if (!name) return
+    const n = parseInt(qtyT, 10)
+    if (name === 'ダンボール') { d.boxCount = qtyT; return }
+    if (n > 0) kazai.push({ name, qty: n })
+  })
+  d.kazai = kazai
+
+  d.key = d.phone
+  d.detailFetchedAt = new Date().toISOString()
+  return d
+}
+
+// 詳細ページ：SPA描画を待ちつつ1回だけ送信
+function initDetail() {
+  let done = false
+  const trySend = async () => {
+    if (done) return true
+    const d = scrapeDetail()
+    if (!d.phone) return false // まだ描画中
+    done = true
+    const res = await sendLead(d)
+    console.log(`[リード監視:${SITE}] 詳細取得`, d.phone, (res && res.ok) ? 'OK' : 'NG', `家財${(d.kazai || []).length}種`)
+    return true
+  }
+  trySend()
+  const obs = new MutationObserver(() => { trySend().then(ok => { if (ok) obs.disconnect() }) })
+  obs.observe(document.body, { childList: true, subtree: true })
+  const iv = setInterval(async () => { if (await trySend()) clearInterval(iv) }, 1000)
+  setTimeout(() => clearInterval(iv), 15000)
+}
+
 async function init() {
   const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined'])
   enabled = st.enabled !== false
   everBaselined = st.everBaselined === true
   ;(st.seenKeys || []).forEach(k => seen.add(k))
+
+  // 詳細ページなら詳細取得モード（一覧監視はしない）
+  if (location.pathname.startsWith('/users/detail/')) {
+    initDetail()
+    console.log(`[リード監視:${SITE}] 詳細ページ → 詳細取得モード`)
+    return
+  }
+
   doScan()
   observe()
   setInterval(doScan, 20000) // 取りこぼし自動リトライ＋定期チェック
