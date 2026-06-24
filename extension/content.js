@@ -16,6 +16,7 @@
 const SITE = 'ズバット'
 const ROW_SELECTOR = '.usersBlock table tbody tr'
 const PHONE_RE = /0\d{1,4}-?\d{1,4}-?\d{3,4}/
+const API_URL = 'https://transportfukuoka.vercel.app/api/inbound'
 
 function cellText(tds, i) {
   return (tds[i] && tds[i].innerText ? tds[i].innerText : '').replace(/\s+/g, ' ').trim()
@@ -67,16 +68,32 @@ function persistSeen() {
   chrome.storage.local.set({ seenKeys: Array.from(seen).slice(-3000) })
 }
 
-// background へ送信し、成功/失敗を待つ（失敗時は ok:false）
+// 拡張コンテキストが無効化されても送れるよう、APIへ直接POST（CORSは * 許可済み）
+function directSend(lead) {
+  return fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(lead),
+  })
+    .then(r => r.json())
+    .then(d => ({ ok: true, duplicate: !!(d && d.duplicate) }))
+    .catch(e => ({ ok: false, error: String(e) }))
+}
+
+// 通常は background 経由（バッジ更新のため）。コンテキスト無効化時は直接送信にフォールバック。
 function sendLead(l) {
+  const lead = { site: SITE, key: l.phone, ...l, detectedAt: new Date().toISOString() }
   return new Promise(resolve => {
-    chrome.runtime.sendMessage(
-      { type: 'NEW_LEAD', lead: { site: SITE, key: l.phone, ...l, detectedAt: new Date().toISOString() } },
-      (res) => {
-        if (chrome.runtime.lastError) { resolve({ ok: false }); return }
-        resolve(res || { ok: false })
-      }
-    )
+    if (chrome.runtime && chrome.runtime.id) {
+      try {
+        chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead }, (res) => {
+          if (chrome.runtime.lastError || !res) { directSend(lead).then(resolve); return }
+          resolve(res)
+        })
+        return
+      } catch (e) { /* fall through */ }
+    }
+    directSend(lead).then(resolve)
   })
 }
 
