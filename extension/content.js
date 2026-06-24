@@ -150,34 +150,4 @@ chrome.storage.onChanged.addListener(ch => {
   if (ch.enabled) enabled = ch.enabled.newValue !== false
 })
 
-// 手動「取りこぼし取り込み」：今ズバット一覧に表示されている行のうち、
-// 未送信（=切断中に登録された等で未取得）のものを全て送信する。
-// enabled(監視ON/OFF)に関わらず、ユーザーの明示操作として実行する。
-async function resync() {
-  const rows = document.querySelectorAll(ROW_SELECTOR)
-  const leads = []
-  rows.forEach(row => { const l = extract(row); if (l) leads.push(l) })
-  if (!leads.length) return { ok: true, sent: 0, total: 0, note: '一覧に行が見つかりません' }
-
-  let sent = 0, failed = 0
-  for (const l of leads) {
-    if (seen.has(l.phone)) continue
-    const res = await sendLead(l)
-    if (res && res.ok) { seen.add(l.phone); sent++ }
-    else failed++
-  }
-  persistSeen()
-  // 以後は基準化済み扱い（再起動時に再baselineしない）
-  everBaselined = true; baselined = true
-  chrome.storage.local.set({ everBaselined: true })
-  return { ok: true, sent, failed, total: leads.length }
-}
-
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type === 'RESYNC') {
-    resync().then(sendResponse).catch(e => sendResponse({ ok: false, error: String(e) }))
-    return true // 非同期レスポンス
-  }
-})
-
 init()

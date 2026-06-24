@@ -3,7 +3,7 @@
   "name": "トランスポート福岡 リード監視",
   "version": "0.1.0",
   "description": "一括査定サイトの顧客一覧を監視し、新規リードをサーバーへ送信します（まずはズバット）。",
-  "permissions": ["storage"],
+  "permissions": ["storage", "scripting"],
   "host_permissions": [
     "https://hikkoshi-kanri.zba.jp/*",
     "https://transportfukuoka.vercel.app/*"
