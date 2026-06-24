@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import LeadDetailModal from '../components/LeadDetailModal'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
@@ -22,6 +23,7 @@ export default function Leads({ user }) {
   const [period, setPeriod]     = useState('all')      // all | today
   const [filterStatus, setFilterStatus] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [detailItem, setDetailItem] = useState(null)
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
 
@@ -117,10 +119,10 @@ export default function Leads({ user }) {
                 {filtered.length === 0 ? (
                   <tr><td colSpan={9} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
                 ) : filtered.map(item => (
-                  <tr key={item.id}>
+                  <tr key={item.id} onClick={() => setDetailItem(item)} style={{ cursor: 'pointer' }}>
                     <td style={{ whiteSpace: 'nowrap' }}>{item.receivedAt || ''}</td>
                     <td><b>{item.name || '（名前なし）'}</b></td>
-                    <td style={{ whiteSpace: 'nowrap' }}><a href={`tel:${item.phone}`} style={{ color: '#1E5FA8', textDecoration: 'none', fontWeight: 700 }}>{item.phone}</a></td>
+                    <td style={{ whiteSpace: 'nowrap' }}><a href={`tel:${item.phone}`} onClick={e => e.stopPropagation()} style={{ color: '#1E5FA8', textDecoration: 'none', fontWeight: 700 }}>{item.phone}</a></td>
                     <td style={{ whiteSpace: 'nowrap' }}>{(item.from || '').replace('福岡県福岡市', '')} → {(item.to || '').replace('福岡県福岡市', '')}</td>
                     <td>{item.count}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{item.moveDate}</td>
@@ -128,6 +130,7 @@ export default function Leads({ user }) {
                     <td>
                       <select
                         value={item.status}
+                        onClick={e => e.stopPropagation()}
                         onChange={e => updateStatus(item, e.target.value)}
                         className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}
                         style={{ border: 'none', fontFamily: 'inherit', cursor: 'pointer', fontWeight: 700 }}
@@ -136,7 +139,7 @@ export default function Leads({ user }) {
                       </select>
                     </td>
                     <td>
-                      <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={() => setDeleteConfirm(item)}>削除</button>
+                      <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={e => { e.stopPropagation(); setDeleteConfirm(item) }}>削除</button>
                     </td>
                   </tr>
                 ))}
@@ -145,6 +148,12 @@ export default function Leads({ user }) {
           </div>
         </div>
       )}
+
+      <LeadDetailModal
+        item={detailItem}
+        onClose={() => setDetailItem(null)}
+        onStatusChange={(it, status) => { updateStatus(it, status); setDetailItem(d => ({ ...d, status })) }}
+      />
 
       {deleteConfirm && (
         <div style={modalOverlay} onClick={e => e.target === e.currentTarget && setDeleteConfirm(null)}>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import LeadDetailModal from '../components/LeadDetailModal'
 
 const DEMO_LOGS = [
   { icon:'📞', bg:'#F0FDF4', name:'山田 太郎', meta:'引越し侍 / 090-XXXX-1234 / 10:23', badge:'bg', status:'通話成立' },
@@ -14,7 +15,7 @@ const DEMO_SITES = [
   { name:'スーモ',   status:'待機中', dotColor:'#F59E0B', count:'今日 8件 / 新規0件',  newCount:null },
 ]
 
-function CallUI({ callOn, setCallOn, sites, logs, stats }) {
+function CallUI({ callOn, setCallOn, sites, logs, stats, onOpenLog }) {
   return (
     <div>
       {/* ステータスバー */}
@@ -58,7 +59,12 @@ function CallUI({ callOn, setCallOn, sites, logs, stats }) {
             {logs.length === 0 ? (
               <div style={{ textAlign:'center', padding:'24px 0', color:'#94A3B8', fontSize:12 }}>架電ログがありません</div>
             ) : logs.map((l, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom: i < logs.length-1 ? '1px solid #E2E8F0' : 'none' }}>
+              <div
+                key={i}
+                onDoubleClick={() => l.lead && onOpenLog && onOpenLog(l.lead)}
+                title={l.lead ? 'ダブルクリックで詳細' : undefined}
+                style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom: i < logs.length-1 ? '1px solid #E2E8F0' : 'none', cursor: l.lead ? 'pointer' : 'default' }}
+              >
                 <div style={{ width:30, height:30, borderRadius:8, background:l.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>{l.icon}</div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:12, fontWeight:700 }}>{l.name} 様</div>
@@ -148,7 +154,23 @@ export default function Call({ user }) {
     name: l.name || '（名前なし）',
     meta: [l.site, l.phone, l.receivedAt || fmtTime(l.savedAt)].filter(Boolean).join(' / '),
     badge: 'bb', status: '新規',
+    lead: l,
   }))
+
+  const [detailItem, setDetailItem] = useState(null)
+
+  // 詳細モーダルからのステータス変更（楽観更新＋サーバ反映）
+  const updateLeadStatus = async (item, status) => {
+    setLeads(prev => prev.map(l => l.id === item.id ? { ...l, status } : l))
+    setDetailItem(d => (d ? { ...d, status } : d))
+    if (isDemo) return
+    try {
+      await fetch('/api/inbound', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, status }),
+      })
+    } catch (e) { console.error(e) }
+  }
 
   const liveSites = [
     { name: 'ズバット', status: callOn ? '監視中' : '待機中', dotColor: callOn ? '#22c55e' : '#94A3B8', count: `取得済み ${leads.length}件`, newCount: null },
@@ -163,6 +185,12 @@ export default function Call({ user }) {
         sites={isDemo ? DEMO_SITES : liveSites}
         logs={isDemo ? DEMO_LOGS : liveLogs}
         stats={isDemo ? { total:7, success:5 } : { total: todaysLeads.length, success: 0 }}
+        onOpenLog={setDetailItem}
+      />
+      <LeadDetailModal
+        item={detailItem}
+        onClose={() => setDetailItem(null)}
+        onStatusChange={updateLeadStatus}
       />
     </div>
   )

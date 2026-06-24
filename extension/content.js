@@ -48,7 +48,8 @@ function extract(row) {
 }
 
 let enabled = true
-let baselined = false
+let baselined = false       // このセッションで基準化処理を通したか
+let everBaselined = false   // 過去に一度でも基準化したか（永続。再起動の差分取り込み判定に使う）
 let scanning = false
 const seen = new Set()
 
@@ -70,8 +71,9 @@ function sendLead(l) {
 }
 
 async function init() {
-  const st = await chrome.storage.local.get(['enabled', 'seenKeys'])
+  const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined'])
   enabled = st.enabled !== false
+  everBaselined = st.everBaselined === true
   ;(st.seenKeys || []).forEach(k => seen.add(k))
   doScan()
   observe()
@@ -101,12 +103,20 @@ async function doScan() {
     rows.forEach(row => { const l = extract(row); if (l) leads.push(l) })
     if (!leads.length) return // 実データ行がまだ無い（描画中）→ 基準化しない
 
-    // 初回：今ある既存行は「既知」登録のみ（送信しない）
+    // 基準化フェーズ（このセッションで1回だけ）
     if (!baselined) {
-      leads.forEach(l => seen.add(l.phone))
       baselined = true
-      persistSeen()
-      return
+      if (!everBaselined) {
+        // 初回起動：今ある既存行は「既知」登録のみ（過去ぶんの一括送信を防ぐ）
+        leads.forEach(l => seen.add(l.phone))
+        everBaselined = true
+        chrome.storage.local.set({ everBaselined: true })
+        persistSeen()
+        return
+      }
+      // 再起動（監視が途切れた後）：永続 seen を信頼し、再基準化しない。
+      // ダウンタイム中に増えた未知行は、下のループで「最新の分から差分」送信する。
+      console.log(`[リード監視:${SITE}] 再開 → 差分取り込みチェック`)
     }
 
     // 基準化後：未送信の新規を送信。成功したものだけ seen に入れる（失敗は次回再送）
