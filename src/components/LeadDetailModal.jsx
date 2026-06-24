@@ -32,6 +32,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange }) {
           <DetailRow label="引越し元" value={item.from || '—'} />
           <DetailRow label="引越し先" value={item.to || '—'} />
           <DetailRow label="人数" value={item.count || '—'} />
+          {item.email && <DetailRow label="メール" value={<a href={`mailto:${item.email}`} style={{ color: '#1E5FA8', fontWeight: 700, textDecoration: 'none' }}>{item.email}</a>} />}
           {item.memo && <DetailRow label="メモ" value={item.memo} />}
           <DetailRow label="ステータス" value={
             onStatusChange ? (

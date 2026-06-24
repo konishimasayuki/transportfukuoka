@@ -10,6 +10,9 @@
     .muted { color: #64748b; font-size: 11px; margin-top: 8px; word-break: break-all; }
     .state-on { color: #16a34a; font-weight: 700; }
     .state-off { color: #94a3b8; font-weight: 700; }
+    button { width: 100%; margin-top: 10px; padding: 9px; border: none; border-radius: 8px; background: #1E5FA8; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+    button:disabled { background: #94a3b8; cursor: default; }
+    .result { font-size: 12px; margin-top: 8px; min-height: 16px; color: #16a34a; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -22,6 +25,8 @@
     <span>本日の検知</span>
     <span class="count" id="count">0</span>
   </div>
+  <button id="resync">取りこぼしを取り込む</button>
+  <div class="result" id="result"></div>
   <div class="muted" id="status">—</div>
   <script src="popup.js"></script>
 </body>
