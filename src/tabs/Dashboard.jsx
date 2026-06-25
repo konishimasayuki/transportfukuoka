@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 
 const DEMO_RECENT = [
   { name: '田中 誠一', meta: '東区→博多区 / 2LDK / 6月15日', amount: '¥68,000', badge: 'bg', status: '成約済', color: '#1E5FA8', initial: '田', src: '引越し侍' },
@@ -29,29 +29,28 @@ function EmptyState({ icon, text }) {
   )
 }
 
+function BarChart() {
+  const [animate, setAnimate] = useState(false)
+  const max = Math.max(...VALS)
+  useEffect(() => { const t = setTimeout(() => setAnimate(true), 100); return () => clearTimeout(t) }, [])
+  return (
+    <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:120, paddingBottom:22, position:'relative', borderBottom:'1px solid #E2E8F0' }}>
+      {MONTHS.map((m, i) => {
+        const pct = (VALS[i] / max * 100).toFixed(1)
+        return (
+          <div key={m} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', position:'relative', height:'100%' }}>
+            <div style={{ width:'100%', borderRadius:'5px 5px 0 0', position:'absolute', bottom:0, height: animate ? `${pct}%` : 0, background: COLORS[i], transition:'height .8s cubic-bezier(.34,1.56,.64,1)' }} />
+            <span style={{ position:'absolute', bottom:-20, fontSize:9, color:'#64748B' }}>{m}</span>
+            <span style={{ position:'absolute', top:-16, fontSize:9, fontWeight:700, whiteSpace:'nowrap' }}>{`¥${(VALS[i]/10000).toFixed(0)}万`}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function Dashboard({ user }) {
   const isDemo = user?.mode === 'demo'
-  const chartRef = useRef(null)
-
-  useEffect(() => {
-    if (!isDemo || !chartRef.current) return
-    const max = Math.max(...VALS)
-    chartRef.current.innerHTML = ''
-    MONTHS.forEach((m, i) => {
-      const pct = (VALS[i] / max * 100).toFixed(1)
-      const wrap = document.createElement('div')
-      wrap.style.cssText = 'flex:1;display:flex;flex-direction:column;align-items:center;position:relative;height:100%'
-      wrap.innerHTML = `
-        <div data-h="${pct}%" style="width:100%;border-radius:5px 5px 0 0;position:absolute;bottom:0;height:0;background:${COLORS[i]};transition:height .8s cubic-bezier(.34,1.56,.64,1)"></div>
-        <span style="position:absolute;bottom:-20px;font-size:9px;color:#64748B">${m}</span>
-        <span style="position:absolute;top:-16px;font-size:9px;font-weight:700;white-space:nowrap">¥${(VALS[i]/10000).toFixed(0)}万</span>
-      `
-      chartRef.current.appendChild(wrap)
-    })
-    setTimeout(() => {
-      chartRef.current?.querySelectorAll('[data-h]').forEach(b => { b.style.height = b.dataset.h })
-    }, 100)
-  }, [isDemo])
 
   // ===== LIVE モード =====
   if (!isDemo) {
@@ -96,7 +95,7 @@ export default function Dashboard({ user }) {
         <div className="card">
           <div className="card-head"><h3>月次売上推移</h3><span className="c-sub">直近6ヶ月</span></div>
           <div className="card-body">
-            <div ref={chartRef} style={{ display:'flex', alignItems:'flex-end', gap:6, height:120, paddingBottom:22, position:'relative', borderBottom:'1px solid #E2E8F0' }} />
+            <BarChart />
           </div>
         </div>
         <div className="card">

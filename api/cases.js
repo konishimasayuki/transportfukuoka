@@ -2,22 +2,28 @@ const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
 const KEY = 'transportfukuoka:cases'
 
-async function redis(cmd) {
-  const res = await fetch(`${REDIS_URL}/${cmd.join('/')}`, {
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+async function redis(command) {
+  if (!REDIS_URL || !REDIS_TOKEN) {
+    throw new Error('Redis env vars (UPSTASH_REDIS_REST_URL / _TOKEN) missing')
+  }
+  const res = await fetch(REDIS_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(command),
   })
   const data = await res.json()
+  if (data.error) throw new Error('Redis error: ' + data.error)
   return data.result
 }
 
 async function getItems() {
-  const raw = await redis(['get', KEY])
+  const raw = await redis(['GET', KEY])
   if (!raw) return []
   try { return JSON.parse(raw) } catch { return [] }
 }
 
 async function setItems(items) {
-  await redis(['set', KEY, encodeURIComponent(JSON.stringify(items))])
+  await redis(['SET', KEY, JSON.stringify(items)])
 }
 
 export default async function handler(req, res) {

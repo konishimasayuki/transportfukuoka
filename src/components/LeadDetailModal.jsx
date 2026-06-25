@@ -47,6 +47,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange }) {
               {item.orderId && <DetailRow label="依頼者番号" value={item.orderId} />}
               {item.requestedAt && <DetailRow label="依頼日" value={item.requestedAt} />}
               {item.request && <DetailRow label="ご要望" value={item.request} />}
+              {item.option && <DetailRow label="オプション" value={item.option} />}
               {(item.telStatus || item.mailStatus) &&
                 <DetailRow label="ズバット状況" value={[item.telStatus, item.mailStatus].filter(Boolean).join(' / ')} />}
               {Array.isArray(item.kazai) && item.kazai.length > 0 && (
