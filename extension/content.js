@@ -17,6 +17,7 @@ const SITE = 'ズバット'
 const ROW_SELECTOR = '.usersBlock table tbody tr'
 const PHONE_RE = /0\d{1,4}-?\d{1,4}-?\d{3,4}/
 const API_URL = 'https://transportfukuoka.vercel.app/api/inbound'
+const STATUS_URL = 'https://transportfukuoka.vercel.app/api/status'
 
 function cellText(tds, i) {
   return (tds[i] && tds[i].innerText ? tds[i].innerText : '').replace(/\s+/g, ' ').trim()
@@ -239,16 +240,39 @@ function yyyymmdd(d) {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
 }
 
+// 認証エラー（ログインセッション切れ）を表す目印付きエラー
+function authError() { const e = new Error('AUTH'); e.auth = true; return e }
+
 async function getCsrfToken() {
   const r = await fetch(`${ZBA_API}/csrf`, { credentials: 'include', headers: { accept: 'application/json' } })
-  const j = await r.json()
+  if (r.status === 401 || r.status === 403) throw authError()
+  const j = await r.json().catch(() => null)
   return j && j.csrfToken
+}
+
+// CRMへ生存ハートビート送信（取得成功＝ok:true、ログイン切れ＝ok:false reason:'auth'）
+function postStatus(ok, reason, count) {
+  return fetch(STATUS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: 'zba', ok: !!ok, reason: reason || '', count: count == null ? null : count }),
+  }).catch(() => {})
+}
+
+// 拡張アイコンの警告バッジ（background経由）。状態が変わった時だけ通知。
+let zbaAuthOk = null
+function setAuthState(ok) {
+  if (zbaAuthOk === ok) return
+  zbaAuthOk = ok
+  try {
+    if (chrome.runtime && chrome.runtime.id) chrome.runtime.sendMessage({ type: 'ZBA_AUTH', ok })
+  } catch { /* context invalidated */ }
 }
 
 // 一覧APIを叩いて注文リスト（orderId/companyId付き）を取得
 async function fetchOrderList() {
   const token = await getCsrfToken()
-  if (!token) throw new Error('csrf token取得失敗')
+  if (!token) throw authError()
   const to = new Date()
   const from = new Date(Date.now() - DETAIL_DAYS_BACK * 86400000)
   const body = {
@@ -263,6 +287,7 @@ async function fetchOrderList() {
     headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
     body: JSON.stringify(body),
   })
+  if (r.status === 401 || r.status === 403) throw authError()
   if (!r.ok) throw new Error('order-info-list ' + r.status)
   const j = await r.json()
   return (j && j.response) || []
@@ -383,7 +408,21 @@ async function apiSync() {
   try {
     console.log(`[リード監視:${SITE}] API同期 開始`)
     let list
-    try { list = await fetchOrderList() } catch (e) { console.warn(`[リード監視:${SITE}] API一覧取得失敗`, e); return }
+    try {
+      list = await fetchOrderList()
+    } catch (e) {
+      if (e && e.auth) {
+        console.warn(`[リード監視:${SITE}] ⚠ ログイン切れの可能性。ズバットに再ログインしてください`)
+        setAuthState(false)
+        postStatus(false, 'auth')
+      } else {
+        console.warn(`[リード監視:${SITE}] API一覧取得失敗`, e)
+        postStatus(false, 'error')
+      }
+      return
+    }
+    setAuthState(true)
+    postStatus(true, '', list.length) // 生存ハートビート
     const todo = list.filter(o => o.orderId && !detailDone.has(o.orderId)).length
     console.log(`[リード監視:${SITE}] API同期 一覧${list.length}件 / 詳細未取得${todo}件`)
     if (!list.length) return

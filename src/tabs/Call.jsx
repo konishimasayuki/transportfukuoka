@@ -110,12 +110,26 @@ const fmtTime = (iso) => {
   return d.toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+// ズバット監視の生存状態 → 表示用の判定
+function monHealth(status) {
+  if (!status || !status.at) return { label: '監視状態：不明', sub: 'まだ通信がありません', color: '#94A3B8', bg: '#F1F5FB' }
+  const ageMin = (Date.now() - new Date(status.at).getTime()) / 60000
+  const last = new Date(status.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+  if (status.ok === false) {
+    if (status.reason === 'auth') return { label: '⚠ ズバット未接続', sub: `ログイン切れの可能性。ズバットに再ログインしてください（最終 ${last}）`, color: '#B91C1C', bg: '#FEF2F2' }
+    return { label: '⚠ 取得エラー', sub: `通信エラーが発生しています（最終 ${last}）`, color: '#C2410C', bg: '#FFF7ED' }
+  }
+  if (ageMin > 3) return { label: '⚠ 監視停止の可能性', sub: `${Math.round(ageMin)}分間 更新がありません。監視端末のタブが開いているか確認してください（最終 ${last}）`, color: '#C2410C', bg: '#FFF7ED' }
+  return { label: '✓ 監視中（正常）', sub: `最終取得 ${last}${status.count != null ? ` ／ ${status.count}件` : ''}`, color: '#15803D', bg: '#F0FDF4' }
+}
+
 export default function Call({ user }) {
   const isDemo = user?.mode === 'demo'
   const [callOn, setCallOn] = useState(true)
   const [leads, setLeads]   = useState([])
+  const [monStatus, setMonStatus] = useState(null)
 
-  // ライブモード：保存済みリードを取得し、15秒ごとに最新化
+  // ライブモード：保存済みリードと監視ステータスを取得し、15秒ごとに最新化
   useEffect(() => {
     if (isDemo) return
     let alive = true
@@ -125,6 +139,11 @@ export default function Call({ user }) {
         const data = await res.json()
         if (alive) setLeads(data.items || [])
       } catch (e) { console.error(e) }
+      try {
+        const sres = await fetch('/api/status')
+        const sdata = await sres.json()
+        if (alive) setMonStatus(sdata.status || null)
+      } catch (e) { /* status取得失敗は無視 */ }
     }
     load()
     const t = setInterval(load, 15000)
@@ -176,9 +195,20 @@ export default function Call({ user }) {
     { name: 'ズバット', status: callOn ? '監視中' : '待機中', dotColor: callOn ? '#22c55e' : '#94A3B8', count: `取得済み ${leads.length}件`, newCount: null },
   ]
 
+  const mon = monHealth(monStatus)
+
   return (
     <div>
       <div className="page-hdr"><h1>架電機能</h1><p>一括査定サイトを監視し、新規顧客に自動電話・通知します</p></div>
+      {!isDemo && (
+        <div style={{ background: mon.bg, border: `1px solid ${mon.color}33`, borderRadius: 12, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: mon.color, flexShrink: 0 }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: mon.color }}>{mon.label}</div>
+            <div style={{ fontSize: 11, color: '#64748B' }}>{mon.sub}</div>
+          </div>
+        </div>
+      )}
       <CallUI
         callOn={callOn}
         setCallOn={setCallOn}

@@ -11,7 +11,29 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     handleLead(msg.lead).then(sendResponse)
     return true // 非同期レスポンス
   }
+  if (msg?.type === 'ZBA_AUTH') {
+    setAuthBadge(msg.ok)
+    return
+  }
 })
+
+// ログインセッション切れ時はアイコンに赤い「!」、復帰時は本日件数バッジへ戻す
+function setAuthBadge(ok) {
+  if (ok === false) {
+    chrome.action.setBadgeText({ text: '!' })
+    chrome.action.setBadgeBackgroundColor({ color: '#DC2626' })
+  } else {
+    restoreCountBadge()
+  }
+}
+
+async function restoreCountBadge() {
+  const today = new Date().toISOString().slice(0, 10)
+  const { countDate, count } = await chrome.storage.local.get(['countDate', 'count'])
+  const n = (countDate === today ? (count || 0) : 0)
+  chrome.action.setBadgeText({ text: n ? String(n) : '' })
+  chrome.action.setBadgeBackgroundColor({ color: '#1E5FA8' })
+}
 
 async function handleLead(lead) {
   try {
