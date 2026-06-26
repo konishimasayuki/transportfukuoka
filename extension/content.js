@@ -225,8 +225,8 @@ function checkDetailRoute() {
 // =====================================================================
 const ZBA_API = 'https://hikkoshi-kanri.zba.jp/hikkoshi-kanriengine-api'
 const DETAIL_DAYS_BACK = 14        // 取得対象の期間（直近N日）
-const DETAIL_PER_CYCLE = 3         // 1サイクルで裏取得する詳細の最大件数（負荷配慮）
-const DETAIL_GAP_MS    = 1500      // 詳細取得の間隔
+const DETAIL_PER_CYCLE = 8         // 1サイクルで取得する詳細の最大件数（API直叩きなので軽い）
+const DETAIL_GAP_MS    = 500       // 詳細取得の間隔（負荷配慮）
 const API_SYNC_MS      = 60000     // APIサイクル間隔
 const detailDone = new Set()       // 詳細取得済みの orderId（永続）
 
@@ -286,47 +286,63 @@ function leadFromApi(o) {
   }
 }
 
-// 詳細ページを裏（非表示iframe）で描画してスクレイプ→送信
-function fetchDetailViaIframe(orderId, companyId) {
-  return new Promise(resolve => {
-    const url = `${location.origin}/users/detail/${orderId}/${companyId}`
-    const ifr = document.createElement('iframe')
-    ifr.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1280px;height:900px;opacity:0;border:0'
-    let done = false
-    const fin = async (doc) => {
-      if (done) return; done = true
-      let sent = false
-      try {
-        if (doc) {
-          const d = scrapeDetail(doc)
-          if (d.phone) {
-            const res = await sendLead(d)
-            sent = !!(res && res.ok)
-            console.log(`[リード監視:${SITE}] 自動詳細取得`, d.phone, sent ? 'OK' : 'NG', `家財${(d.kazai || []).length}種`)
-          } else {
-            console.warn(`[リード監視:${SITE}] 自動詳細取得 失敗（電話番号取れず）`, url)
-          }
-        } else {
-          console.warn(`[リード監視:${SITE}] 自動詳細取得 失敗（未描画/アクセス不可）`, url)
-        }
-      } catch (e) { console.warn(`[リード監視:${SITE}] 裏詳細スクレイプ失敗`, e, url) }
-      try { ifr.remove() } catch {}
-      resolve(sent)
-    }
-    ifr.onload = () => {
-      let n = 0
-      const iv = setInterval(() => {
-        n++
-        let doc
-        try { doc = ifr.contentDocument } catch (e) { clearInterval(iv); return fin(null) }
-        if (doc && doc.querySelectorAll('.profileBlock_content_row_col_item').length > 0) { clearInterval(iv); fin(doc) }
-        else if (n > 30) { clearInterval(iv); fin(null) } // ~21秒待っても未描画
-      }, 700)
-    }
-    ifr.onerror = () => fin(null)
-    document.body.appendChild(ifr)
-    setTimeout(() => fin(null), 35000)
-  })
+// 詳細APIの1件 → CRMリード（詳細）。scrapeDetail と同じ形に揃えるのでモーダルがそのまま表示できる。
+// 家財は kazai_NN（コード）でしか来ず、コード→品名の確定対応表が無いため、ここでは
+// 「家財の種類数(kazaiCount)」と「ダンボール数(boxCount)」のみ。品名はスタッフが
+// 詳細ページを開いた時の DOM 取得（scrapeDetail）で後から充足する。
+function detailFromApi(o) {
+  const join = (...xs) => xs.filter(s => s != null && s !== '').join('')
+  let kazaiCount = 0
+  for (const [k, v] of Object.entries(o)) { if (k.startsWith('kazai_') && Number(v) > 0) kazaiCount++ }
+  const m = String(o.tel || '').match(PHONE_RE)
+  const phone = m ? m[0] : (o.tel || '')
+  return {
+    site: SITE, detail: true,
+    phone, key: phone,
+    name: [o.nameKanji1, o.nameKanji2].filter(Boolean).join(' '),
+    kana: [o.nameKana1, o.nameKana2].filter(Boolean).join(' '),
+    email: o.mail || '',
+    count: o.personNum ? `${o.personNum}人` : '',
+    orderId: o.orderNewId != null ? String(o.orderNewId) : '',
+    requestedAt: o.completeDate || '',
+    moveDateDetail: o.preferredDate || '',
+    fromZip: o.zip || '',
+    fromAddress: join(o.address1, o.address2, o.address3, o.address4, o.address5),
+    fromType: o.houseType || '',
+    toZip: '',
+    toAddress: join(o.nextAddress1, o.nextAddress2),
+    toType: '',
+    telStatus: o.supportStatusTel ? '架電済' : '未架電',
+    mailStatus: o.supportStatusMail ? 'メール済' : '未メール',
+    request: o.orderComment || '',
+    option: o.workOption || '',
+    memo: o.memo || '',
+    boxCount: o.cardboard_box != null ? String(o.cardboard_box) : '',
+    kazaiCount,
+    detailFetchedAt: new Date().toISOString(),
+  }
+}
+
+// 詳細を API で取得して送信（POST /supplier-kanri/order-info {orderId, companyId} + csrf）
+async function fetchDetailViaApi(orderId, companyId) {
+  try {
+    const token = await getCsrfToken()
+    if (!token) { console.warn(`[リード監視:${SITE}] 詳細API csrf取得失敗`, orderId); return false }
+    const r = await fetch(`${ZBA_API}/supplier-kanri/order-info`, {
+      method: 'POST', credentials: 'include',
+      headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
+      body: JSON.stringify({ orderId, companyId }),
+    })
+    if (!r.ok) { console.warn(`[リード監視:${SITE}] 詳細API失敗`, orderId, r.status); return false }
+    const j = await r.json()
+    const o = j && j.response
+    if (!o || !o.tel) { console.warn(`[リード監視:${SITE}] 詳細API 中身なし`, orderId); return false }
+    const d = detailFromApi(o)
+    const res = await sendLead(d)
+    const ok = !!(res && res.ok)
+    console.log(`[リード監視:${SITE}] 自動詳細取得`, d.phone, ok ? 'OK' : 'NG', `家財${d.kazaiCount}種・箱${d.boxCount || 0}`)
+    return ok
+  } catch (e) { console.warn(`[リード監視:${SITE}] 詳細API例外`, orderId, e); return false }
 }
 
 let apiSyncing = false
@@ -352,12 +368,12 @@ async function apiSync() {
     }
     if (basic) console.log(`[リード監視:${SITE}] 基本情報 ${basic}件 送信`)
 
-    // 2) 詳細を未取得ぶんだけ裏で取得（新しい順・件数制限・間隔あり）
+    // 2) 詳細を未取得ぶんだけAPIで取得（新しい順・件数制限・間隔あり）
     let cnt = 0
     for (const o of list) {
       if (cnt >= DETAIL_PER_CYCLE) break
       if (!o.orderId || detailDone.has(o.orderId)) continue
-      await fetchDetailViaIframe(o.orderId, o.companyId)
+      await fetchDetailViaApi(o.orderId, o.companyId)
       detailDone.add(o.orderId)
       persistDetailDone()
       cnt++

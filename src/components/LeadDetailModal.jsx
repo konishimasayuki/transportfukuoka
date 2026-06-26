@@ -62,7 +62,12 @@ export default function LeadDetailModal({ item, onClose, onStatusChange }) {
                   </div>
                 </div>
               )}
-              {(!item.kazai || item.kazai.length === 0) && item.boxCount && <DetailRow label="ダンボール" value={item.boxCount} />}
+              {(!item.kazai || item.kazai.length === 0) && (item.kazaiCount || item.boxCount) && (
+                <DetailRow label="家財" value={[
+                  item.kazaiCount ? `${item.kazaiCount}種` : null,
+                  item.boxCount ? `ダンボール ${item.boxCount}` : null,
+                ].filter(Boolean).join(' / ')} />
+              )}
             </>
           )}
 
