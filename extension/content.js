@@ -295,9 +295,13 @@ function fetchDetailViaIframe(orderId, companyId) {
             const res = await sendLead(d)
             sent = !!(res && res.ok)
             console.log(`[リード監視:${SITE}] 自動詳細取得`, d.phone, sent ? 'OK' : 'NG', `家財${(d.kazai || []).length}種`)
+          } else {
+            console.warn(`[リード監視:${SITE}] 自動詳細取得 失敗（電話番号取れず）`, url)
           }
+        } else {
+          console.warn(`[リード監視:${SITE}] 自動詳細取得 失敗（未描画/アクセス不可）`, url)
         }
-      } catch (e) { console.warn(`[リード監視:${SITE}] 裏詳細スクレイプ失敗`, e) }
+      } catch (e) { console.warn(`[リード監視:${SITE}] 裏詳細スクレイプ失敗`, e, url) }
       try { ifr.remove() } catch {}
       resolve(sent)
     }
@@ -323,17 +327,22 @@ async function apiSync() {
   if (window.top !== window.self) return // 念のため：サブフレームでは動かさない
   apiSyncing = true
   try {
+    console.log(`[リード監視:${SITE}] API同期 開始`)
     let list
     try { list = await fetchOrderList() } catch (e) { console.warn(`[リード監視:${SITE}] API一覧取得失敗`, e); return }
+    const todo = list.filter(o => o.orderId && !detailDone.has(o.orderId)).length
+    console.log(`[リード監視:${SITE}] API同期 一覧${list.length}件 / 詳細未取得${todo}件`)
     if (!list.length) return
 
     // 1) 基本情報を未送信ぶんだけCRMへ
+    let basic = 0
     for (const o of list) {
       const lead = leadFromApi(o)
       if (!lead.phone || seen.has(lead.phone)) continue
       const res = await sendLead(lead)
-      if (res && res.ok) { seen.add(lead.phone); persistSeen() }
+      if (res && res.ok) { seen.add(lead.phone); persistSeen(); basic++ }
     }
+    if (basic) console.log(`[リード監視:${SITE}] 基本情報 ${basic}件 送信`)
 
     // 2) 詳細を未取得ぶんだけ裏で取得（新しい順・件数制限・間隔あり）
     let cnt = 0
@@ -346,6 +355,7 @@ async function apiSync() {
       cnt++
       await sleep(DETAIL_GAP_MS)
     }
+    console.log(`[リード監視:${SITE}] API同期 完了（今回 詳細${cnt}件）`)
   } finally {
     apiSyncing = false
   }
