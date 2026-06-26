@@ -5,6 +5,7 @@ const TITLES = {
   cases:     '案件管理',
   leads:     'リード',
   call:      '架電機能',
+  estimate:  '見積書',
   settings:  '設定',
 }
 

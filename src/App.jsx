@@ -9,6 +9,7 @@ import Contracts from './tabs/Contracts'
 import Cases from './tabs/Cases'
 import Leads from './tabs/Leads'
 import Call from './tabs/Call'
+import Estimate from './tabs/Estimate'
 import Settings from './tabs/Settings'
 
 const TABS = {
@@ -18,6 +19,7 @@ const TABS = {
   cases: Cases,
   leads: Leads,
   call: Call,
+  estimate: Estimate,
   settings: Settings,
 }
 
