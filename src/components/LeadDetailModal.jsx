@@ -59,6 +59,9 @@ export default function LeadDetailModal({ item, onClose, onStatusChange }) {
                     {item.kazai.map((k, i) => (
                       <span key={i} style={{ fontSize: 12, background: '#F1F5FB', borderRadius: 6, padding: '3px 8px' }}>{k.name}×{k.qty}</span>
                     ))}
+                    {item.kazaiUnknown > 0 && (
+                      <span style={{ fontSize: 12, background: '#F8FAFC', color: '#94A3B8', borderRadius: 6, padding: '3px 8px' }}>他{item.kazaiUnknown}品（開くと表示）</span>
+                    )}
                   </div>
                 </div>
               )}

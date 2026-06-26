@@ -176,6 +176,7 @@ function scrapeDetail(doc = document) {
     if (n > 0) kazai.push({ name, qty: n })
   })
   d.kazai = kazai
+  d.kazaiUnknown = 0 // DOMからは全品名が取れるので未知ぶんは無い（裏取得の「他N品」を打ち消す）
 
   d.key = d.phone
   d.detailFetchedAt = new Date().toISOString()
@@ -219,15 +220,15 @@ function checkDetailRoute() {
 //   1) GET  /csrf                         → { csrfToken }
 //   2) POST /supplier-kanri/order-info-list（csrf-tokenヘッダ・期間/件数指定）
 //      → 各リードに orderId / companyId が付く
-//   3) /users/detail/{orderId}/{companyId} を非表示iframeで描画→scrapeDetail
-//  ※content_scriptsは all_frames:false なので iframe 内では本スクリプトは
-//    動かない（多重起動・iframe増殖は起きない）。
+//   3) POST /supplier-kanri/order-info {orderId, companyId} → 詳細JSON（detailFromApi）
 // =====================================================================
 const ZBA_API = 'https://hikkoshi-kanri.zba.jp/hikkoshi-kanriengine-api'
 const DETAIL_DAYS_BACK = 14        // 取得対象の期間（直近N日）
 const DETAIL_PER_CYCLE = 8         // 1サイクルで取得する詳細の最大件数（API直叩きなので軽い）
 const DETAIL_GAP_MS    = 500       // 詳細取得の間隔（負荷配慮）
 const API_SYNC_MS      = 60000     // APIサイクル間隔
+// 詳細取り込みロジックを変えたら +1。既存の取得済みフラグをリセットして全件取り直す。
+const DETAIL_VERSION   = 2          // v2: 家財の品名(KAZAI_MAP)対応
 const detailDone = new Set()       // 詳細取得済みの orderId（永続）
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
@@ -286,14 +287,41 @@ function leadFromApi(o) {
   }
 }
 
+// 家財コード→品名の対応表（実機の指紋照合で確定。ズバットのマスタは固定）。
+// 未掲載のコードは「全サンプルで数量0だったレア品/未使用の汎用名」。出現時は種類数に数え、
+// 品名はスタッフが詳細ページを開いた時の DOM 取得（scrapeDetail）で充足する。
+const KAZAI_MAP = {
+  kazai_02: 'ドレッサー', kazai_04: '布団類', kazai_05: '衣装ケース', kazai_07: 'リビングテーブル',
+  kazai_08: 'サイドボード・テレビ台', kazai_12: 'デスクトップパソコン', kazai_13: 'エアコン',
+  kazai_15: 'シャンデリア・スタンド', kazai_18: 'ダイニングテーブルセット', kazai_23: 'ストーブ・ヒーター',
+  kazai_24: '扇風機', kazai_25: 'こたつ', kazai_30: '自転車',
+  kazai_40: 'ソファ（1人掛け）', kazai_41: 'ソファ（2人掛け）', kazai_42: 'ソファ（3人掛け）',
+  kazai_43: 'テレビ（40インチ未満）', kazai_44: 'テレビ（40インチ以上）',
+  kazai_45: 'チェスト（大）', kazai_46: 'チェスト（中・小）', kazai_47: 'ミニコンポ',
+  kazai_48: '絨毯・カーペット（10畳未満）', kazai_49: '絨毯・カーペット（10畳以上）',
+  kazai_50: '冷蔵庫（２ドア）', kazai_51: '冷蔵庫（3ドア）', kazai_52: '食器棚（大）',
+  kazai_53: '食器棚（中・小）', kazai_54: '電子レンジ', kazai_55: '洗濯機（縦型）',
+  kazai_56: '洗濯機（ドラム式）', kazai_57: 'ベッド（シングル）', kazai_58: 'ベッド（セミダブル）',
+  kazai_59: 'ベッド（ダブル）', kazai_60: 'タンス（中・小）', kazai_61: 'タンス（大）',
+  kazai_62: '本棚（中・小）', kazai_63: '本棚（大）', kazai_64: '机', kazai_65: '椅子',
+  kazai_67: '物干し竿', kazai_70: 'ステレオ',
+}
+
 // 詳細APIの1件 → CRMリード（詳細）。scrapeDetail と同じ形に揃えるのでモーダルがそのまま表示できる。
-// 家財は kazai_NN（コード）でしか来ず、コード→品名の確定対応表が無いため、ここでは
-// 「家財の種類数(kazaiCount)」と「ダンボール数(boxCount)」のみ。品名はスタッフが
-// 詳細ページを開いた時の DOM 取得（scrapeDetail）で後から充足する。
+// 家財は kazai_NN（コード）→ KAZAI_MAP で品名に変換。未掲載コードは unknownCount として種類数に加算。
 function detailFromApi(o) {
   const join = (...xs) => xs.filter(s => s != null && s !== '').join('')
-  let kazaiCount = 0
-  for (const [k, v] of Object.entries(o)) { if (k.startsWith('kazai_') && Number(v) > 0) kazaiCount++ }
+  const kazai = []
+  let unknownCount = 0
+  for (const [k, v] of Object.entries(o)) {
+    if (!k.startsWith('kazai_')) continue
+    const q = Number(v) || 0
+    if (q <= 0) continue
+    const name = KAZAI_MAP[k]
+    if (name) kazai.push({ name, qty: q })
+    else unknownCount++
+  }
+  const kazaiCount = kazai.length + unknownCount
   const m = String(o.tel || '').match(PHONE_RE)
   const phone = m ? m[0] : (o.tel || '')
   return {
@@ -318,7 +346,9 @@ function detailFromApi(o) {
     option: o.workOption || '',
     memo: o.memo || '',
     boxCount: o.cardboard_box != null ? String(o.cardboard_box) : '',
+    kazai,
     kazaiCount,
+    kazaiUnknown: unknownCount,
     detailFetchedAt: new Date().toISOString(),
   }
 }
@@ -386,11 +416,17 @@ async function apiSync() {
 }
 
 async function init() {
-  const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined', 'detailDoneIds'])
+  const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined', 'detailDoneIds', 'detailVersion'])
   enabled = st.enabled !== false
   everBaselined = st.everBaselined === true
   ;(st.seenKeys || []).forEach(k => seen.add(k))
-  ;(st.detailDoneIds || []).forEach(k => detailDone.add(k))
+  // 詳細ロジックのバージョンが上がっていたら取得済みフラグを破棄し、新ロジックで全件取り直す
+  if (st.detailVersion === DETAIL_VERSION) {
+    ;(st.detailDoneIds || []).forEach(k => detailDone.add(k))
+  } else {
+    safeStorageSet({ detailDoneIds: [], detailVersion: DETAIL_VERSION })
+    console.log(`[リード監視:${SITE}] 詳細ロジック更新(v${DETAIL_VERSION}) → 全件 再取得`)
+  }
 
   // 一覧監視（詳細ページでは行が無いので空振りするだけ＝無害）
   doScan()
