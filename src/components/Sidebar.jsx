@@ -5,7 +5,7 @@ const NAV_ITEMS = [
   { tab: 'cases',     icon: '📋', label: '案件管理', badge: 3 },
   { tab: 'leads',     icon: '📥', label: 'リード', isNew: true },
   { tab: 'call',      icon: '📞', label: '架電機能' },
-  { tab: 'estimate',  icon: '📝', label: '見積書' },
+  { tab: 'estimate',  icon: '📝', label: '見積書', isNew: true },
   { tab: 'settings',  icon: '⚙️', label: '設定' },
 ]
 
