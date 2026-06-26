@@ -104,12 +104,13 @@ function dtext(el) {
 
 // 詳細ページから情報を抽出。リードの from/to/moveDate 等は一覧側が書くので
 // ここでは「詳細にしか無い項目」中心に集める（一覧の再スキャンと衝突させない）。
-function scrapeDetail() {
+// doc を渡すと別ドキュメント（裏のiframe等）からも抽出できる。
+function scrapeDetail(doc = document) {
   const d = { site: SITE, detail: true }
 
   // プロフィール（PC: label/value）
   const prof = {}
-  document.querySelectorAll('.profileBlock_content_row_col_item').forEach(it => {
+  doc.querySelectorAll('.profileBlock_content_row_col_item').forEach(it => {
     const label = dtext(it.querySelector('.profileBlock_content_row_col_item_label'))
     const value = dtext(it.querySelector('.profileBlock_content_row_col_item_value'))
     if (label) prof[label] = value
@@ -128,7 +129,7 @@ function scrapeDetail() {
   d.option = prof['依頼作業(オプション)'] || ''
 
   // 住所（SP infoBlock をセクション見出しで判定：構造が素直）
-  document.querySelectorAll('.infoBlock_wrapper').forEach(w => {
+  doc.querySelectorAll('.infoBlock_wrapper').forEach(w => {
     const header = dtext(w.querySelector('.infoBlock_wrapper_header'))
     if (header !== '引越し元' && header !== '引越し先') return
     const rows = {}
@@ -149,7 +150,7 @@ function scrapeDetail() {
   })
 
   // 対応状況（PC）
-  document.querySelectorAll('.statusBlockPc_content_row_col_item').forEach(it => {
+  doc.querySelectorAll('.statusBlockPc_content_row_col_item').forEach(it => {
     const label = dtext(it.querySelector('.statusBlockPc_content_row_col_item_label'))
     const value = dtext(it.querySelector('.statusBlockPc_content_row_col_item_value'))
     if (label === '電話連絡') d.telStatus = value
@@ -158,7 +159,7 @@ function scrapeDetail() {
 
   // 家財状況（PC：数量>0 のみ。ダンボールは別枠）
   const kazai = []
-  document.querySelectorAll('.kazaiBlock[data-device="pc"] .kazaiBlock_wrapper_row_item').forEach(it => {
+  doc.querySelectorAll('.kazaiBlock[data-device="pc"] .kazaiBlock_wrapper_row_item').forEach(it => {
     const name = dtext(it.querySelector('.kazaiBlock_wrapper_row_item_label'))
     const qtyT = dtext(it.querySelector('.kazaiBlock_wrapper_row_item_cont'))
     if (!name) return
@@ -202,11 +203,160 @@ function checkDetailRoute() {
   captureDetail()
 }
 
+// =====================================================================
+// バックグラウンド自動取得（ズバットAPI経由）
+//  スタッフが各詳細ページを開かなくても、新着リードを検知して
+//  詳細（フリガナ/メール/住所/家財）まで自動でCRMに取り込む。
+//  経路はすべて実機検証済み：
+//   1) GET  /csrf                         → { csrfToken }
+//   2) POST /supplier-kanri/order-info-list（csrf-tokenヘッダ・期間/件数指定）
+//      → 各リードに orderId / companyId が付く
+//   3) /users/detail/{orderId}/{companyId} を非表示iframeで描画→scrapeDetail
+//  ※content_scriptsは all_frames:false なので iframe 内では本スクリプトは
+//    動かない（多重起動・iframe増殖は起きない）。
+// =====================================================================
+const ZBA_API = 'https://hikkoshi-kanri.zba.jp/hikkoshi-kanriengine-api'
+const DETAIL_DAYS_BACK = 14        // 取得対象の期間（直近N日）
+const DETAIL_PER_CYCLE = 3         // 1サイクルで裏取得する詳細の最大件数（負荷配慮）
+const DETAIL_GAP_MS    = 1500      // 詳細取得の間隔
+const API_SYNC_MS      = 60000     // APIサイクル間隔
+const detailDone = new Set()       // 詳細取得済みの orderId（永続）
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+function persistDetailDone() {
+  chrome.storage.local.set({ detailDoneIds: Array.from(detailDone).slice(-3000) })
+}
+function yyyymmdd(d) {
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+}
+
+async function getCsrfToken() {
+  const r = await fetch(`${ZBA_API}/csrf`, { credentials: 'include', headers: { accept: 'application/json' } })
+  const j = await r.json()
+  return j && j.csrfToken
+}
+
+// 一覧APIを叩いて注文リスト（orderId/companyId付き）を取得
+async function fetchOrderList() {
+  const token = await getCsrfToken()
+  if (!token) throw new Error('csrf token取得失敗')
+  const to = new Date()
+  const from = new Date(Date.now() - DETAIL_DAYS_BACK * 86400000)
+  const body = {
+    orderNewId: null, nameKanji1: null, nameKanji2: null, nameKana1: null, nameKana2: null,
+    tel: null, email: null, prefId: null, nextPrefId: null,
+    completeDateFrom: yyyymmdd(from), completeDateTo: yyyymmdd(to),
+    dateFixId: null, month: null, day: null, personNum: null,
+    supportStatusTel: null, memo: null, limit: 100, offset: 1,
+  }
+  const r = await fetch(`${ZBA_API}/supplier-kanri/order-info-list`, {
+    method: 'POST', credentials: 'include',
+    headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
+    body: JSON.stringify(body),
+  })
+  if (!r.ok) throw new Error('order-info-list ' + r.status)
+  const j = await r.json()
+  return (j && j.response) || []
+}
+
+// 一覧APIの1件 → CRMリード（基本情報）
+// 注意：CRMの orderId は「依頼者番号(=orderNewId)」を指す（詳細スクレイプと統一）。
+//       API内部の o.orderId（詳細URL用）はリードには載せない（衝突防止）。
+function leadFromApi(o) {
+  return {
+    site: SITE,
+    key: o.tel,
+    phone: o.tel,
+    name: o.fullNameKanji || '',
+    count: o.personNum ? `${o.personNum}人` : '',
+    from: [o.address1, o.address2].filter(Boolean).join(''),
+    to: [o.nextAddress1, o.nextAddress2].filter(Boolean).join(''),
+    receivedAt: o.completeDate || '',
+    moveDate: o.preferredDate || '',
+    memo: o.memo || '',
+    orderId: o.orderNewId != null ? String(o.orderNewId) : '',
+  }
+}
+
+// 詳細ページを裏（非表示iframe）で描画してスクレイプ→送信
+function fetchDetailViaIframe(orderId, companyId) {
+  return new Promise(resolve => {
+    const url = `${location.origin}/users/detail/${orderId}/${companyId}`
+    const ifr = document.createElement('iframe')
+    ifr.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1280px;height:900px;opacity:0;border:0'
+    let done = false
+    const fin = async (doc) => {
+      if (done) return; done = true
+      let sent = false
+      try {
+        if (doc) {
+          const d = scrapeDetail(doc)
+          if (d.phone) {
+            const res = await sendLead(d)
+            sent = !!(res && res.ok)
+            console.log(`[リード監視:${SITE}] 自動詳細取得`, d.phone, sent ? 'OK' : 'NG', `家財${(d.kazai || []).length}種`)
+          }
+        }
+      } catch (e) { console.warn(`[リード監視:${SITE}] 裏詳細スクレイプ失敗`, e) }
+      try { ifr.remove() } catch {}
+      resolve(sent)
+    }
+    ifr.onload = () => {
+      let n = 0
+      const iv = setInterval(() => {
+        n++
+        let doc
+        try { doc = ifr.contentDocument } catch (e) { clearInterval(iv); return fin(null) }
+        if (doc && doc.querySelectorAll('.profileBlock_content_row_col_item').length > 0) { clearInterval(iv); fin(doc) }
+        else if (n > 30) { clearInterval(iv); fin(null) } // ~21秒待っても未描画
+      }, 700)
+    }
+    ifr.onerror = () => fin(null)
+    document.body.appendChild(ifr)
+    setTimeout(() => fin(null), 35000)
+  })
+}
+
+let apiSyncing = false
+async function apiSync() {
+  if (!enabled || apiSyncing) return
+  if (window.top !== window.self) return // 念のため：サブフレームでは動かさない
+  apiSyncing = true
+  try {
+    let list
+    try { list = await fetchOrderList() } catch (e) { console.warn(`[リード監視:${SITE}] API一覧取得失敗`, e); return }
+    if (!list.length) return
+
+    // 1) 基本情報を未送信ぶんだけCRMへ
+    for (const o of list) {
+      const lead = leadFromApi(o)
+      if (!lead.phone || seen.has(lead.phone)) continue
+      const res = await sendLead(lead)
+      if (res && res.ok) { seen.add(lead.phone); persistSeen() }
+    }
+
+    // 2) 詳細を未取得ぶんだけ裏で取得（新しい順・件数制限・間隔あり）
+    let cnt = 0
+    for (const o of list) {
+      if (cnt >= DETAIL_PER_CYCLE) break
+      if (!o.orderId || detailDone.has(o.orderId)) continue
+      await fetchDetailViaIframe(o.orderId, o.companyId)
+      detailDone.add(o.orderId)
+      persistDetailDone()
+      cnt++
+      await sleep(DETAIL_GAP_MS)
+    }
+  } finally {
+    apiSyncing = false
+  }
+}
+
 async function init() {
-  const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined'])
+  const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined', 'detailDoneIds'])
   enabled = st.enabled !== false
   everBaselined = st.everBaselined === true
   ;(st.seenKeys || []).forEach(k => seen.add(k))
+  ;(st.detailDoneIds || []).forEach(k => detailDone.add(k))
 
   // 一覧監視（詳細ページでは行が無いので空振りするだけ＝無害）
   doScan()
@@ -216,6 +366,10 @@ async function init() {
   // 詳細ページ取得（初回＋SPA遷移を1秒ごとに検知）
   checkDetailRoute()
   setInterval(checkDetailRoute, 1000)
+
+  // バックグラウンド自動取得（API経由：開かなくても新着の詳細まで取り込む）
+  apiSync()
+  setInterval(apiSync, API_SYNC_MS)
 
   console.log(`[リード監視:${SITE}] 起動 enabled=${enabled}`)
 }
