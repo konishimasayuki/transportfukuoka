@@ -6,7 +6,6 @@ import Login from './tabs/Login'
 import Dashboard from './tabs/Dashboard'
 import Sales from './tabs/Sales'
 import Contracts from './tabs/Contracts'
-import Cases from './tabs/Cases'
 import Leads from './tabs/Leads'
 import Call from './tabs/Call'
 import Estimate from './tabs/Estimate'
@@ -16,7 +15,6 @@ const TABS = {
   dashboard: Dashboard,
   sales: Sales,
   contracts: Contracts,
-  cases: Cases,
   leads: Leads,
   call: Call,
   estimate: Estimate,
@@ -81,7 +79,7 @@ export default function App() {
       <div className="main">
         <Topbar activeTab={activeTab} onMenuClick={() => setSidebarOpen(true)} onRefresh={refresh} loading={loading} user={user} />
         <div className="content">
-          <ActiveTab user={user} />
+          <ActiveTab user={user} switchTab={switchTab} />
         </div>
       </div>
       <MobileNav activeTab={activeTab} onTabChange={switchTab} onLogout={handleLogout} />

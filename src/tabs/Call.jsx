@@ -10,9 +10,10 @@ const DEMO_LOGS = [
 ]
 
 const DEMO_SITES = [
+  { name:'ズバット',  status:'監視中', dotColor:'#22c55e', count:'今日 32件 / 新規3件', newCount:'🔴 NEW 3件' },
   { name:'引越し侍', status:'監視中', dotColor:'#22c55e', count:'今日 28件 / 新規2件', newCount:'🔴 NEW 2件' },
   { name:'価格.com', status:'監視中', dotColor:'#22c55e', count:'今日 14件 / 新規1件', newCount:'🔴 NEW 1件' },
-  { name:'スーモ',   status:'待機中', dotColor:'#F59E0B', count:'今日 8件 / 新規0件',  newCount:null },
+  { name:'SUUMO',    status:'待機中', dotColor:'#F59E0B', count:'今日 8件 / 新規0件',  newCount:null },
 ]
 
 function CallUI({ callOn, setCallOn, sites, logs, stats, onOpenLog }) {
@@ -119,11 +120,11 @@ function monHealth(status) {
     if (status.reason === 'auth') return { label: '⚠ ズバット未接続', sub: `ログイン切れの可能性。ズバットに再ログインしてください（最終 ${last}）`, color: '#B91C1C', bg: '#FEF2F2' }
     return { label: '⚠ 取得エラー', sub: `通信エラーが発生しています（最終 ${last}）`, color: '#C2410C', bg: '#FFF7ED' }
   }
-  if (ageMin > 3) return { label: '⚠ 監視停止の可能性', sub: `${Math.round(ageMin)}分間 更新がありません。監視端末のタブが開いているか確認してください（最終 ${last}）`, color: '#C2410C', bg: '#FFF7ED' }
+  if (ageMin > 2) return { label: '⚠ 監視停止の可能性', sub: `${Math.round(ageMin)}分間 更新がありません。監視端末のタブが開いているか確認してください（最終 ${last}）`, color: '#C2410C', bg: '#FFF7ED' }
   return { label: '✓ 監視中（正常）', sub: `最終取得 ${last}${status.count != null ? ` ／ ${status.count}件` : ''}`, color: '#15803D', bg: '#F0FDF4' }
 }
 
-export default function Call({ user }) {
+export default function Call({ user, switchTab }) {
   const isDemo = user?.mode === 'demo'
   const [callOn, setCallOn] = useState(true)
   const [leads, setLeads]   = useState([])
@@ -191,6 +192,36 @@ export default function Call({ user }) {
     } catch (e) { console.error(e) }
   }
 
+  // 詳細モーダルからの編集（メモ・家財）
+  const savePatch = async (item, patch) => {
+    setLeads(prev => prev.map(l => l.id === item.id ? { ...l, ...patch } : l))
+    setDetailItem(d => (d ? { ...d, ...patch } : d))
+    if (isDemo) return
+    try {
+      await fetch('/api/inbound', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, ...patch }),
+      })
+    } catch (e) { console.error(e) }
+  }
+
+  const createEstimateFromLead = (item) => {
+    const prefill = {
+      name: item.name || '', kana: item.kana || '',
+      fromZip: (item.fromZip || '').replace(/^〒/, ''),
+      fromAddress: item.fromAddress || item.from || '',
+      toZip: (item.toZip || '').replace(/^〒/, ''),
+      toAddress: item.toAddress || item.to || '',
+      fromTelMobile: item.phone || '',
+      kazai: Array.isArray(item.kazai) ? item.kazai : [],
+      boxCount: item.boxCount || '',
+      memo: [item.memo, item.request, item.option].filter(Boolean).join(' / '),
+    }
+    try { sessionStorage.setItem('tf_estimate_prefill', JSON.stringify(prefill)) } catch {}
+    setDetailItem(null)
+    if (typeof switchTab === 'function') switchTab('estimate')
+  }
+
   const liveSites = [
     { name: 'ズバット', status: callOn ? '監視中' : '待機中', dotColor: callOn ? '#22c55e' : '#94A3B8', count: `取得済み ${leads.length}件`, newCount: null },
   ]
@@ -221,6 +252,8 @@ export default function Call({ user }) {
         item={detailItem}
         onClose={() => setDetailItem(null)}
         onStatusChange={updateLeadStatus}
+        onSave={savePatch}
+        onCreateEstimate={createEstimateFromLead}
       />
     </div>
   )

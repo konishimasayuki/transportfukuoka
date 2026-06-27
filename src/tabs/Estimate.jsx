@@ -267,6 +267,43 @@ export default function Estimate({ user }) {
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
 
+  // リード詳細から「見積書を作成」で渡されたプリフィルを取り込み、編集ビューを開く
+  useEffect(() => {
+    let raw = null
+    try { raw = sessionStorage.getItem('tf_estimate_prefill') } catch {}
+    if (!raw) return
+    let p = null
+    try { p = JSON.parse(raw) } catch { return }
+    try { sessionStorage.removeItem('tf_estimate_prefill') } catch {}
+    if (!p || typeof p !== 'object') return
+    const f = emptyForm()
+    f.estimateNo = nextNo()
+    f.estimateDate = new Date().toISOString().slice(0, 10)
+    if (p.name) f.name = p.name
+    if (p.kana) f.kana = p.kana
+    if (p.fromZip) f.fromZip = p.fromZip
+    if (p.fromAddress) f.fromAddress = p.fromAddress
+    if (p.toZip) f.toZip = p.toZip
+    if (p.toAddress) f.toAddress = p.toAddress
+    if (p.fromTelMobile) f.fromTelMobile = p.fromTelMobile
+    if (p.memo) f.memo = p.memo
+    // 家財をリードから自動マッピング（品名一致のみ）
+    if (Array.isArray(p.kazai)) {
+      const nameToKey = {}
+      ALL_ITEMS.forEach(it => { nameToKey[it.name + (it.size ? `（${it.size}）` : '')] = it.key; nameToKey[it.name] = nameToKey[it.name] || it.key })
+      p.kazai.forEach(k => {
+        const key = nameToKey[k.name]
+        if (key) f.items[key] = (Number(f.items[key]) || 0) + (Number(k.qty) || 0)
+      })
+    }
+    if (p.boxCount) {
+      // ダンボール（小）に割り当て
+      const boxKey = ALL_ITEMS.find(it => it.name === 'ダンボール' && it.size === '小')?.key
+      if (boxKey) f.items[boxKey] = Number(p.boxCount) || 0
+    }
+    setForm(f); setEditId(null); setView('edit'); setPreview(false)
+  }, [])
+
   const fetchItems = async () => {
     setLoading(true)
     try {

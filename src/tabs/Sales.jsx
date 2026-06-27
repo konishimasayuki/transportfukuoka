@@ -1,14 +1,67 @@
+import { useState, useMemo } from 'react'
+
+// 月選択候補（直近12ヶ月）
+function monthOptions() {
+  const opts = []
+  const d = new Date()
+  for (let i = 0; i < 12; i++) {
+    const y = d.getFullYear(), m = d.getMonth() + 1
+    opts.push({ key: `${y}-${String(m).padStart(2, '0')}`, label: `${y}年${m}月` })
+    d.setMonth(d.getMonth() - 1)
+  }
+  return opts
+}
+
 export default function Sales({ user }) {
   const isDemo = user?.mode === 'demo'
+  const months = useMemo(monthOptions, [])
+  const [selMonth, setSelMonth] = useState(months[0].key)
 
   if (!isDemo) {
     return (
       <div>
         <div className="page-hdr"><h1>売上管理</h1><p>売上・経費データを管理します</p></div>
+        <div className="filter-row">
+          <select value={selMonth} onChange={e => setSelMonth(e.target.value)}>
+            {months.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+          </select>
+          <div style={{ flex: 1 }} />
+          <button className="btn btn-outline btn-sm" disabled title="保留：スプレッドシート連携">CSV取込（保留）</button>
+        </div>
         <div className="kpi-row kpi-3">
-          <div className="kpi-card c-blue"><div className="kpi-label">今月の売上合計</div><div className="kpi-val">¥0</div></div>
+          <div className="kpi-card c-blue"><div className="kpi-label">{months.find(m => m.key === selMonth)?.label} 売上</div><div className="kpi-val">¥0</div></div>
           <div className="kpi-card c-green"><div className="kpi-label">一括査定手数料合計</div><div className="kpi-val">¥0</div></div>
           <div className="kpi-card c-orange"><div className="kpi-label">粗利益</div><div className="kpi-val">¥0</div></div>
+        </div>
+        <div className="two-col">
+          <div className="card">
+            <div className="card-head"><h3>広告費・掲載費</h3><span className="c-sub">{months.find(m => m.key === selMonth)?.label}</span></div>
+            <div className="card-body">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, fontSize: 13 }}>
+                <div style={{ color: '#64748B' }}>ズバット 掲載費</div><div>¥0</div>
+                <div style={{ color: '#64748B' }}>引越し侍 掲載費</div><div>¥0</div>
+                <div style={{ color: '#64748B' }}>価格.com 掲載費</div><div>¥0</div>
+                <div style={{ color: '#64748B' }}>SUUMO 掲載費</div><div>¥0</div>
+                <div style={{ color: '#64748B' }}>広告費（その他）</div><div>¥0</div>
+                <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 6, fontWeight: 800 }}>合計</div>
+                <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 6, fontWeight: 800 }}>¥0</div>
+              </div>
+              <div style={{ marginTop: 10, fontSize: 11, color: '#94A3B8' }}>※ 入力欄・スプレッドシート連携は保留中。表示枠のみ準備。</div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-head"><h3>その他経費</h3><span className="c-sub">{months.find(m => m.key === selMonth)?.label}</span></div>
+            <div className="card-body">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, fontSize: 13 }}>
+                <div style={{ color: '#64748B' }}>⛽ ガソリン代</div><div>¥0</div>
+                <div style={{ color: '#64748B' }}>🛣 高速代</div><div>¥0</div>
+                <div style={{ color: '#64748B' }}>📦 段ボール代</div><div>¥0</div>
+                <div style={{ color: '#64748B' }}>👷 厚生費</div><div>¥0</div>
+                <div style={{ color: '#64748B' }}>📱 Twilio等</div><div>¥0</div>
+              </div>
+              <div style={{ marginTop: 10, fontSize: 11, color: '#94A3B8' }}>※ ガソリン代計算（距離×単価）、担当者の案件取得状況は実装保留。</div>
+            </div>
+          </div>
         </div>
         <div className="card">
           <div className="card-body" style={{ textAlign:'center', padding:'48px 0', color:'#94A3B8' }}>

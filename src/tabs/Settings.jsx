@@ -116,9 +116,10 @@ export default function Settings() {
           <div className="card">
             <div className="card-head"><h3>🔍 監視サイト</h3></div>
             <div className="card-body">
+              <SettingRow label="ズバット"  desc="リロード間隔: 30秒"><Toggle defaultChecked /></SettingRow>
               <SettingRow label="引越し侍" desc="リロード間隔: 30秒"><Toggle defaultChecked /></SettingRow>
               <SettingRow label="価格.com" desc="リロード間隔: 45秒"><Toggle defaultChecked /></SettingRow>
-              <SettingRow label="スーモ"   desc="リロード間隔: 60秒"><Toggle /></SettingRow>
+              <SettingRow label="SUUMO"    desc="リロード間隔: 60秒"><Toggle /></SettingRow>
             </div>
           </div>
         </div>
@@ -138,9 +139,10 @@ export default function Settings() {
             <div className="card-head"><h3>📊 CSVインポート</h3></div>
             <div className="card-body">
               {[
+                { label:'ズバット',  badge:'bo' },
                 { label:'引越し侍', badge:'bb' },
                 { label:'価格.com', badge:'bg' },
-                { label:'スーモ',   badge:'bk' },
+                { label:'SUUMO',    badge:'bk' },
               ].map(s => (
                 <div key={s.label} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
                   <span className={`badge ${s.badge}`} style={{ minWidth:72, justifyContent:'center' }}>{s.label}</span>

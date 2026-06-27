@@ -227,7 +227,7 @@ const ZBA_API = 'https://hikkoshi-kanri.zba.jp/hikkoshi-kanriengine-api'
 const DETAIL_DAYS_BACK = 14        // 取得対象の期間（直近N日）
 const DETAIL_PER_CYCLE = 8         // 1サイクルで取得する詳細の最大件数（API直叩きなので軽い）
 const DETAIL_GAP_MS    = 500       // 詳細取得の間隔（負荷配慮）
-const API_SYNC_MS      = 60000     // APIサイクル間隔
+const API_SYNC_MS      = 30000     // APIサイクル間隔（依頼から30秒以内の検知を狙う）
 // 詳細取り込みロジックを変えたら +1。既存の取得済みフラグをリセットして全件取り直す。
 const DETAIL_VERSION   = 3          // v3: 家財品名マップを43品に拡充（乾燥機/ゴルフセット追加）
 const detailDone = new Set()       // 詳細取得済みの orderId（永続）

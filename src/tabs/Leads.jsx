@@ -15,7 +15,7 @@ const modalBox     = { background: '#fff', borderRadius: 14, width: '100%', maxW
 
 const norm = (l) => ({ ...l, status: l.status || '未架電' })
 
-export default function Leads({ user }) {
+export default function Leads({ user, switchTab }) {
   const isDemo = user?.mode === 'demo'
   const [items, setItems]       = useState(isDemo ? DEMO_DATA.map(norm) : [])
   const [loading, setLoading]   = useState(!isDemo)
@@ -60,6 +60,39 @@ export default function Leads({ user }) {
     } catch (e) { console.error(e) }
   }
 
+  // 詳細モーダルからの編集（メモ・家財）を保存
+  const savePatch = async (item, patch) => {
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...patch } : i)) // 楽観更新
+    setDetailItem(d => (d ? { ...d, ...patch } : d))
+    if (isDemo) return
+    try {
+      await fetch('/api/inbound', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, ...patch }),
+      })
+    } catch (e) { console.error(e) }
+  }
+
+  // 詳細から「見積書を作成」→ Estimate タブで使うプリフィルを保存して切替
+  const createEstimateFromLead = (item) => {
+    const prefill = {
+      name: item.name || '',
+      kana: item.kana || '',
+      fromZip: (item.fromZip || '').replace(/^〒/, ''),
+      fromAddress: item.fromAddress || item.from || '',
+      toZip: (item.toZip || '').replace(/^〒/, ''),
+      toAddress: item.toAddress || item.to || '',
+      fromTelMobile: item.phone || '',
+      moveDate: '', // 希望日は文字列のため日付化はユーザーに任せる
+      kazai: Array.isArray(item.kazai) ? item.kazai : [],
+      boxCount: item.boxCount || '',
+      memo: [item.memo, item.request, item.option].filter(Boolean).join(' / '),
+    }
+    try { sessionStorage.setItem('tf_estimate_prefill', JSON.stringify(prefill)) } catch {}
+    setDetailItem(null)
+    if (typeof switchTab === 'function') switchTab('estimate')
+  }
+
   const handleDelete = async (item) => {
     if (isDemo) { setItems(prev => prev.filter(i => i.id !== item.id)); setDeleteConfirm(null); return }
     try {
@@ -85,7 +118,7 @@ export default function Leads({ user }) {
 
   return (
     <div>
-      <div className="page-hdr"><h1>リード</h1><p>一括査定サイトから取得した新規リードを管理します</p></div>
+      <div className="page-hdr"><h1>リード管理</h1><p>一括査定サイトから取得した新規リードを管理します</p></div>
 
       <div className="kpi-row kpi-3">
         <div className="kpi-card c-blue"><div className="kpi-label">総リード数</div><div className="kpi-val">{items.length}<span>件</span></div></div>
@@ -153,6 +186,8 @@ export default function Leads({ user }) {
         item={detailItem}
         onClose={() => setDetailItem(null)}
         onStatusChange={(it, status) => { updateStatus(it, status); setDetailItem(d => ({ ...d, status })) }}
+        onSave={savePatch}
+        onCreateEstimate={createEstimateFromLead}
       />
 
       {deleteConfirm && (
