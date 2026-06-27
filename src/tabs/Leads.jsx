@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import LeadDetailModal from '../components/LeadDetailModal'
+import LeadDetailModal, { captureLagSec, lagText, lagColor } from '../components/LeadDetailModal'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
@@ -146,14 +146,17 @@ export default function Leads({ user, switchTab }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>受付日時</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>サイト</th><th>ステータス</th><th>操作</th></tr>
+                <tr><th>受付日時</th><th>獲得</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>サイト</th><th>ステータス</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={9} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
-                ) : filtered.map(item => (
+                  <tr><td colSpan={10} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
+                ) : filtered.map(item => {
+                  const lag = captureLagSec(item)
+                  return (
                   <tr key={item.id} onClick={() => setDetailItem(item)} style={{ cursor: 'pointer' }}>
                     <td style={{ whiteSpace: 'nowrap' }}>{item.receivedAt || ''}</td>
+                    <td style={{ whiteSpace: 'nowrap', fontWeight: 800, color: lagColor(lag), fontSize: 11 }}>{lag != null ? lagText(lag) : '—'}</td>
                     <td><b>{item.name || '（名前なし）'}</b></td>
                     <td style={{ whiteSpace: 'nowrap' }}><a href={`tel:${item.phone}`} onClick={e => e.stopPropagation()} style={{ color: '#1E5FA8', textDecoration: 'none', fontWeight: 700 }}>{item.phone}</a></td>
                     <td style={{ whiteSpace: 'nowrap' }}>{(item.from || '').replace('福岡県福岡市', '')} → {(item.to || '').replace('福岡県福岡市', '')}</td>
@@ -175,7 +178,8 @@ export default function Leads({ user, switchTab }) {
                       <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={e => { e.stopPropagation(); setDeleteConfirm(item) }}>削除</button>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

@@ -31,6 +31,40 @@ const box     = { background: '#fff', borderRadius: 12, width: '100%', maxWidth:
 const sectionBar = { background: 'linear-gradient(90deg,#EA580C,#FB923C)', color: '#fff', fontSize: 12, fontWeight: 800, padding: '6px 14px', letterSpacing: '.04em' }
 const inp = { padding: '6px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff' }
 
+// "06/26 21:22"（年なし・分まで）→ Date。未来になる場合は前年と解釈。
+function parseSiteAt(s) {
+  const m = String(s || '').match(/^(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{1,2})/)
+  if (!m) return null
+  const now = new Date()
+  let y = now.getFullYear()
+  const d = new Date(y, parseInt(m[1], 10) - 1, parseInt(m[2], 10), parseInt(m[3], 10), parseInt(m[4], 10), 0)
+  if (d.getTime() > now.getTime() + 24 * 3600 * 1000) d.setFullYear(y - 1)
+  return d
+}
+// ズバット側に出力された時刻 → CRM獲得までの秒数（completeDate精度が分なので±60秒の誤差）
+function captureLagSec(item) {
+  const a = parseSiteAt(item && (item.receivedAt || item.requestedAt))
+  const bRaw = item && (item.detectedAt || item.savedAt)
+  const b = bRaw ? new Date(bRaw) : null
+  if (!a || !b || isNaN(b.getTime())) return null
+  const sec = Math.round((b.getTime() - a.getTime()) / 1000)
+  return sec < 0 ? 0 : sec
+}
+function lagText(sec) {
+  if (sec == null) return null
+  if (sec < 60) return `${sec}秒`
+  if (sec < 3600) return `${Math.floor(sec / 60)}分${sec % 60}秒`
+  if (sec < 86400) return `${Math.floor(sec / 3600)}時間${Math.floor((sec % 3600) / 60)}分`
+  return `${Math.floor(sec / 86400)}日`
+}
+function lagColor(sec) {
+  if (sec == null) return '#94A3B8'
+  if (sec <= 25) return '#15803D'  // 目標達成（緑）
+  if (sec <= 60) return '#C2410C'  // やや遅い（橙）
+  return '#B91C1C'                  // 大幅遅延（赤）
+}
+export { captureLagSec, lagText, lagColor }
+
 function Field({ label, value, wide }) {
   if (value == null || value === '') return null
   return (
@@ -230,8 +264,23 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
           </div>
         </div>
 
+        {/* 獲得スピード（ズバット出力 → CRM獲得） */}
+        {(() => {
+          const sec = captureLagSec(item)
+          if (sec == null) return null
+          return (
+            <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #EEF2F7' }}>
+              <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>獲得スピード</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: lagColor(sec) }}>{lagText(sec)}</div>
+              <div style={{ fontSize: 10, color: '#94A3B8' }}>（目標 25秒以内）</div>
+              {sec <= 25 && <span style={{ background: '#F0FDF4', color: '#15803D', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 12 }}>✓ 達成</span>}
+            </div>
+          )
+        })()}
+
         {/* 取得/登録日時 */}
         <div style={{ fontSize: 11, color: '#94A3B8', padding: '10px 14px', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          {item.receivedAt && <span>ズバット登録: {item.receivedAt}</span>}
           {item.detectedAt && <span>取得日時（拡張検知）: {new Date(item.detectedAt).toLocaleString('ja-JP')}</span>}
           {item.savedAt && <span>登録日時（CRM保存）: {new Date(item.savedAt).toLocaleString('ja-JP')}</span>}
           {item.updatedAt && <span>更新: {new Date(item.updatedAt).toLocaleString('ja-JP')}</span>}
