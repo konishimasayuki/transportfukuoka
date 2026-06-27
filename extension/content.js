@@ -227,7 +227,17 @@ const ZBA_API = 'https://hikkoshi-kanri.zba.jp/hikkoshi-kanriengine-api'
 const DETAIL_DAYS_BACK = 14        // 取得対象の期間（直近N日）
 const DETAIL_PER_CYCLE = 8         // 1サイクルで取得する詳細の最大件数（API直叩きなので軽い）
 const DETAIL_GAP_MS    = 500       // 詳細取得の間隔（負荷配慮）
-const API_SYNC_MS      = 15000     // APIサイクル間隔（ズバット出力から25秒以内の獲得を狙う）
+const API_SYNC_MS      = 15000     // 旧：固定間隔同期。現在は watchTick で動的に駆動するため未使用相当
+// 高速・低負荷の獲得設計：
+//  - 軽量な daily-count を WATCH_FAST_MS ごとに叩いて件数変化を見張る（リクエストは小）
+//  - 件数が増えた瞬間だけ重い order-info-list / order-info を取得 → 数秒で獲得
+//  - 営業時間外は WATCH_SLOW_MS に減速（無駄打ち削減）
+//  - 件数変化が無くても WATCH_FORCE_MS に一度は通常同期して取りこぼし防止
+const WATCH_FAST_MS    = 5000      // 営業時間中のヒートビート（5秒・軽量API）
+const WATCH_SLOW_MS    = 60000     // 営業時間外（60秒）
+const WATCH_FORCE_MS   = 120000    // 取りこぼし防止の強制同期（2分）
+const BUSY_HOUR_FROM   = 8         // 営業時間（JST）
+const BUSY_HOUR_TO     = 23
 // 詳細取り込みロジックを変えたら +1。既存の取得済みフラグをリセットして全件取り直す。
 const DETAIL_VERSION   = 3          // v3: 家財品名マップを43品に拡充（乾燥機/ゴルフセット追加）
 const detailDone = new Set()       // 詳細取得済みの orderId（永続）
@@ -243,11 +253,19 @@ function yyyymmdd(d) {
 // 認証エラー（ログインセッション切れ）を表す目印付きエラー
 function authError() { const e = new Error('AUTH'); e.auth = true; return e }
 
+// CSRFトークンキャッシュ（無駄なリクエストを抑え、サーバー負荷とBANリスクを下げる）
+const CSRF_TTL_MS = 4 * 60 * 1000
+let csrfCache = null // { token, at }
+function invalidateCsrf() { csrfCache = null }
+
 async function getCsrfToken() {
+  if (csrfCache && (Date.now() - csrfCache.at) < CSRF_TTL_MS) return csrfCache.token
   const r = await fetch(`${ZBA_API}/csrf`, { credentials: 'include', headers: { accept: 'application/json' } })
   if (r.status === 401 || r.status === 403) throw authError()
   const j = await r.json().catch(() => null)
-  return j && j.csrfToken
+  const token = j && j.csrfToken
+  if (token) csrfCache = { token, at: Date.now() }
+  return token
 }
 
 // CRMへ生存ハートビート送信（取得成功＝ok:true、ログイン切れ＝ok:false reason:'auth'）
@@ -287,10 +305,39 @@ async function fetchOrderList() {
     headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
     body: JSON.stringify(body),
   })
-  if (r.status === 401 || r.status === 403) throw authError()
+  if (r.status === 401 || r.status === 403) { invalidateCsrf(); throw authError() }
   if (!r.ok) throw new Error('order-info-list ' + r.status)
   const j = await r.json()
   return (j && j.response) || []
+}
+
+// 軽量カウントAPI：今日の件数だけ返す（変化検知用。レスポンスが小さくBANリスクが低い）
+async function fetchTodayCount() {
+  try {
+    const token = await getCsrfToken()
+    if (!token) throw authError()
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const d = String(now.getDate()).padStart(2, '0')
+    const r = await fetch(`${ZBA_API}/supplier-kanri/order-info/daily-count/${y}/${m}/${d}`, {
+      method: 'GET', credentials: 'include',
+      headers: { accept: 'application/json', 'accept-language': 'ja', 'csrf-token': token },
+    })
+    if (r.status === 401 || r.status === 403) { invalidateCsrf(); throw authError() }
+    if (!r.ok) return null
+    const j = await r.json().catch(() => null)
+    if (!j) return null
+    // レスポンス形状は不確定。よくありそうなプロパティを順に探す。
+    if (typeof j === 'number') return j
+    return (
+      (j.response && (j.response.count != null ? j.response.count : j.response.dataNum)) ||
+      j.count || j.dataNum || j.total || null
+    )
+  } catch (e) {
+    if (e && e.auth) { setAuthState(false); postStatus(false, 'auth') }
+    return null
+  }
 }
 
 // 一覧APIの1件 → CRMリード（基本情報）
@@ -388,6 +435,7 @@ async function fetchDetailViaApi(orderId, companyId) {
       headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
       body: JSON.stringify({ orderId, companyId }),
     })
+    if (r.status === 401 || r.status === 403) { invalidateCsrf(); setAuthState(false); postStatus(false, 'auth'); return false }
     if (!r.ok) { console.warn(`[リード監視:${SITE}] 詳細API失敗`, orderId, r.status); return false }
     const j = await r.json()
     const o = j && j.response
@@ -454,6 +502,51 @@ async function apiSync() {
   }
 }
 
+// 件数変化を検知して即同期するウォッチャー（軽量APIだけ高頻度、重いAPIは変化時のみ）
+let lastDailyCount = null
+let lastForceAt = 0
+let watchTimer = null
+function inBusyHours() {
+  // JST時刻で営業時間判定（content.jsはブラウザ実行で標準TZ。日本以外で動かす想定は無いのでローカル時刻）
+  const h = new Date().getHours()
+  return h >= BUSY_HOUR_FROM && h < BUSY_HOUR_TO
+}
+async function watchTick() {
+  if (!enabled || window.top !== window.self) { scheduleNextWatch(); return }
+  try {
+    const now = Date.now()
+    // 取りこぼし防止：一定時間ごとに一覧APIを必ず叩く
+    if (now - lastForceAt >= WATCH_FORCE_MS) {
+      lastForceAt = now
+      await apiSync()
+      // 同期完了後にカウントも揃えておく
+      const c = await fetchTodayCount()
+      if (c != null) lastDailyCount = c
+      return
+    }
+    // 件数変化を見る（軽量）
+    const c = await fetchTodayCount()
+    if (c == null) return // 取れなかった時はスキップ（次回また試す）
+    if (lastDailyCount == null) { lastDailyCount = c; return }
+    if (c > lastDailyCount) {
+      console.log(`[リード監視:${SITE}] 件数変化検知 ${lastDailyCount}→${c} → 即時取得`)
+      lastDailyCount = c
+      lastForceAt = now
+      await apiSync()
+    } else if (c < lastDailyCount) {
+      // 日付が変わった等で減ったらリセット
+      lastDailyCount = c
+    }
+  } finally {
+    scheduleNextWatch()
+  }
+}
+function scheduleNextWatch() {
+  if (watchTimer) clearTimeout(watchTimer)
+  const ms = inBusyHours() ? WATCH_FAST_MS : WATCH_SLOW_MS
+  watchTimer = setTimeout(watchTick, ms)
+}
+
 async function init() {
   const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined', 'detailDoneIds', 'detailVersion'])
   enabled = st.enabled !== false
@@ -476,11 +569,11 @@ async function init() {
   checkDetailRoute()
   setInterval(checkDetailRoute, 1000)
 
-  // バックグラウンド自動取得（API経由：開かなくても新着の詳細まで取り込む）
-  apiSync()
-  setInterval(apiSync, API_SYNC_MS)
+  // バックグラウンド自動取得：初回は通常同期、以降は watchTick が動的に駆動
+  apiSync().then(() => { lastForceAt = Date.now() })
+  scheduleNextWatch()
 
-  console.log(`[リード監視:${SITE}] 起動 enabled=${enabled}`)
+  console.log(`[リード監視:${SITE}] 起動 enabled=${enabled} 営業時間=${BUSY_HOUR_FROM}-${BUSY_HOUR_TO}時 / 高速${WATCH_FAST_MS/1000}秒 夜間${WATCH_SLOW_MS/1000}秒`)
 }
 
 function observe() {
