@@ -4,9 +4,58 @@ import LeadDetailModal, { captureLagSec, lagText, lagColor } from '../components
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
 
+// デモデータ：今回追加した機能（獲得スピード/詳細編集/見積書プリフィル）を試せる中身を含む
+// receivedAt と detectedAt の差で「獲得スピード」が緑/橙/赤に色分けされる
 const DEMO_DATA = [
-  { id: '1', site: 'ズバット', name: '山根 真桜', phone: '090-1351-8204', from: '福岡県福岡市中央区', to: '福岡県福岡市西区',  count: '2人', receivedAt: '06/23 15:20', moveDate: '07月10日 いつでも', status: '未架電' },
-  { id: '2', site: 'ズバット', name: '米盛 紀久子', phone: '090-9597-7557', from: '福岡県福岡市城南区', to: '福岡県福岡市城南区', count: '1人', receivedAt: '06/23 10:49', moveDate: '08月08日 いつでも', status: '架電済' },
+  // 緑（17秒で獲得・詳細あり・家財あり）
+  {
+    id: '1', site: 'ズバット', name: '山根 真桜', kana: 'ヤマネ マオ',
+    phone: '090-1351-8204', email: 'maomao@example.com',
+    from: '福岡県福岡市中央区', to: '福岡県福岡市西区', count: '2人',
+    receivedAt: '06/26 09:00', moveDate: '07月10日 いつでも',
+    detail: true,
+    fromZip: '〒810-0001', fromAddress: '福岡市中央区天神1-2-3', fromType: 'マンション',
+    toZip: '819-0006', toAddress: '福岡市西区姪浜駅南4-5', toType: '戸建て',
+    moveDateDetail: '2026年07月10日 いつでも', requestedAt: '06/26 09:00', orderId: '11431999',
+    telStatus: '未架電', mailStatus: '未メール',
+    request: 'できれば午前に来てほしい', option: 'エアコン取り外し希望',
+    memo: '電話1（折り返し連絡待ち）',
+    kazai: [
+      { name: '冷蔵庫（２ドア）', qty: 1 },
+      { name: '洗濯機（縦型）', qty: 1 },
+      { name: '電子レンジ', qty: 1 },
+      { name: 'ベッド（シングル）', qty: 1 },
+      { name: 'ソファ（2人掛け）', qty: 1 },
+      { name: '本棚（中・小）', qty: 2 },
+    ],
+    boxCount: '15',
+    detectedAt: '2026-06-26T00:00:17.000Z', // 09:00:17 JST → 17秒で獲得
+    savedAt:    '2026-06-26T00:00:17.500Z',
+    status: '未架電',
+  },
+  // 橙（47秒で獲得・詳細あり・家財少なめ）
+  {
+    id: '2', site: 'ズバット', name: '米盛 紀久子', kana: 'ヨネモリ キクコ',
+    phone: '090-9597-7557', email: '',
+    from: '福岡県福岡市城南区', to: '福岡県福岡市城南区', count: '1人',
+    receivedAt: '06/26 08:15', moveDate: '08月08日 いつでも',
+    detail: true,
+    fromZip: '814-0111', fromAddress: '福岡市城南区別府2-1-1', fromType: 'アパート',
+    toAddress: '福岡市城南区七隈', toType: 'マンション',
+    moveDateDetail: '2026年08月08日 いつでも', requestedAt: '06/26 08:15', orderId: '11431950',
+    telStatus: '架電済', mailStatus: '未メール',
+    kazai: [
+      { name: '冷蔵庫（3ドア）', qty: 1 },
+      { name: '洗濯機（ドラム式）', qty: 1 },
+      { name: 'ベッド（セミダブル）', qty: 1 },
+    ],
+    boxCount: '8',
+    memo: '架電1 / 折り返し依頼',
+    detectedAt: '2026-06-25T23:15:47.000Z', // 08:15:47 JST → 47秒で獲得
+    savedAt:    '2026-06-25T23:15:48.000Z',
+    status: '架電済',
+  },
+  // 既存に近いシンプルなレコード（詳細なし）
   { id: '3', site: 'ズバット', name: '稗田 和子', phone: '090-8356-3208', from: '福岡県福岡市中央区', to: '福岡県福岡市中央区', count: '1人', receivedAt: '06/23 07:45', moveDate: '06月24日 いつでも', status: '成約' },
 ]
 
