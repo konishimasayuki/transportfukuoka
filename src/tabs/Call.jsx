@@ -87,7 +87,7 @@ function CallUI({ callOn, setCallOn, sites, logs, stats, onOpenLog }) {
             {[
               { label:'引越し侍', color:'#1E5FA8', pct:stats.total>0?68:0, val:stats.total>0?'2件':'0件' },
               { label:'価格.com', color:'#0E8A7A', pct:stats.total>0?34:0, val:stats.total>0?'1件':'0件' },
-              { label:'スーモ',   color:'#94A3B8', pct:0, val:'0件' },
+              { label:'SUUMO',    color:'#94A3B8', pct:0, val:'0件' },
             ].map(b => (
               <div key={b.label} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, marginBottom:8 }}>
                 <span style={{ width:65, color:'#64748B' }}>{b.label}</span>

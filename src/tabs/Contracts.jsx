@@ -11,9 +11,9 @@ const DEMO_DATA = [
 ]
 
 const STATUS_LIST  = ['成約済み', '交渉中', '見積済み', '連絡待ち', '失注']
-const SOURCE_LIST  = ['引越し侍', '価格.com', 'スーモ', '比較ナビ福岡', '自社HP', '紹介', 'その他']
+const SOURCE_LIST  = ['引越し侍', '価格.com', 'SUUMO', '比較ナビ福岡', '自社HP', '紹介', 'その他']
 const STATUS_BADGE = { '成約済み': 'bg', '交渉中': 'bb', '見積済み': 'bo', '連絡待ち': 'bp', '失注': 'br' }
-const SRC_BADGE    = { '引越し侍': 'bb', '価格.com': 'bg', 'スーモ': 'bg', '比較ナビ福岡': 'bp', '自社HP': 'bo', '紹介': 'bk', 'その他': 'bk' }
+const SRC_BADGE    = { '引越し侍': 'bb', '価格.com': 'bg', 'SUUMO': 'bg', '比較ナビ福岡': 'bp', '自社HP': 'bo', '紹介': 'bk', 'その他': 'bk' }
 
 const EMPTY_FORM = {
   name: '', kana: '', phone: '', email: '',
