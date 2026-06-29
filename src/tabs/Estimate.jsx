@@ -236,6 +236,8 @@ function emptyForm() {
     // その他
     memo: '', requestTo: '', payment: '',
     status: '作成中',
+    // 成約管理由来の場合に元レコードを参照（重複表示防止に使う）
+    contractId: '',
   }
 }
 
@@ -255,8 +257,9 @@ const feeInput = { ...inputStyle, textAlign: 'right', padding: '6px 8px' }
 
 export default function Estimate({ user }) {
   const isDemo = user?.mode === 'demo'
-  const [items, setItems]     = useState([])
-  const [loading, setLoading] = useState(!isDemo)
+  const [items, setItems]         = useState([])
+  const [contracts, setContracts] = useState([]) // 成約管理由来の行をマージ表示するため
+  const [loading, setLoading]     = useState(!isDemo)
   const [view, setView]       = useState('list')      // 'list' | 'edit'
   const [form, setForm]       = useState(emptyForm())
   const [editId, setEditId]   = useState(null)
@@ -307,9 +310,12 @@ export default function Estimate({ user }) {
   const fetchItems = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/estimate')
-      const data = await res.json()
-      setItems(data.items || [])
+      const [eRes, cRes] = await Promise.all([
+        fetch('/api/estimate').then(r => r.json()).catch(() => ({ items: [] })),
+        fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
+      ])
+      setItems(eRes.items || [])
+      setContracts(cRes.items || [])
     } catch (e) { console.error(e) } finally { setLoading(false) }
   }
 
@@ -398,13 +404,52 @@ export default function Estimate({ user }) {
 
   /* ===================== 一覧ビュー ===================== */
   if (view === 'list') {
+    // 見積書 + 成約管理 をマージ表示。成約由来は見積書化されていないものだけ（contractId で重複排除）
+    const issuedContractIds = new Set(items.map(i => i.contractId).filter(Boolean))
+    const fromEst = items.map(i => ({ ...i, _kind: 'estimate', _sortDate: i.estimateDate || i.moveDate || '' }))
+    const fromCon = contracts
+      .filter(c => !issuedContractIds.has(c.id))
+      .map(c => ({
+        _kind: 'contract',
+        _contract: c,
+        id: 'c_' + c.id,
+        estimateNo: '（成約由来）',
+        name: c.name || '',
+        moveDate: c.date || '',
+        total: num(c.amount),
+        points: 0,
+        status: c.status || '成約',
+        _sortDate: c.date || '',
+      }))
+    const rows = [...fromEst, ...fromCon].sort((a, b) => String(b._sortDate).localeCompare(String(a._sortDate)))
+    const estCount = items.length
+    const conCount = fromCon.length
+    const sumEst = items.reduce((s, i) => s + num(i.total), 0)
+
+    // 成約レコードを「見積書として作成」する：成約データをプリフィルしてEdit Viewへ
+    const issueFromContract = (c) => {
+      const f = emptyForm()
+      f.estimateNo = nextNo()
+      f.estimateDate = new Date().toISOString().slice(0, 10)
+      f.name = c.name || ''
+      f.kana = c.kana || ''
+      f.fromTelMobile = c.phone || ''
+      f.fromAddress = c.fromAddress || ''
+      f.toAddress = c.toAddress || ''
+      f.moveDate = (c.date && /^\d{4}-\d{2}-\d{2}/.test(c.date)) ? c.date : ''
+      f.memo = c.memo || ''
+      f.contractId = c.id
+      f.contractAmount = num(c.amount) // 参考表示用
+      setForm(f); setEditId(null); setView('edit'); setPreview(false)
+    }
+
     return (
       <div>
-        <div className="page-hdr"><h1>見積書</h1><p>御見積書の作成・管理（株式会社トランスポーター）</p></div>
+        <div className="page-hdr"><h1>見積書</h1><p>御見積書の作成・管理（成約管理のレコードも自動表示）</p></div>
 
         <div className="kpi-row kpi-3">
-          <div className="kpi-card c-blue"><div className="kpi-label">見積件数</div><div className="kpi-val">{items.length}<span>件</span></div></div>
-          <div className="kpi-card c-teal"><div className="kpi-label">合計見積金額</div><div className="kpi-val" style={{ fontSize: 18 }}>{yen(items.reduce((s, i) => s + num(i.total), 0))}</div></div>
+          <div className="kpi-card c-blue"><div className="kpi-label">見積件数 ／ 成約由来</div><div className="kpi-val">{estCount}<span>件</span> <span style={{ fontSize: 12, color: '#64748B' }}>+ {conCount}件</span></div></div>
+          <div className="kpi-card c-teal"><div className="kpi-label">合計見積金額（発行済み）</div><div className="kpi-val" style={{ fontSize: 18 }}>{yen(sumEst)}</div></div>
           <div className="kpi-card c-orange"><div className="kpi-label">今年度採番</div><div className="kpi-val" style={{ fontSize: 14 }}>{nextNo()}</div></div>
         </div>
 
@@ -420,27 +465,39 @@ export default function Estimate({ user }) {
             <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
               <table>
                 <thead>
-                  <tr><th>見積番号</th><th>顧客名</th><th>引越日</th><th>ポイント</th><th>再計（税込）</th><th>状態</th><th>操作</th></tr>
+                  <tr><th>種別</th><th>見積番号</th><th>顧客名</th><th>引越日</th><th>ポイント</th><th style={{ textAlign: 'right' }}>金額（税込）</th><th>状態</th><th>操作</th></tr>
                 </thead>
                 <tbody>
-                  {items.length === 0 ? (
-                    <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>見積書がありません</td></tr>
-                  ) : items.map(item => (
-                    <tr key={item.id}>
-                      <td><b>{item.estimateNo}</b></td>
-                      <td>{item.name} 様</td>
-                      <td>{item.moveDate || '—'}</td>
-                      <td>{num(item.points).toLocaleString('ja-JP')}<span style={{ color: '#94A3B8', fontSize: 10 }}> 才</span></td>
-                      <td><b>{yen(item.total)}</b></td>
-                      <td><span className="badge bb">{item.status || '作成中'}</span></td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button className="btn btn-outline btn-sm" onClick={() => openEdit(item)}>編集</button>
-                          <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={() => setDeleteConfirm(item.id)}>削除</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.length === 0 ? (
+                    <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>見積書・成約レコードがありません</td></tr>
+                  ) : rows.map(item => {
+                    const isContract = item._kind === 'contract'
+                    return (
+                      <tr key={item.id} style={isContract ? { background: '#F8FAFC' } : undefined}>
+                        <td>
+                          <span className={`badge ${isContract ? 'bg' : 'bb'}`}>{isContract ? '成約' : '見積書'}</span>
+                        </td>
+                        <td><b>{item.estimateNo}</b></td>
+                        <td>{item.name} 様</td>
+                        <td>{item.moveDate || '—'}</td>
+                        <td>{isContract ? '—' : `${num(item.points).toLocaleString('ja-JP')} 才`}</td>
+                        <td style={{ textAlign: 'right' }}><b>{yen(item.total)}</b></td>
+                        <td><span className={`badge ${isContract ? 'bg' : 'bb'}`}>{item.status || '作成中'}</span></td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {isContract ? (
+                              <button className="btn btn-primary btn-sm" onClick={() => issueFromContract(item._contract)}>📝 見積書として作成</button>
+                            ) : (
+                              <>
+                                <button className="btn btn-outline btn-sm" onClick={() => openEdit(item)}>編集</button>
+                                <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={() => setDeleteConfirm(item.id)}>削除</button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
