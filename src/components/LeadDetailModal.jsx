@@ -29,7 +29,12 @@ function categoryOf(name) {
 
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }
 const box     = { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 820, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
-const sectionBar = { background: 'linear-gradient(90deg,#EA580C,#FB923C)', color: '#fff', fontSize: 12, fontWeight: 800, padding: '6px 14px', letterSpacing: '.04em' }
+// セクション見出し：既存タブのカード見出し風（白背景＋青の左アクセント）に統一
+const sectionBar = {
+  background: '#F8FAFC', color: '#1E293B', fontSize: 12, fontWeight: 800,
+  padding: '8px 14px', borderTop: '1px solid #E2E8F0', borderBottom: '1px solid #E2E8F0',
+  borderLeft: '4px solid #1E5FA8', letterSpacing: '.04em',
+}
 const inp = { padding: '6px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff', width: '100%' }
 
 // 「対応履歴以外」の編集対象キー一覧（保存時にこの集合だけ patch として送る）
@@ -264,15 +269,15 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
                 <div style={{ width: 48, flexShrink: 0, fontSize: 11, fontWeight: 700, color: '#64748B', paddingTop: 6 }}>{cat}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {grouped[cat].map((k) => (
-                    <span key={k._idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, background: '#FFF7ED', color: '#C2410C', borderRadius: 6, padding: '3px 6px 3px 8px', fontWeight: 600 }}>
+                    <span key={k._idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, background: '#EFF6FF', color: '#1D4ED8', borderRadius: 6, padding: '3px 6px 3px 8px', fontWeight: 600 }}>
                       {k.name}×
                       {onSave ? (
                         <input type="number" min={0} value={k.qty}
                           onChange={e => setQty(k._idx, e.target.value)}
-                          style={{ width: 40, padding: '1px 4px', border: '1px solid #FED7AA', borderRadius: 4, background: '#fff', color: '#C2410C', fontWeight: 700, fontSize: 12 }} />
+                          style={{ width: 40, padding: '1px 4px', border: '1px solid #BFDBFE', borderRadius: 4, background: '#fff', color: '#1D4ED8', fontWeight: 700, fontSize: 12 }} />
                       ) : k.qty}
                       {onSave && (
-                        <button onClick={() => removeRow(k._idx)} title="削除" style={{ background: 'none', border: 'none', color: '#C2410C', cursor: 'pointer', fontWeight: 700, fontSize: 14, lineHeight: 1, padding: 0, marginLeft: 2 }}>×</button>
+                        <button onClick={() => removeRow(k._idx)} title="削除" style={{ background: 'none', border: 'none', color: '#1D4ED8', cursor: 'pointer', fontWeight: 700, fontSize: 14, lineHeight: 1, padding: 0, marginLeft: 2 }}>×</button>
                       )}
                     </span>
                   ))}

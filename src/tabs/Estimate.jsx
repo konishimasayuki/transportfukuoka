@@ -628,7 +628,7 @@ export default function Estimate({ user }) {
         </div>
 
         {/* 合計 */}
-        <div style={{ marginTop: 14, background: '#0F2A4A', borderRadius: 12, padding: 16, color: '#fff' }}>
+        <div style={{ marginTop: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: 16 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'flex-end', alignItems: 'flex-end' }}>
             <TotalLine label="小計(A)" value={yen(totals.a)} />
             <TotalLine label="小計(B)" value={yen(totals.b)} />
@@ -719,8 +719,8 @@ function FeeBlock({ title, list, obj, onChange, subtotal }) {
 function TotalLine({ label, value, big }) {
   return (
     <div style={{ textAlign: 'right' }}>
-      <div style={{ fontSize: 10, color: 'rgba(255,255,255,.6)' }}>{label}</div>
-      <div style={{ fontSize: big ? 26 : 14, fontWeight: 900, color: big ? '#7DD3FC' : '#fff', lineHeight: 1.2 }}>{value}</div>
+      <div style={{ fontSize: 10, color: '#64748B' }}>{label}</div>
+      <div style={{ fontSize: big ? 26 : 14, fontWeight: 900, color: big ? '#1E5FA8' : '#1E293B', lineHeight: 1.2 }}>{value}</div>
     </div>
   )
 }

@@ -372,7 +372,7 @@ export default function Sales({ user }) {
             // 合計行
             const Tfoot = (
               <tfoot>
-                <tr style={{ background: '#0F2A4A', color: '#fff', fontWeight: 800 }}>
+                <tr style={{ background: '#F1F5FB', color: '#1E5FA8', fontWeight: 800, borderTop: '2px solid #1E5FA8' }}>
                   <td style={{ ...td, padding: '8px' }}>合計（月）</td>
                   {DAILY_FIELDS.map(f => (
                     <td key={f.key} style={{ ...td, padding: '8px', textAlign: 'right' }}>{yen(draftSums.byKey[f.key])}</td>
