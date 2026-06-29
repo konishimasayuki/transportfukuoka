@@ -425,6 +425,8 @@ export default function Estimate({ user }) {
     const estCount = items.length
     const conCount = fromCon.length
     const sumEst = items.reduce((s, i) => s + num(i.total), 0)
+    const sumCon = fromCon.reduce((s, i) => s + num(i.total), 0)
+    const sumAll = sumEst + sumCon
 
     // 成約レコードを「見積書として作成」する：成約データをプリフィルしてEdit Viewへ
     const issueFromContract = (c) => {
@@ -448,9 +450,9 @@ export default function Estimate({ user }) {
         <div className="page-hdr"><h1>見積書</h1><p>御見積書の作成・管理（成約管理のレコードも自動表示）</p></div>
 
         <div className="kpi-row kpi-3">
-          <div className="kpi-card c-blue"><div className="kpi-label">見積件数 ／ 成約由来</div><div className="kpi-val">{estCount}<span>件</span> <span style={{ fontSize: 12, color: '#64748B' }}>+ {conCount}件</span></div></div>
-          <div className="kpi-card c-teal"><div className="kpi-label">合計見積金額（発行済み）</div><div className="kpi-val" style={{ fontSize: 18 }}>{yen(sumEst)}</div></div>
-          <div className="kpi-card c-orange"><div className="kpi-label">今年度採番</div><div className="kpi-val" style={{ fontSize: 14 }}>{nextNo()}</div></div>
+          <div className="kpi-card c-blue"><div className="kpi-label">件数（見積 ／ 成約）</div><div className="kpi-val">{estCount}<span>件</span> <span style={{ fontSize: 14, color: '#64748B' }}>/ {conCount}件</span></div></div>
+          <div className="kpi-card c-teal"><div className="kpi-label">合計金額（一覧全体）</div><div className="kpi-val" style={{ fontSize: 18 }}>{yen(sumAll)}</div></div>
+          <div className="kpi-card c-orange"><div className="kpi-label">成約 合計金額</div><div className="kpi-val" style={{ fontSize: 18 }}>{yen(sumCon)}</div></div>
         </div>
 
         <div className="filter-row">
