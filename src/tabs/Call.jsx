@@ -205,6 +205,29 @@ export default function Call({ user, switchTab }) {
     } catch (e) { console.error(e) }
   }
 
+  const createContractFromLead = (item) => {
+    const today = new Date().toISOString().slice(0, 10)
+    const SITE_TO_SRC = { 'ズバット': 'ズバット', '引越し侍': '引越し侍', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
+    const fromShort = (item.from || item.fromAddress || '').replace(/^福岡県/, '').replace(/^福岡市/, '')
+    const toShort   = (item.to   || item.toAddress   || '').replace(/^福岡県/, '').replace(/^福岡市/, '')
+    const prefill = {
+      name: item.name || '', kana: item.kana || '',
+      phone: item.phone || '', email: item.email || '',
+      srcLabel: SITE_TO_SRC[item.site] || 'その他',
+      date: today,
+      moveDateText: item.moveDateDetail || item.moveDate || '',
+      persons: item.count ? String(item.count).replace(/[^0-9]/g, '') : '',
+      fromAddress: item.fromAddress || item.from || '',
+      toAddress: item.toAddress || item.to || '',
+      route: [fromShort, toShort].filter(Boolean).join(' → '),
+      amount: '', status: '交渉中', staff: '',
+      memo: [item.memo, item.option, item.request].filter(Boolean).join(' / '),
+    }
+    try { sessionStorage.setItem('tf_contract_prefill', JSON.stringify(prefill)) } catch {}
+    setDetailItem(null)
+    if (typeof switchTab === 'function') switchTab('contracts')
+  }
+
   const createEstimateFromLead = (item) => {
     const prefill = {
       name: item.name || '', kana: item.kana || '',
@@ -254,6 +277,7 @@ export default function Call({ user, switchTab }) {
         onStatusChange={updateLeadStatus}
         onSave={savePatch}
         onCreateEstimate={createEstimateFromLead}
+        onCreateContract={createContractFromLead}
       />
     </div>
   )

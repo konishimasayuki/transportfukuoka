@@ -45,6 +45,20 @@ export default function Contracts({ user }) {
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
 
+  // リード/架電タブの詳細モーダルから「✅ 成約登録」で渡されたプリフィルを取り込み、新規追加モーダルを開く
+  useEffect(() => {
+    let raw = null
+    try { raw = sessionStorage.getItem('tf_contract_prefill') } catch {}
+    if (!raw) return
+    let p = null
+    try { p = JSON.parse(raw) } catch { return }
+    try { sessionStorage.removeItem('tf_contract_prefill') } catch {}
+    if (!p) return
+    setForm({ ...EMPTY_FORM, ...p })
+    setEditId(null)
+    setModal('add')
+  }, [])
+
   const fetchItems = async () => {
     setLoading(true)
     try {

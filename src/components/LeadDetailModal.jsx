@@ -104,7 +104,7 @@ function Row({ label, value, edit, onChange, type = 'text', options, placeholder
   )
 }
 
-export default function LeadDetailModal({ item, onClose, onStatusChange, onSave, onCreateEstimate }) {
+export default function LeadDetailModal({ item, onClose, onStatusChange, onSave, onCreateEstimate, onCreateContract }) {
   const [edit, setEdit] = useState(false)
   const [draft, setDraft] = useState({})
   const [kazai, setKazai] = useState([])
@@ -196,6 +196,9 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
                 onClick={() => setEdit(e => !e)}>
                 {edit ? '閲覧に戻す' : '✏ 編集'}
               </button>
+            )}
+            {onCreateContract && (
+              <button className="btn btn-sm" style={{ background: '#16A34A', color: '#fff', fontWeight: 700 }} onClick={() => onCreateContract(item)}>✅ 成約登録</button>
             )}
             {onCreateEstimate && (
               <button className="btn btn-primary btn-sm" onClick={() => onCreateEstimate(item)}>📝 見積書を作成</button>

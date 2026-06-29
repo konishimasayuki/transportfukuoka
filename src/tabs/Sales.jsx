@@ -328,51 +328,100 @@ export default function Sales({ user }) {
             </div>
           </div>
 
-          {/* 掲載費（日別入力） */}
+          {/* 掲載費（日別入力） — 当日行は常時表示、他の日は折り畳み */}
           <div className="card">
             <div className="card-head"><h3>掲載費（日別）</h3><span className="c-sub">{monthLabel} 入力</span></div>
             <div className="card-body">
-              <div className="scroll-x">
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 560 }}>
-                  <thead>
-                    <tr style={{ background: '#F1F5FB' }}>
-                      <th style={{ ...td, textAlign: 'left', fontSize: 11, padding: '6px 8px' }}>日付</th>
-                      {DAILY_FIELDS.map(f => <th key={f.key} style={{ ...td, textAlign: 'right', fontSize: 11, padding: '6px 8px' }}>{f.label}</th>)}
-                      <th style={{ ...td, textAlign: 'right', fontSize: 11, padding: '6px 8px' }}>日合計</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dailyRows.map(day => {
-                      const row = draftExp.daily[day] || {}
-                      const rowTotal = DAILY_FIELDS.reduce((s, f) => s + num(row[f.key]), 0)
-                      return (
-                        <tr key={day}>
-                          <td style={td}>{Number(day)}日</td>
-                          {DAILY_FIELDS.map(f => (
-                            <td key={f.key} style={{ ...td, textAlign: 'right' }}>
-                              <input type="number" min={0} inputMode="numeric"
-                                value={row[f.key] ?? ''} onChange={e => setDaily(day, f.key, e.target.value)}
-                                style={inputCell} />
-                            </td>
-                          ))}
-                          <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: rowTotal > 0 ? '#1E5FA8' : '#CBD5E1' }}>
-                            {rowTotal > 0 ? yen(rowTotal) : '—'}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr style={{ background: '#0F2A4A', color: '#fff', fontWeight: 800 }}>
-                      <td style={{ ...td, padding: '8px' }}>合計</td>
+          {(() => {
+            const todayDate = new Date()
+            const isCurrentMonth = selMonth === `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}`
+            const todayDD = isCurrentMonth ? String(todayDate.getDate()).padStart(2, '0') : null
+            // 1行レンダリング
+            const renderRow = (day) => {
+              const row = draftExp.daily[day] || {}
+              const rowTotal = DAILY_FIELDS.reduce((s, f) => s + num(row[f.key]), 0)
+              const isToday = day === todayDD
+              return (
+                <tr key={day} style={isToday ? { background: '#EFF6FF' } : undefined}>
+                  <td style={{ ...td, fontWeight: isToday ? 800 : 400, color: isToday ? '#1E5FA8' : '#1E293B' }}>
+                    {Number(day)}日{isToday ? ' （今日）' : ''}
+                  </td>
+                  {DAILY_FIELDS.map(f => (
+                    <td key={f.key} style={{ ...td, textAlign: 'right' }}>
+                      <input type="number" min={0} inputMode="numeric"
+                        value={row[f.key] ?? ''} onChange={e => setDaily(day, f.key, e.target.value)}
+                        style={inputCell} />
+                    </td>
+                  ))}
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: rowTotal > 0 ? '#1E5FA8' : '#CBD5E1' }}>
+                    {rowTotal > 0 ? yen(rowTotal) : '—'}
+                  </td>
+                </tr>
+              )
+            }
+            // ヘッダ行
+            const Thead = (
+              <thead>
+                <tr style={{ background: '#F1F5FB' }}>
+                  <th style={{ ...td, textAlign: 'left', fontSize: 11, padding: '6px 8px' }}>日付</th>
+                  {DAILY_FIELDS.map(f => <th key={f.key} style={{ ...td, textAlign: 'right', fontSize: 11, padding: '6px 8px' }}>{f.label}</th>)}
+                  <th style={{ ...td, textAlign: 'right', fontSize: 11, padding: '6px 8px' }}>日合計</th>
+                </tr>
+              </thead>
+            )
+            // 合計行
+            const Tfoot = (
+              <tfoot>
+                <tr style={{ background: '#0F2A4A', color: '#fff', fontWeight: 800 }}>
+                  <td style={{ ...td, padding: '8px' }}>合計（月）</td>
+                  {DAILY_FIELDS.map(f => (
+                    <td key={f.key} style={{ ...td, padding: '8px', textAlign: 'right' }}>{yen(draftSums.byKey[f.key])}</td>
+                  ))}
+                  <td style={{ ...td, padding: '8px', textAlign: 'right' }}>{yen(draftSums.dailyGrand)}</td>
+                </tr>
+              </tfoot>
+            )
+            const otherDays = dailyRows.filter(d => d !== todayDD)
+            const enteredCount = otherDays.filter(d => DAILY_FIELDS.some(f => num(draftExp.daily[d]?.[f.key]) > 0)).length
+            return (
+              <>
+                {todayDD ? (
+                  <div className="scroll-x">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 560 }}>
+                      {Thead}
+                      <tbody>{renderRow(todayDD)}</tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: '#94A3B8', padding: '4px 0 10px' }}>当月以外を表示中。下を開いて編集してください。</div>
+                )}
+                <details style={{ marginTop: 10 }}>
+                  <summary style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#1E5FA8' }}>
+                    {todayDD ? `他の日（${otherDays.length}日／入力済 ${enteredCount}日）を表示・編集` : `${monthLabel} 全日（${dailyRows.length}日）を表示・編集`}
+                  </summary>
+                  <div className="scroll-x" style={{ marginTop: 8 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 560 }}>
+                      {Thead}
+                      <tbody>{(todayDD ? otherDays : dailyRows).map(renderRow)}</tbody>
+                      {Tfoot}
+                    </table>
+                  </div>
+                </details>
+                {/* 当日のみ表示の時も、月合計は常時見たいので簡易表示 */}
+                {todayDD && (
+                  <div style={{ marginTop: 8, padding: '8px 10px', background: '#F8FAFC', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <span style={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>{monthLabel} 月合計（日別の自動集計）</span>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12 }}>
                       {DAILY_FIELDS.map(f => (
-                        <td key={f.key} style={{ ...td, padding: '8px', textAlign: 'right' }}>{yen(draftSums.byKey[f.key])}</td>
+                        <span key={f.key}><span style={{ color: '#64748B', marginRight: 4 }}>{f.label}</span><b>{yen(draftSums.byKey[f.key])}</b></span>
                       ))}
-                      <td style={{ ...td, padding: '8px', textAlign: 'right' }}>{yen(draftSums.dailyGrand)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+                      <span style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: 12 }}><b style={{ fontSize: 14 }}>{yen(draftSums.dailyGrand)}</b></span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )
+          })()}
 
               {/* 一括貼り付け */}
               <details style={{ marginTop: 14 }}>
