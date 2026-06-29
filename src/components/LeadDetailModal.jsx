@@ -48,8 +48,8 @@ const EDITABLE_KEYS = [
   'toZip', 'toAddress', 'toType', 'toFloor', 'toElevator', 'toLayout',
   // 詳細内容
   'request', 'option', 'referenceFee',
-  // 対応・メモ
-  'memo',
+  // 対応・金額・メモ
+  'amount', 'memo',
 ]
 
 // "06/26 21:22"（年なし・分まで）→ Date。未来になる場合は前年と解釈。
@@ -309,10 +309,11 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
           {!onSave && boxCount && <div style={{ fontSize: 12, color: '#64748B', marginTop: 6 }}>ダンボール {boxCount}</div>}
         </div>
 
-        {/* 対応・メモ */}
-        <div style={sectionBar}>対応・メモ</div>
+        {/* 対応・金額・メモ */}
+        <div style={sectionBar}>対応・金額・メモ</div>
         <div style={{ borderBottom: '1px solid #EEF2F7' }}>
           <Row label="ステータス" edit={false} value={statusSelect} wide />
+          <Row label="成約金額（円）" edit={edit} value={v('amount')} onChange={x => setField('amount', x)} type="number" placeholder="例：68000" wide />
           <div style={{ display: 'flex', fontSize: 13 }}>
             <div style={{ width: 110, flexShrink: 0, color: '#64748B', fontWeight: 600, background: '#F8FAFC', padding: '8px 10px' }}>メモ</div>
             <div style={{ flex: 1, padding: 8 }}>
@@ -358,6 +359,112 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
             </button>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// =====================================================================
+// 成約変換モーダル：リードのステータスを「成約」に変える際に金額入力させ、
+// 同じ顧客情報を /api/contracts に新規追加するためのフォーム。
+// 親は onConfirm(lead, payload) を実装して contracts API への保存とリードの
+// status/amount 更新（/api/inbound PUT）を担当する。
+// =====================================================================
+const SRC_LIST = ['引越し侍', '価格.com', 'ズバット', 'SUUMO', '比較ナビ福岡', '自社HP', '紹介', 'その他']
+const SITE_TO_SRC = { 'ズバット': 'ズバット', '引越し侍': '引越し侍', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
+
+export function ConvertToContractModal({ lead, onClose, onConfirm }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const [amount, setAmount]   = useState('')
+  const [srcLabel, setSrcLabel] = useState('その他')
+  const [date, setDate]       = useState(today)
+  const [staff, setStaff]     = useState('')
+  const [memo, setMemo]       = useState('')
+  const [saving, setSaving]   = useState(false)
+
+  useEffect(() => {
+    if (!lead) return
+    setAmount(lead.amount != null ? String(lead.amount) : '')
+    setSrcLabel(SITE_TO_SRC[lead.site] || 'その他')
+    setDate(today)
+    setStaff('')
+    setMemo([lead.memo, lead.option, lead.request].filter(Boolean).join(' / '))
+    setSaving(false)
+  }, [lead && lead.id, lead && lead.phone])
+
+  if (!lead) return null
+
+  const route = (() => {
+    const from = (lead.from || lead.fromAddress || '').replace(/^福岡県/, '').replace(/^福岡市/, '')
+    const to   = (lead.to   || lead.toAddress   || '').replace(/^福岡県/, '').replace(/^福岡市/, '')
+    return [from, to].filter(Boolean).join(' → ')
+  })()
+
+  const submit = async () => {
+    setSaving(true)
+    try {
+      await onConfirm(lead, {
+        amount: Number(amount) || 0,
+        srcLabel, date, staff, memo, route,
+      })
+      onClose()
+    } catch (e) { console.error(e) }
+    setSaving(false)
+  }
+
+  const ov = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 16 }
+  const bx = { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
+  const ip = { width: '100%', padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff' }
+  const lb = { fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4, display: 'block' }
+
+  return (
+    <div style={ov} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={bx}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>成約管理に登録</div>
+            <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>{lead.name || '（名前なし）'} 様 ／ {lead.phone || ''}</div>
+          </div>
+          <button className="btn btn-sm btn-outline" onClick={onClose}>キャンセル</button>
+        </div>
+        <div style={{ padding: 18, display: 'grid', gap: 12 }}>
+          <div>
+            <label style={lb}>成約金額（円） *</label>
+            <input type="number" inputMode="numeric" min={0} autoFocus
+              value={amount} onChange={e => setAmount(e.target.value)} placeholder="例：68000" style={ip} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={lb}>流入元</label>
+              <select value={srcLabel} onChange={e => setSrcLabel(e.target.value)} style={ip}>
+                {SRC_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lb}>引越し日</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} style={ip} />
+            </div>
+          </div>
+          <div>
+            <label style={lb}>区間</label>
+            <div style={{ ...ip, background: '#F8FAFC', color: '#1E293B', fontWeight: 600 }}>{route || '—'}</div>
+          </div>
+          <div>
+            <label style={lb}>担当者</label>
+            <input value={staff} onChange={e => setStaff(e.target.value)} placeholder="担当者名" style={ip} />
+          </div>
+          <div>
+            <label style={lb}>メモ</label>
+            <textarea value={memo} onChange={e => setMemo(e.target.value)} rows={3} style={{ ...ip, resize: 'vertical', minHeight: 60 }} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+            <button className="btn btn-outline" onClick={onClose}>キャンセル</button>
+            <button className="btn btn-primary" onClick={submit} disabled={saving || !amount} style={{ opacity: (!amount || saving) ? .55 : 1 }}>
+              {saving ? '登録中…' : '成約管理に登録'}
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: '#94A3B8' }}>※ 登録するとリードのステータスは「成約」、金額は他タブからも参照できます。</div>
+        </div>
       </div>
     </div>
   )

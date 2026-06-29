@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import LeadDetailModal from '../components/LeadDetailModal'
+import LeadDetailModal, { ConvertToContractModal } from '../components/LeadDetailModal'
 
 const DEMO_LOGS = [
   { icon:'📞', bg:'#F0FDF4', name:'山田 太郎', meta:'引越し侍 / 090-XXXX-1234 / 10:23', badge:'bg', status:'通話成立' },
@@ -111,9 +111,9 @@ const fmtTime = (iso) => {
   return d.toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-// ズバット監視の生存状態 → 表示用の判定
+// ズバット監視の生存状態 → 表示用の判定（null を返したらバナーを出さない）
 function monHealth(status) {
-  if (!status || !status.at) return { label: '監視状態：不明', sub: 'まだ通信がありません', color: '#94A3B8', bg: '#F1F5FB' }
+  if (!status || !status.at) return null  // 「不明（通信なし）」は表示しない
   const ageMin = (Date.now() - new Date(status.at).getTime()) / 60000
   const last = new Date(status.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
   if (status.ok === false) {
@@ -178,9 +178,11 @@ export default function Call({ user, switchTab }) {
   }))
 
   const [detailItem, setDetailItem] = useState(null)
+  const [convertLead, setConvertLead] = useState(null)
 
   // 詳細モーダルからのステータス変更（楽観更新＋サーバ反映）
   const updateLeadStatus = async (item, status) => {
+    if (status === '成約') { setConvertLead(item); return }
     setLeads(prev => prev.map(l => l.id === item.id ? { ...l, status } : l))
     setDetailItem(d => (d ? { ...d, status } : d))
     if (isDemo) return
@@ -189,6 +191,30 @@ export default function Call({ user, switchTab }) {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, status }),
       })
+    } catch (e) { console.error(e) }
+  }
+
+  const confirmConvertToContract = async (lead, payload) => {
+    const today = new Date().toISOString().slice(0, 10)
+    const contract = {
+      id: Date.now().toString(),
+      name: lead.name || '', kana: lead.kana || '', phone: lead.phone || '', email: lead.email || '',
+      srcLabel: payload.srcLabel, date: payload.date || today, route: payload.route || '',
+      fromAddress: lead.fromAddress || lead.from || '',
+      toAddress: lead.toAddress || lead.to || '',
+      persons: lead.count ? String(lead.count).replace(/[^0-9]/g, '') : '',
+      amount: payload.amount, status: '成約済み',
+      staff: payload.staff || '', memo: payload.memo || '',
+      leadKey: lead.key || lead.phone,
+    }
+    setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: '成約', amount: payload.amount } : l))
+    setDetailItem(d => (d && d.id === lead.id ? { ...d, status: '成約', amount: payload.amount } : d))
+    if (isDemo) return
+    try {
+      await Promise.all([
+        fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contract) }),
+        fetch('/api/inbound',   { method: 'PUT',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, status: '成約', amount: payload.amount }) }),
+      ])
     } catch (e) { console.error(e) }
   }
 
@@ -254,7 +280,7 @@ export default function Call({ user, switchTab }) {
   return (
     <div>
       <div className="page-hdr"><h1>架電機能</h1><p>一括査定サイトを監視し、新規顧客に自動電話・通知します</p></div>
-      {!isDemo && (
+      {!isDemo && mon && (
         <div style={{ background: mon.bg, border: `1px solid ${mon.color}33`, borderRadius: 12, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 10, height: 10, borderRadius: '50%', background: mon.color, flexShrink: 0 }} />
           <div style={{ minWidth: 0 }}>
@@ -277,8 +303,16 @@ export default function Call({ user, switchTab }) {
         onStatusChange={updateLeadStatus}
         onSave={savePatch}
         onCreateEstimate={createEstimateFromLead}
-        onCreateContract={createContractFromLead}
+        onCreateContract={(it) => setConvertLead(it)}
       />
+
+      {convertLead && (
+        <ConvertToContractModal
+          lead={convertLead}
+          onClose={() => setConvertLead(null)}
+          onConfirm={confirmConvertToContract}
+        />
+      )}
     </div>
   )
 }

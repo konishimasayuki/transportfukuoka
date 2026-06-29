@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import LeadDetailModal, { captureLagSec, lagText, lagColor } from '../components/LeadDetailModal'
+import LeadDetailModal, { captureLagSec, lagText, lagColor, ConvertToContractModal } from '../components/LeadDetailModal'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
@@ -73,6 +73,7 @@ export default function Leads({ user, switchTab }) {
   const [filterStatus, setFilterStatus] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [detailItem, setDetailItem] = useState(null)
+  const [convertLead, setConvertLead] = useState(null) // ステータス「成約」変更時の登録モーダル
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
 
@@ -99,6 +100,11 @@ export default function Leads({ user, switchTab }) {
   }
 
   const updateStatus = async (item, status) => {
+    // 「成約」に変えたら金額入力モーダルを開き、確定時にまとめて保存する
+    if (status === '成約') {
+      setConvertLead(item)
+      return
+    }
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, status } : i)) // 楽観更新
     if (isDemo) return
     try {
@@ -106,6 +112,39 @@ export default function Leads({ user, switchTab }) {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, status }),
       })
+    } catch (e) { console.error(e) }
+  }
+
+  // 「成約管理に登録」確定：成約管理に POST しつつ、リードのステータス・金額も更新
+  const confirmConvertToContract = async (lead, payload) => {
+    const today = new Date().toISOString().slice(0, 10)
+    const contract = {
+      id: Date.now().toString(),
+      name: lead.name || '',
+      kana: lead.kana || '',
+      phone: lead.phone || '',
+      email: lead.email || '',
+      srcLabel: payload.srcLabel,
+      date: payload.date || today,
+      route: payload.route || '',
+      fromAddress: lead.fromAddress || lead.from || '',
+      toAddress: lead.toAddress || lead.to || '',
+      persons: lead.count ? String(lead.count).replace(/[^0-9]/g, '') : '',
+      amount: payload.amount,
+      status: '成約済み',
+      staff: payload.staff || '',
+      memo: payload.memo || '',
+      leadKey: lead.key || lead.phone,
+    }
+    // ローカル楽観更新：リードのステータスと金額
+    setItems(prev => prev.map(i => i.id === lead.id ? { ...i, status: '成約', amount: payload.amount } : i))
+    setDetailItem(d => (d && d.id === lead.id ? { ...d, status: '成約', amount: payload.amount } : d))
+    if (isDemo) return
+    try {
+      await Promise.all([
+        fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contract) }),
+        fetch('/api/inbound',   { method: 'PUT',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, status: '成約', amount: payload.amount }) }),
+      ])
     } catch (e) { console.error(e) }
   }
 
@@ -223,11 +262,11 @@ export default function Leads({ user, switchTab }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>受付日時</th><th>獲得</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>サイト</th><th>ステータス</th><th>操作</th></tr>
+                <tr><th>受付日時</th><th>獲得</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>サイト</th><th style={{ textAlign: 'right' }}>金額</th><th>ステータス</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={10} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
+                  <tr><td colSpan={11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
                 ) : filtered.map(item => {
                   const lag = captureLagSec(item)
                   return (
@@ -240,6 +279,7 @@ export default function Leads({ user, switchTab }) {
                     <td>{item.count}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{item.moveDate}</td>
                     <td><span className="badge bk">{item.site}</span></td>
+                    <td style={{ whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 700 }}>{item.amount ? `¥${Number(item.amount).toLocaleString('ja-JP')}` : '—'}</td>
                     <td>
                       <select
                         value={item.status}
@@ -266,11 +306,23 @@ export default function Leads({ user, switchTab }) {
       <LeadDetailModal
         item={detailItem}
         onClose={() => setDetailItem(null)}
-        onStatusChange={(it, status) => { updateStatus(it, status); setDetailItem(d => ({ ...d, status })) }}
+        onStatusChange={(it, status) => {
+          if (status === '成約') { setConvertLead(it); return }
+          updateStatus(it, status)
+          setDetailItem(d => ({ ...d, status }))
+        }}
         onSave={savePatch}
         onCreateEstimate={createEstimateFromLead}
-        onCreateContract={createContractFromLead}
+        onCreateContract={(it) => setConvertLead(it)}
       />
+
+      {convertLead && (
+        <ConvertToContractModal
+          lead={convertLead}
+          onClose={() => setConvertLead(null)}
+          onConfirm={confirmConvertToContract}
+        />
+      )}
 
       {deleteConfirm && (
         <div style={modalOverlay} onClick={e => e.target === e.currentTarget && setDeleteConfirm(null)}>
