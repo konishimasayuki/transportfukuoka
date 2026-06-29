@@ -17,25 +17,6 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout
         <div className="logo-sub">業務効率化システム</div>
       </div>
 
-      {/* ユーザー表示 */}
-      <div style={{
-        padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,.08)',
-        display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: '50%',
-          background: user?.mode === 'demo' ? '#D97706' : '#1E5FA8',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 12, fontWeight: 800, color: '#fff', flexShrink: 0,
-        }}>
-          {user?.id?.toUpperCase()}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.name}</div>
-          <div style={{ fontSize: 9, color: 'rgba(255,255,255,.35)' }}>{user?.mode === 'demo' ? 'デモモード' : 'ライブモード'}</div>
-        </div>
-      </div>
-
       <nav className="nav-section">
         <div className="nav-label">メインメニュー</div>
         {NAV_ITEMS.map(item => (
