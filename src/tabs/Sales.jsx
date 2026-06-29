@@ -1,11 +1,7 @@
 // 売上管理タブ
-// スプレッドシート（写し）の要素を自動で再現する：
-//   - 月選択
-//   - 総売上 / 件数 / 客単価 / 反響売上（広告4サイト合計） / 広告費 / 粗利
-//   - 担当者別 契約件数・売上（古賀/浦田/春木/河村/営業以外/キャンセル など）
-//   - サイト別 契約件数・売上（サムライ/ズバット/価格.com/SUUMO/直電/チラシ/企業紹介/キャンセル）
-//   - 掲載費入力（月別・サイト別合計）
-// データ元：成約管理（/api/contracts）＋ 掲載費（/api/expenses）
+// - 月選択 → 成約管理(/api/contracts)から自動集計（担当者別・サイト別・客単価・反響売上）
+// - 掲載費(/api/expenses)は **サムライ単身/サムライ家族/価格/ズバット を日別**、SUUMO/チラシ/その他は月別
+// - 日別の自動合計列、月の総合計、コピペでの一括取り込み(タブ区切り)対応
 import { useEffect, useMemo, useState } from 'react'
 
 // 月選択（直近12ヶ月）
@@ -21,38 +17,78 @@ function monthOptions() {
 }
 const yen = (n) => '¥' + Math.round(Number(n) || 0).toLocaleString('ja-JP')
 const num = (v) => Number(v) || 0
+function daysInMonthOf(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number)
+  return new Date(y, m, 0).getDate()
+}
 
-// CRMの流入元（srcLabel）→ スプレッドシートのサイト名 マッピング
-// 既存データに「引越し侍」→ スプレッドの「サムライ」、「自社HP」→「直電」「比較ナビ福岡」「紹介」→「企業紹介」など。
 const SOURCE_TO_SHEET = {
-  '引越し侍':   'サムライ',
-  'ズバット':   'ズバット',
-  'SUUMO':      'SUUMO',
-  '価格.com':   '価格.com',
-  '自社HP':     '直電',
-  '紹介':       '企業紹介',
-  '比較ナビ福岡': '企業紹介',
-  'その他':     'その他',
+  '引越し侍': 'サムライ', 'ズバット': 'ズバット', 'SUUMO': 'SUUMO', '価格.com': '価格.com',
+  '自社HP': '直電', '紹介': '企業紹介', '比較ナビ福岡': '企業紹介', 'その他': 'その他',
 }
 const SHEET_SITES = ['サムライ', 'ズバット', '価格.com', 'SUUMO', '直電', 'チラシ', '企業紹介', 'その他']
-const AD_SITES = ['サムライ', 'ズバット', '価格.com', 'SUUMO'] // 反響＝広告4サイト
+const AD_SITES = ['サムライ', 'ズバット', '価格.com', 'SUUMO']
 
-// 掲載費の項目（スプレッドシートと同じ）
-const EXPENSE_FIELDS = [
-  { key: 'samurai_single', label: 'サムライ 単身' },
-  { key: 'samurai_family', label: 'サムライ 家族' },
+// 日別の項目（スプレッドシートと同じ並び）
+const DAILY_FIELDS = [
+  { key: 'samurai_single', label: 'サムライ単身' },
+  { key: 'samurai_family', label: 'サムライ家族' },
+  { key: 'kakaku',         label: '価格' },
   { key: 'zubatto',        label: 'ズバット' },
-  { key: 'kakaku',         label: '価格.com' },
-  { key: 'suumo',          label: 'SUUMO' },
-  { key: 'chirashi',       label: 'チラシ' },
-  { key: 'other',          label: '企業紹介・その他' },
+]
+// 月別だけ（日次データが無いもの）
+const MONTHLY_FIELDS = [
+  { key: 'suumo',    label: 'SUUMO' },
+  { key: 'chirashi', label: 'チラシ' },
+  { key: 'other',    label: '企業紹介・その他' },
 ]
 
-// 成約データを月でフィルタ（contract.date が YYYY-MM で始まる）
+// 旧フォーマット（flat keys）と新フォーマット（daily/monthly）の両対応で月合計を出す
+function totalOfExp(ex) {
+  if (!ex) return 0
+  let total = 0
+  if (ex.daily || ex.monthly) {
+    if (ex.daily) {
+      Object.values(ex.daily).forEach(row => {
+        DAILY_FIELDS.forEach(f => { total += num(row[f.key]) })
+      })
+    }
+    if (ex.monthly) {
+      MONTHLY_FIELDS.forEach(f => { total += num(ex.monthly[f.key]) })
+    }
+  } else {
+    // 旧フォーマット互換（前バージョンの flat 値）
+    ;['samurai_single', 'samurai_family', 'kakaku', 'zubatto', 'suumo', 'chirashi', 'other'].forEach(k => {
+      if (ex[k] != null) total += num(ex[k])
+    })
+  }
+  return total
+}
+
+// "6/1\t17875\t18700\t3500\t3300\t43375" のような行を解析して { '01': {…}, … } を返す
+function parseBulkExpenses(text) {
+  const out = {}
+  text.split(/\r?\n/).forEach(line => {
+    if (!line.trim()) return
+    // タブ・カンマ・複数スペースで分割。ただし数値中のカンマは除去しておく
+    const cells = line.replace(/,(?=\d{3}(\D|$))/g, '').split(/\t|,|\s+/).filter(s => s !== '')
+    if (cells.length < 5) return
+    const dm = String(cells[0]).match(/(\d{1,2})$/)
+    if (!dm) return
+    const day = String(parseInt(dm[1], 10)).padStart(2, '0')
+    out[day] = {
+      samurai_single: num(cells[1]),
+      samurai_family: num(cells[2]),
+      kakaku:         num(cells[3]),
+      zubatto:        num(cells[4]),
+    }
+  })
+  return out
+}
+
 function isInMonth(c, monthKey) {
   const d = String(c.date || '')
   if (d.startsWith(monthKey)) return true
-  // 「6/3」のような月日のみの場合は現年で解釈
   const m = d.match(/^(\d{1,2})\/(\d{1,2})/)
   if (m) {
     const y = new Date().getFullYear()
@@ -70,21 +106,22 @@ export default function Sales({ user }) {
   const [expenses, setExpenses] = useState({}) // 全月分
   const [loading, setLoading] = useState(!isDemo)
   const [saving, setSaving] = useState(false)
-  const [draftExp, setDraftExp] = useState({})
+  const [draftExp, setDraftExp] = useState({ daily: {}, monthly: {}, note: '' })
+  const [bulkPaste, setBulkPaste] = useState('')
   const [toast, setToast] = useState('')
+  const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2000) }
 
-  useEffect(() => {
-    if (isDemo) return
-    fetchAll()
-  }, [isDemo])
+  useEffect(() => { if (!isDemo) fetchAll() }, [isDemo])
 
-  // 月切替時、編集中の掲載費を月の保存値で初期化
+  // 月切替時に編集用ドラフトを保存値で初期化
   useEffect(() => {
     const ex = expenses[selMonth] || {}
-    const d = {}
-    EXPENSE_FIELDS.forEach(f => { d[f.key] = ex[f.key] != null ? ex[f.key] : '' })
-    d.note = ex.note || ''
-    setDraftExp(d)
+    setDraftExp({
+      daily: ex.daily ? JSON.parse(JSON.stringify(ex.daily)) : {},
+      monthly: ex.monthly ? { ...ex.monthly } : {},
+      note: ex.note || '',
+    })
+    setBulkPaste('')
   }, [selMonth, expenses])
 
   const fetchAll = async () => {
@@ -100,14 +137,12 @@ export default function Sales({ user }) {
     setLoading(false)
   }
 
-  // 月内の契約を抽出
   const monthly = useMemo(() => contracts.filter(c => isInMonth(c, selMonth)), [contracts, selMonth])
 
-  // 集計
   const totals = useMemo(() => {
     let total = 0, count = 0, cancelAmt = 0, cancelCnt = 0
-    const byStaff = {} // { name: { count, amount } }
-    const bySite  = {} // { siteName: { count, amount } }
+    const byStaff = {}
+    const bySite  = {}
     SHEET_SITES.forEach(s => { bySite[s] = { count: 0, amount: 0 } })
     bySite['キャンセル'] = { count: 0, amount: 0 }
 
@@ -116,58 +151,94 @@ export default function Sales({ user }) {
       const isCancel = c.status === '失注' || c.status === 'キャンセル'
       total += amt; count += 1
       if (isCancel) { cancelAmt += amt; cancelCnt += 1 }
-
-      // 担当者別
       const staffKey = isCancel ? 'キャンセル' : (c.staff && String(c.staff).trim() ? c.staff : '営業以外')
       byStaff[staffKey] = byStaff[staffKey] || { count: 0, amount: 0 }
-      byStaff[staffKey].count += 1
-      byStaff[staffKey].amount += amt
-
-      // サイト別
+      byStaff[staffKey].count += 1; byStaff[staffKey].amount += amt
       if (isCancel) {
-        bySite['キャンセル'].count += 1
-        bySite['キャンセル'].amount += amt
+        bySite['キャンセル'].count += 1; bySite['キャンセル'].amount += amt
       } else {
         const sheetSite = SOURCE_TO_SHEET[c.srcLabel] || 'その他'
         bySite[sheetSite] = bySite[sheetSite] || { count: 0, amount: 0 }
-        bySite[sheetSite].count += 1
-        bySite[sheetSite].amount += amt
+        bySite[sheetSite].count += 1; bySite[sheetSite].amount += amt
       }
     }
     const avg = count > 0 ? Math.round(total / count) : 0
-    // 反響からの売上＝広告4サイトの合計
     const reverbAmount = AD_SITES.reduce((s, k) => s + (bySite[k]?.amount || 0), 0)
     const reverbCount  = AD_SITES.reduce((s, k) => s + (bySite[k]?.count  || 0), 0)
     return { total, count, avg, cancelAmt, cancelCnt, byStaff, bySite, reverbAmount, reverbCount }
   }, [monthly])
 
-  // 当月の掲載費（保存済みベース）
-  const monthExp = expenses[selMonth] || {}
-  const adTotal = EXPENSE_FIELDS.reduce((s, f) => s + num(monthExp[f.key]), 0)
+  // ドラフトの集計（編集中の数値も即時反映）
+  const draftSums = useMemo(() => {
+    const byKey = { samurai_single: 0, samurai_family: 0, kakaku: 0, zubatto: 0 }
+    let dailyGrand = 0
+    Object.values(draftExp.daily || {}).forEach(row => {
+      DAILY_FIELDS.forEach(f => { const v = num(row[f.key]); byKey[f.key] += v; dailyGrand += v })
+    })
+    let monthlyTotal = 0
+    MONTHLY_FIELDS.forEach(f => { monthlyTotal += num(draftExp.monthly?.[f.key]) })
+    return { byKey, dailyGrand, monthlyTotal, grand: dailyGrand + monthlyTotal }
+  }, [draftExp])
+
+  // KPIに使う「保存済みの」当月広告費合計
+  const adTotal = totalOfExp(expenses[selMonth])
   const profit = totals.total - adTotal
 
+  const setDaily = (day, key, value) => {
+    setDraftExp(p => ({ ...p, daily: { ...p.daily, [day]: { ...(p.daily[day] || {}), [key]: value } } }))
+  }
+  const setMonthly = (key, value) => {
+    setDraftExp(p => ({ ...p, monthly: { ...p.monthly, [key]: value } }))
+  }
+  const applyBulk = () => {
+    const parsed = parseBulkExpenses(bulkPaste)
+    if (Object.keys(parsed).length === 0) { showToast('解析できませんでした'); return }
+    setDraftExp(p => ({ ...p, daily: { ...p.daily, ...parsed } }))
+    setBulkPaste('')
+    showToast(`${Object.keys(parsed).length}日分を取り込みました（未保存）`)
+  }
+  const clearAllDaily = () => {
+    if (!confirm(`${selMonth} の日別データをクリアしますか？（保存していなければ元に戻ります）`)) return
+    setDraftExp(p => ({ ...p, daily: {} }))
+  }
+
   const saveExpenses = async () => {
-    if (isDemo) { setToast('デモモード：保存は無効です'); setTimeout(() => setToast(''), 2000); return }
+    if (isDemo) { showToast('デモモード：保存は無効です'); return }
     setSaving(true)
     try {
-      const values = {}
-      EXPENSE_FIELDS.forEach(f => { values[f.key] = num(draftExp[f.key]) })
-      values.note = draftExp.note || ''
+      // 全部0の日は保存対象から除く（Redisサイズ節約）
+      const dailyClean = {}
+      Object.entries(draftExp.daily || {}).forEach(([day, row]) => {
+        const has = DAILY_FIELDS.some(f => num(row[f.key]) > 0)
+        if (has) {
+          const r = {}
+          DAILY_FIELDS.forEach(f => { r[f.key] = num(row[f.key]) })
+          dailyClean[day] = r
+        }
+      })
+      const monthlyClean = {}
+      MONTHLY_FIELDS.forEach(f => { monthlyClean[f.key] = num(draftExp.monthly?.[f.key]) })
       await fetch('/api/expenses', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month: selMonth, values }),
+        body: JSON.stringify({ month: selMonth, values: { daily: dailyClean, monthly: monthlyClean, note: draftExp.note || '' } }),
       })
       await fetchAll()
-      setToast('保存しました'); setTimeout(() => setToast(''), 1800)
-    } catch (e) { console.error(e); setToast('保存に失敗しました'); setTimeout(() => setToast(''), 2000) }
+      showToast('保存しました')
+    } catch (e) { console.error(e); showToast('保存に失敗しました') }
     setSaving(false)
   }
 
   const monthLabel = months.find(m => m.key === selMonth)?.label || ''
+  const days = daysInMonthOf(selMonth)
+  const dailyRows = Array.from({ length: days }, (_, i) => String(i + 1).padStart(2, '0'))
+
+  // 共通スタイル
+  const inputCell = { width: 90, padding: '4px 6px', border: '1px solid #E2E8F0', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', outline: 'none', textAlign: 'right' }
+  const td = { padding: '4px 6px', borderBottom: '1px solid #F1F5F9' }
 
   return (
     <div>
-      <div className="page-hdr"><h1>売上管理</h1><p>成約管理の入力から自動集計します（月単位 / 担当者・サイト別 / 掲載費・粗利）</p></div>
+      <div className="page-hdr"><h1>売上管理</h1><p>成約管理から自動集計／掲載費は日別入力（サムライ単身・家族・価格・ズバット）</p></div>
 
       <div className="filter-row">
         <select value={selMonth} onChange={e => setSelMonth(e.target.value)}>
@@ -215,20 +286,12 @@ export default function Sales({ user }) {
                   <tbody>
                     {Object.keys(totals.byStaff).length === 0 ? (
                       <tr><td colSpan={3} style={{ textAlign: 'center', color: '#94A3B8', padding: 24 }}>{monthLabel} の成約データがありません</td></tr>
-                    ) : Object.entries(totals.byStaff)
-                      .sort((a, b) => b[1].amount - a[1].amount)
-                      .map(([staff, v]) => (
-                        <tr key={staff}>
-                          <td>{staff}</td>
-                          <td style={{ textAlign: 'right' }}>{v.count}件</td>
-                          <td style={{ textAlign: 'right' }}><b>{yen(v.amount)}</b></td>
-                        </tr>
-                      ))}
+                    ) : Object.entries(totals.byStaff).sort((a, b) => b[1].amount - a[1].amount).map(([staff, v]) => (
+                      <tr key={staff}><td>{staff}</td><td style={{ textAlign: 'right' }}>{v.count}件</td><td style={{ textAlign: 'right' }}><b>{yen(v.amount)}</b></td></tr>
+                    ))}
                     {Object.keys(totals.byStaff).length > 0 && (
                       <tr style={{ fontWeight: 800, background: '#F8FAFC' }}>
-                        <td>合計</td>
-                        <td style={{ textAlign: 'right' }}>{totals.count}件</td>
-                        <td style={{ textAlign: 'right' }}>{yen(totals.total)}</td>
+                        <td>合計</td><td style={{ textAlign: 'right' }}>{totals.count}件</td><td style={{ textAlign: 'right' }}>{yen(totals.total)}</td>
                       </tr>
                     )}
                   </tbody>
@@ -247,11 +310,7 @@ export default function Sales({ user }) {
                       const v = totals.bySite[s] || { count: 0, amount: 0 }
                       if (v.count === 0 && v.amount === 0) return null
                       return (
-                        <tr key={s}>
-                          <td>{s}</td>
-                          <td style={{ textAlign: 'right' }}>{v.count}件</td>
-                          <td style={{ textAlign: 'right' }}><b>{yen(v.amount)}</b></td>
-                        </tr>
+                        <tr key={s}><td>{s}</td><td style={{ textAlign: 'right' }}>{v.count}件</td><td style={{ textAlign: 'right' }}><b>{yen(v.amount)}</b></td></tr>
                       )
                     })}
                     {totals.count === 0 && (
@@ -259,45 +318,107 @@ export default function Sales({ user }) {
                     )}
                     {totals.count > 0 && (
                       <tr style={{ fontWeight: 800, background: '#F8FAFC' }}>
-                        <td>合計</td>
-                        <td style={{ textAlign: 'right' }}>{totals.count}件</td>
-                        <td style={{ textAlign: 'right' }}>{yen(totals.total)}</td>
+                        <td>合計</td><td style={{ textAlign: 'right' }}>{totals.count}件</td><td style={{ textAlign: 'right' }}>{yen(totals.total)}</td>
                       </tr>
                     )}
                   </tbody>
                 </table>
-                <div style={{ fontSize: 10, color: '#94A3B8', padding: '6px 0 10px' }}>※ 集計は成約管理の「流入元」と「ステータス」から自動。「自社HP」→「直電」、「比較ナビ福岡/紹介」→「企業紹介」に集約。</div>
+                <div style={{ fontSize: 10, color: '#94A3B8', padding: '6px 0 10px' }}>※「自社HP」→「直電」、「比較ナビ福岡/紹介」→「企業紹介」に集約</div>
               </div>
             </div>
           </div>
 
-          {/* 掲載費 入力 */}
+          {/* 掲載費（日別入力） */}
           <div className="card">
-            <div className="card-head"><h3>掲載費（広告費）</h3><span className="c-sub">{monthLabel} 入力</span></div>
+            <div className="card-head"><h3>掲載費（日別）</h3><span className="c-sub">{monthLabel} 入力</span></div>
             <div className="card-body">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-                {EXPENSE_FIELDS.map(f => (
-                  <div key={f.key}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>{f.label}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 12, color: '#94A3B8' }}>¥</span>
-                      <input type="number" inputMode="numeric" min={0}
-                        value={draftExp[f.key] ?? ''}
-                        onChange={e => setDraftExp(p => ({ ...p, [f.key]: e.target.value }))}
-                        style={{ width: '100%', padding: '7px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', textAlign: 'right' }} />
-                    </div>
-                  </div>
-                ))}
+              <div className="scroll-x">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 560 }}>
+                  <thead>
+                    <tr style={{ background: '#F1F5FB' }}>
+                      <th style={{ ...td, textAlign: 'left', fontSize: 11, padding: '6px 8px' }}>日付</th>
+                      {DAILY_FIELDS.map(f => <th key={f.key} style={{ ...td, textAlign: 'right', fontSize: 11, padding: '6px 8px' }}>{f.label}</th>)}
+                      <th style={{ ...td, textAlign: 'right', fontSize: 11, padding: '6px 8px' }}>日合計</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dailyRows.map(day => {
+                      const row = draftExp.daily[day] || {}
+                      const rowTotal = DAILY_FIELDS.reduce((s, f) => s + num(row[f.key]), 0)
+                      return (
+                        <tr key={day}>
+                          <td style={td}>{Number(day)}日</td>
+                          {DAILY_FIELDS.map(f => (
+                            <td key={f.key} style={{ ...td, textAlign: 'right' }}>
+                              <input type="number" min={0} inputMode="numeric"
+                                value={row[f.key] ?? ''} onChange={e => setDaily(day, f.key, e.target.value)}
+                                style={inputCell} />
+                            </td>
+                          ))}
+                          <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: rowTotal > 0 ? '#1E5FA8' : '#CBD5E1' }}>
+                            {rowTotal > 0 ? yen(rowTotal) : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#0F2A4A', color: '#fff', fontWeight: 800 }}>
+                      <td style={{ ...td, padding: '8px' }}>合計</td>
+                      {DAILY_FIELDS.map(f => (
+                        <td key={f.key} style={{ ...td, padding: '8px', textAlign: 'right' }}>{yen(draftSums.byKey[f.key])}</td>
+                      ))}
+                      <td style={{ ...td, padding: '8px', textAlign: 'right' }}>{yen(draftSums.dailyGrand)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
-              <div style={{ marginTop: 10 }}>
+
+              {/* 一括貼り付け */}
+              <details style={{ marginTop: 14 }}>
+                <summary style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#1E5FA8' }}>📋 一括貼り付け（タブ区切り：日付 単身 家族 価格 ズバット 合計）</summary>
+                <div style={{ marginTop: 8 }}>
+                  <textarea value={bulkPaste} onChange={e => setBulkPaste(e.target.value)} rows={6}
+                    placeholder={'6/1\t17875\t18700\t3500\t3300\t43375\n6/2\t17875\t17600\t5500\t3960\t40975\n…'}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, fontFamily: 'monospace', outline: 'none', resize: 'vertical', minHeight: 100 }} />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                    <button className="btn btn-outline btn-sm" onClick={applyBulk} disabled={!bulkPaste.trim()}>取り込み（未保存）</button>
+                    <button className="btn btn-outline btn-sm" style={{ color: '#B91C1C', borderColor: '#FECACA' }} onClick={clearAllDaily}>日別をクリア</button>
+                    <div style={{ flex: 1 }} />
+                    <span style={{ fontSize: 11, color: '#94A3B8' }}>※ 合計列は無視。1〜31日を自動判定。タブ/カンマ/スペース対応。</span>
+                  </div>
+                </div>
+              </details>
+
+              {/* 月別 その他 */}
+              <div style={{ marginTop: 18 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>月別その他（日別なし）</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+                  {MONTHLY_FIELDS.map(f => (
+                    <div key={f.key}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>{f.label}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 12, color: '#94A3B8' }}>¥</span>
+                        <input type="number" inputMode="numeric" min={0}
+                          value={draftExp.monthly?.[f.key] ?? ''} onChange={e => setMonthly(f.key, e.target.value)}
+                          style={{ width: '100%', padding: '7px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', textAlign: 'right' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>メモ</div>
                 <input value={draftExp.note || ''} onChange={e => setDraftExp(p => ({ ...p, note: e.target.value }))}
-                  placeholder="例：段ボール小97円/大138円、客単価メモ など" style={{ width: '100%', padding: '7px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
+                  placeholder="例：段ボール小97円/大138円 など" style={{ width: '100%', padding: '7px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 13 }}>
-                  <span style={{ color: '#64748B', marginRight: 6 }}>当月 掲載費 合計</span>
-                  <b style={{ fontSize: 16 }}>{yen(EXPENSE_FIELDS.reduce((s, f) => s + num(draftExp[f.key]), 0))}</b>
+                  <span style={{ color: '#64748B', marginRight: 6 }}>当月 掲載費 合計（ドラフト）</span>
+                  <b style={{ fontSize: 16 }}>{yen(draftSums.grand)}</b>
+                  <span style={{ color: '#94A3B8', fontSize: 11, marginLeft: 6 }}>（日別 {yen(draftSums.dailyGrand)} + 月別 {yen(draftSums.monthlyTotal)}）</span>
                 </div>
                 <div style={{ flex: 1 }} />
                 <button className="btn btn-primary btn-sm" onClick={saveExpenses} disabled={saving || isDemo}>
@@ -317,20 +438,13 @@ export default function Sales({ user }) {
                 <tbody>
                   {monthly.length === 0 ? (
                     <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94A3B8', padding: 24 }}>{monthLabel} の成約データがありません</td></tr>
-                  ) : monthly
-                    .slice()
-                    .sort((a, b) => String(b.date).localeCompare(String(a.date)))
-                    .map(c => (
-                      <tr key={c.id}>
-                        <td>{c.date}</td>
-                        <td>{c.name}</td>
-                        <td>{c.route}</td>
-                        <td>{c.srcLabel}</td>
-                        <td>{c.staff || '—'}</td>
-                        <td style={{ textAlign: 'right' }}>{yen(c.amount)}</td>
-                        <td>{c.status}</td>
-                      </tr>
-                    ))}
+                  ) : monthly.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map(c => (
+                    <tr key={c.id}>
+                      <td>{c.date}</td><td>{c.name}</td><td>{c.route}</td>
+                      <td>{c.srcLabel}</td><td>{c.staff || '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{yen(c.amount)}</td><td>{c.status}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
