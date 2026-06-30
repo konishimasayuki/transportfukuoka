@@ -13,10 +13,13 @@
     button { width: 100%; margin-top: 10px; padding: 9px; border: none; border-radius: 8px; background: #1E5FA8; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
     button:disabled { background: #94a3b8; cursor: default; }
     .result { font-size: 12px; margin-top: 8px; min-height: 16px; color: #16a34a; font-weight: 600; }
+    .site { border-top: 1px solid #e2e8f0; margin-top: 12px; padding-top: 8px; }
+    .site-name { font-size: 12px; font-weight: 700; color: #334155; }
+    .hint { font-size: 10px; color: #94a3b8; margin-top: 6px; line-height: 1.4; }
   </style>
 </head>
 <body>
-  <h1>🚛 リード監視（ズバット）</h1>
+  <h1>🚛 リード監視</h1>
   <div class="row">
     <span>監視</span>
     <label><input type="checkbox" id="toggle" /> <span id="state" class="state-on">ON</span></label>
@@ -25,8 +28,20 @@
     <span>本日の検知</span>
     <span class="count" id="count">0</span>
   </div>
-  <button id="resync">取りこぼしを取り込む</button>
-  <div class="result" id="result"></div>
+
+  <div class="site">
+    <div class="site-name">ズバット</div>
+    <button id="resync">取りこぼしを取り込む</button>
+    <div class="result" id="result"></div>
+  </div>
+
+  <div class="site">
+    <div class="site-name">引越し侍</div>
+    <button id="resyncSamurai">取りこぼしを取り込む</button>
+    <div class="result" id="resultSamurai"></div>
+    <div class="hint">※ 引越し侍の一覧ページ（取り込みたいページ）を開いた状態で押してください。件数により時間がかかります。</div>
+  </div>
+
   <div class="muted" id="status">—</div>
   <script src="popup.js"></script>
 </body>

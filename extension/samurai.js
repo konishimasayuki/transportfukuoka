@@ -87,6 +87,20 @@
     return `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')} ${m[3].padStart(2, '0')}:${m[4]}`
   }
 
+  // リストの1行(tr)から基本情報を取り出す（巡回・取りこぼし取込で共用）
+  function baseFromRow(id, tr) {
+    const c = tr ? [...tr.children].map(textOf) : []
+    return {
+      id,
+      name: c[1] || '',
+      fromPref: c[2] || '',
+      toPref: c[3] || '',
+      type: c[4] || '',
+      receivedAt: padMD(c[5] || ''),
+      moveDate: c[6] || '',
+    }
+  }
+
   // 家財行（家具/家電/その他/重量物 の "品名 数量" の並び）を {name,qty}[] へ。
   // セル単位でトークン化（行全体の textContent だと品名と数量が連結される恐れがあるため）。
   function parseKazai(doc) {
@@ -166,17 +180,7 @@
       const id = m[1]
       if (seenIds.has(id)) continue
       seenIds.add(id)
-      const tr = a.closest('tr')
-      const c = tr ? [...tr.children].map(textOf) : []
-      rows.push({
-        id,
-        name: c[1] || '',
-        fromPref: c[2] || '',
-        toPref: c[3] || '',
-        type: c[4] || '',
-        receivedAt: padMD(c[5] || ''),
-        moveDate: c[6] || '',
-      })
+      rows.push(baseFromRow(id, a.closest('tr')))
     }
     return rows
   }
@@ -248,6 +252,43 @@
     if (timer) clearTimeout(timer)
     pollTick()
   }
+
+  // ---- 取りこぼし取込（手動）----
+  // いま表示中のリストページ（1〜22ページのどれでも可）の依頼番号を全部集め、
+  // 詳細を取得して送信する。重複はサーバー側で除外されるので新規だけ取り込まれる。
+  async function resyncDisplayed() {
+    const links = [...document.querySelectorAll('a[href*="/request/detail/id/"]')]
+    const ids = []
+    const dedup = new Set()
+    for (const a of links) {
+      const m = (a.getAttribute('href') || '').match(/id\/(\d+)/)
+      if (m && !dedup.has(m[1])) { dedup.add(m[1]); ids.push({ id: m[1], tr: a.closest('tr') }) }
+    }
+    if (!ids.length) return { ok: false, error: 'リストの行が見つかりません。一覧ページを表示してから実行してください' }
+    log(`取りこぼし取込 開始（表示中 ${ids.length}件）`)
+    let added = 0, dup = 0, fail = 0
+    for (const { id, tr } of ids) {
+      try {
+        const base = baseFromRow(id, tr)
+        const doc = await fetchDetail(id)
+        const detail = parseDetailDoc(doc, id, base)
+        const lead = leadFromBase(base, detail)
+        const r = await sendLead(lead)
+        if (r && r.ok) { r.duplicate ? dup++ : added++; seen.add(id) } else fail++
+      } catch (e) { fail++; log('取りこぼし詳細失敗', id, e) }
+      await sleep(300)
+    }
+    persistSeen()
+    log(`取りこぼし取込 完了（新規${added}・重複${dup}・失敗${fail}／${ids.length}件）`)
+    return { ok: true, added, dup, fail, total: ids.length }
+  }
+
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg && msg.type === 'SAMURAI_RESYNC') {
+      resyncDisplayed().then(sendResponse).catch(e => sendResponse({ ok: false, error: String(e) }))
+      return true // 非同期レスポンス
+    }
+  })
 
   async function init() {
     try {

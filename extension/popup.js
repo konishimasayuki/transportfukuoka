@@ -60,6 +60,38 @@ document.getElementById('resync').addEventListener('click', async () => {
   }
 })
 
+// 引越し侍：取りこぼし取り込み。
+// 一覧ページに常駐する samurai.js へ依頼し、表示中ページの全依頼を詳細取得して送信させる。
+document.getElementById('resyncSamurai').addEventListener('click', async () => {
+  const btn = document.getElementById('resyncSamurai')
+  const result = document.getElementById('resultSamurai')
+  btn.disabled = true
+  result.style.color = '#64748b'
+  result.textContent = '取り込み中…（件数により時間がかかります）'
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://hikkosizamurai.com/admin/*' })
+    if (!tabs.length) {
+      result.style.color = '#dc2626'
+      result.textContent = '引越し侍の一覧ページを開いてから実行してください'
+      return
+    }
+    const res = await chrome.tabs.sendMessage(tabs[0].id, { type: 'SAMURAI_RESYNC' })
+    if (!res || !res.ok) {
+      result.style.color = '#dc2626'
+      result.textContent = '失敗: ' + ((res && res.error) || '応答なし（一覧ページを再読込してください）')
+      return
+    }
+    result.style.color = res.added > 0 ? '#16a34a' : '#64748b'
+    result.textContent = `新規${res.added}件を取り込み（重複${res.dup}・失敗${res.fail}／一覧${res.total}件）`
+    refresh()
+  } catch (e) {
+    result.style.color = '#dc2626'
+    result.textContent = 'エラー: ' + (e && e.message ? e.message : String(e)) + '（拡張をリロード＆一覧を再読込）'
+  } finally {
+    btn.disabled = false
+  }
+})
+
 // ページ内で実行される関数（外部変数を参照しない自己完結。executeScript用）
 function scrapeRows() {
   const PHONE_RE = /0\d{1,4}-?\d{1,4}-?\d{3,4}/
