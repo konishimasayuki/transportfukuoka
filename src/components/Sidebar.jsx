@@ -1,6 +1,7 @@
 const NAV_ITEMS = [
   { tab: 'dashboard', icon: '📊', label: 'ダッシュボード' },
   { tab: 'sales',     icon: '💴', label: '売上管理' },
+  { tab: 'adcost',    icon: '📣', label: '広告費' },
   { tab: 'contracts', icon: '✅', label: '成約管理' },
   { tab: 'leads',     icon: '📥', label: 'リード管理' },
   { tab: 'call',      icon: '📞', label: '架電機能' },

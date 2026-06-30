@@ -1,6 +1,7 @@
 const TITLES = {
   dashboard: 'ダッシュボード',
   sales:     '売上管理',
+  adcost:    '広告費',
   contracts: '成約管理',
   leads:     'リード管理',
   call:      '架電機能',

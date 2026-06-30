@@ -3,6 +3,7 @@
 // onSave(item, patch)：空文字でもキーが含まれていれば送る（明示クリア対応）
 // onCreateEstimate(item)：「📝 見積書を作成」で見積書タブへプリフィル遷移
 import { useEffect, useState } from 'react'
+import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
@@ -370,8 +371,8 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
 // 親は onConfirm(lead, payload) を実装して contracts API への保存とリードの
 // status/amount 更新（/api/inbound PUT）を担当する。
 // =====================================================================
-const SRC_LIST = ['引越し侍', '価格.com', 'ズバット', 'SUUMO', '比較ナビ福岡', '自社HP', '紹介', 'その他']
-const SITE_TO_SRC = { 'ズバット': 'ズバット', '引越し侍': '引越し侍', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
+const SRC_LIST = ['サムライ', 'ズバッと', '価格.com', 'SUUMO', '直電', 'チラシ', '企業紹介', 'その他']
+const SITE_TO_SRC = { 'ズバット': 'ズバッと', 'ズバッと': 'ズバッと', '引越し侍': 'サムライ', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
 
 export function ConvertToContractModal({ lead, onClose, onConfirm }) {
   const today = new Date().toISOString().slice(0, 10)
@@ -381,6 +382,9 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
   const [staff, setStaff]     = useState('')
   const [memo, setMemo]       = useState('')
   const [saving, setSaving]   = useState(false)
+  const [staffList, setStaffList] = useState(DEFAULT_STAFF)
+
+  useEffect(() => { fetchStaffList().then(setStaffList) }, [])
 
   useEffect(() => {
     if (!lead) return
@@ -451,7 +455,11 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
           </div>
           <div>
             <label style={lb}>担当者</label>
-            <input value={staff} onChange={e => setStaff(e.target.value)} placeholder="担当者名" style={ip} />
+            <select value={staff} onChange={e => setStaff(e.target.value)} style={ip}>
+              <option value="">（未選択）</option>
+              {staffList.map(s => <option key={s} value={s}>{s}</option>)}
+              {staff && !staffList.includes(staff) && <option value={staff}>{staff}</option>}
+            </select>
           </div>
           <div>
             <label style={lb}>メモ</label>

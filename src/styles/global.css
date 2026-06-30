@@ -207,8 +207,7 @@ tr:hover td { background: var(--bg); }
 @media (max-width: 768px) {
   .menu-btn   { display: flex; align-items: center; justify-content: center; }
   .topbar-date { display: none; }
-  .mobile-nav { display: flex; }
-  .content    { padding: 12px 12px calc(var(--mh) + 12px); }
+  .content    { padding: 12px; }
   .kpi-4 { grid-template-columns: repeat(2, 1fr); }
   .kpi-3 { grid-template-columns: repeat(2, 1fr); }
   .two-col   { grid-template-columns: 1fr; }

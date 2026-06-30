@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
-import MobileNav from './components/MobileNav'
 import Login from './tabs/Login'
 import Dashboard from './tabs/Dashboard'
 import Sales from './tabs/Sales'
+import AdCost from './tabs/AdCost'
 import Contracts from './tabs/Contracts'
 import Leads from './tabs/Leads'
 import Call from './tabs/Call'
@@ -14,6 +14,7 @@ import Settings from './tabs/Settings'
 const TABS = {
   dashboard: Dashboard,
   sales: Sales,
+  adcost: AdCost,
   contracts: Contracts,
   leads: Leads,
   call: Call,
@@ -82,7 +83,6 @@ export default function App() {
           <ActiveTab user={user} switchTab={switchTab} />
         </div>
       </div>
-      <MobileNav activeTab={activeTab} onTabChange={switchTab} onLogout={handleLogout} />
     </div>
   )
 }

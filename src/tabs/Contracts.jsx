@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
+import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 
 const DEMO_DATA = [
   { id: '1', name: '田中 誠一', src: 'bb', srcLabel: '引越し侍', date: '2025-06-15', route: '東区→博多区', amount: 68000, badge: 'bg', status: '成約済み' },
@@ -11,13 +13,32 @@ const DEMO_DATA = [
 ]
 
 const STATUS_LIST  = ['成約済み', '交渉中', '見積済み', '連絡待ち', '失注']
-const SOURCE_LIST  = ['引越し侍', '価格.com', 'SUUMO', '比較ナビ福岡', '自社HP', '紹介', 'その他']
+const SOURCE_LIST  = ['サムライ', 'ズバッと', '価格.com', 'SUUMO', '直電', 'チラシ', '企業紹介', 'その他']
 const STATUS_BADGE = { '成約済み': 'bg', '交渉中': 'bb', '見積済み': 'bo', '連絡待ち': 'bp', '失注': 'br' }
-const SRC_BADGE    = { '引越し侍': 'bb', '価格.com': 'bg', 'SUUMO': 'bg', '比較ナビ福岡': 'bp', '自社HP': 'bo', '紹介': 'bk', 'その他': 'bk' }
+const SRC_BADGE    = { 'サムライ': 'bb', 'ズバッと': 'bo', '価格.com': 'bg', 'SUUMO': 'bp', '直電': 'by', 'チラシ': 'bk', '企業紹介': 'bk', 'その他': 'bk' }
+
+// CSV入出力の列定義（ラベルは日本語ヘッダ。インポート時もこのラベルでキー対応）
+const CSV_COLUMNS = [
+  { key: 'name', label: '顧客名' },
+  { key: 'kana', label: 'フリガナ' },
+  { key: 'phone', label: '電話' },
+  { key: 'email', label: 'メール' },
+  { key: 'srcLabel', label: '流入元' },
+  { key: 'date', label: '引越し日' },
+  { key: 'moveDateText', label: '希望日' },
+  { key: 'persons', label: '人数' },
+  { key: 'fromAddress', label: '引越し元' },
+  { key: 'toAddress', label: '引越し先' },
+  { key: 'route', label: '区間' },
+  { key: 'amount', label: '見積金額' },
+  { key: 'status', label: 'ステータス' },
+  { key: 'staff', label: '担当者' },
+  { key: 'memo', label: 'メモ' },
+]
 
 const EMPTY_FORM = {
   name: '', kana: '', phone: '', email: '',
-  srcLabel: '引越し侍', date: '', moveDateText: '', persons: '',
+  srcLabel: 'サムライ', date: '', moveDateText: '', persons: '',
   fromAddress: '', toAddress: '', route: '',
   amount: '', status: '交渉中',
   staff: '', memo: '',
@@ -42,8 +63,17 @@ export default function Contracts({ user }) {
   const [search, setSearch]   = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [staffList, setStaffList] = useState(DEFAULT_STAFF)
+  const [importing, setImporting] = useState(false)
+  const [toast, setToast] = useState('')
+  const fileRef = useRef(null)
+  const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2600) }
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
+  useEffect(() => {
+    if (isDemo) { setStaffList(DEFAULT_STAFF); return }
+    fetchStaffList().then(setStaffList)
+  }, [isDemo])
 
   // リード/架電タブの詳細モーダルから「✅ 成約登録」で渡されたプリフィルを取り込み、新規追加モーダルを開く
   useEffect(() => {
@@ -101,6 +131,54 @@ export default function Contracts({ user }) {
     setDeleteConfirm(null)
   }
 
+  // CSVエクスポート（現在の一覧をすべて）
+  const handleExport = () => {
+    const csv = toCSV(items, CSV_COLUMNS)
+    const stamp = new Date().toISOString().slice(0, 10)
+    downloadCSV(`成約管理_${stamp}.csv`, csv)
+  }
+
+  // CSVインポート（ファイル選択 → 各行を成約管理に登録）
+  const handleImportFile = async (e) => {
+    const file = e.target.files && e.target.files[0]
+    if (fileRef.current) fileRef.current.value = '' // 同じファイルを連続選択できるように
+    if (!file) return
+    setImporting(true)
+    try {
+      const text = await file.text()
+      const rows = parseCSV(text, CSV_COLUMNS)
+        .map(r => ({
+          ...r,
+          amount: Number(String(r.amount).replace(/[^\d.-]/g, '')) || 0,
+          status: r.status || '成約済み',
+          srcLabel: r.srcLabel || 'その他',
+        }))
+        .filter(r => (r.name && String(r.name).trim()) || r.phone)
+      if (rows.length === 0) { showToast('取り込める行がありませんでした'); setImporting(false); return }
+      if (isDemo) {
+        const withIds = rows.map((r, i) => ({ ...r, id: `${Date.now()}_${i}` }))
+        setItems(prev => [...withIds, ...prev])
+        showToast(`${rows.length}件を取り込みました（デモ：保存なし）`)
+        setImporting(false); return
+      }
+      let ok = 0
+      for (let i = 0; i < rows.length; i++) {
+        try {
+          await fetch('/api/contracts', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...rows[i], id: `${Date.now()}_${i}` }),
+          })
+          ok++
+        } catch (err) { console.error(err) }
+      }
+      await fetchItems()
+      showToast(`${ok}/${rows.length}件を取り込みました`)
+    } catch (err) {
+      console.error(err); showToast('インポートに失敗しました')
+    }
+    setImporting(false)
+  }
+
   const filtered = items.filter(i => {
     const q = search.toLowerCase()
     return (!q || i.name.toLowerCase().includes(q) || (i.route||'').includes(q)) &&
@@ -112,7 +190,16 @@ export default function Contracts({ user }) {
 
   return (
     <div>
-      <div className="page-hdr"><h1>成約管理</h1><p>成約済み・交渉中・失注の案件を管理します</p></div>
+      <div className="page-hdr" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div><h1>成約管理</h1><p>成約済み・交渉中・失注の案件を管理します</p></div>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <button className="btn btn-outline btn-sm" onClick={handleExport}>⬇ CSV出力</button>
+          <button className="btn btn-outline btn-sm" onClick={() => fileRef.current && fileRef.current.click()} disabled={importing}>
+            {importing ? '取込中…' : '⬆ CSV取込'}
+          </button>
+          <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} style={{ display: 'none' }} />
+        </div>
+      </div>
 
       <div className="kpi-row kpi-4">
         <div className="kpi-card c-green"><div className="kpi-label">成約済み</div><div className="kpi-val">{countBy('成約済み')}<span>件</span></div><div className="kpi-change up">¥{totalAmount.toLocaleString()}</div></div>
@@ -243,7 +330,11 @@ export default function Contracts({ user }) {
               </div>
               <div style={formRow}>
                 <label style={formLabel}>担当者</label>
-                <input style={inputStyle} value={form.staff || ''} onChange={e => f('staff')(e.target.value)} placeholder="担当者名" />
+                <select style={inputStyle} value={form.staff || ''} onChange={e => f('staff')(e.target.value)}>
+                  <option value="">（未選択）</option>
+                  {staffList.map(s => <option key={s} value={s}>{s}</option>)}
+                  {form.staff && !staffList.includes(form.staff) && <option value={form.staff}>{form.staff}</option>}
+                </select>
               </div>
               <div style={formRow}>
                 <label style={formLabel}>メモ</label>
@@ -275,6 +366,10 @@ export default function Contracts({ user }) {
             </div>
           </div>
         </div>
+      )}
+
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', background: '#0F2A4A', color: '#fff', padding: '10px 18px', borderRadius: 24, fontSize: 13, fontWeight: 700, boxShadow: '0 8px 24px rgba(0,0,0,.25)', zIndex: 2000 }}>{toast}</div>
       )}
     </div>
   )

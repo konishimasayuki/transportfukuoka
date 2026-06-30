@@ -233,7 +233,7 @@ export default function Call({ user, switchTab }) {
 
   const createContractFromLead = (item) => {
     const today = new Date().toISOString().slice(0, 10)
-    const SITE_TO_SRC = { 'ズバット': 'ズバット', '引越し侍': '引越し侍', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
+    const SITE_TO_SRC = { 'ズバット': 'ズバッと', 'ズバッと': 'ズバッと', '引越し侍': 'サムライ', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
     const fromShort = (item.from || item.fromAddress || '').replace(/^福岡県/, '').replace(/^福岡市/, '')
     const toShort   = (item.to   || item.toAddress   || '').replace(/^福岡県/, '').replace(/^福岡市/, '')
     const prefill = {

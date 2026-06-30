@@ -1,4 +1,86 @@
 import { useState, useEffect } from 'react'
+import { DEFAULT_STAFF } from '../lib/staff'
+
+// 担当者設定：名前を入力→登録。成約管理・成約登録の担当者プルダウンに反映される。
+function StaffSettings({ isDemo }) {
+  const [list, setList]   = useState(DEFAULT_STAFF)
+  const [name, setName]   = useState('')
+  const [loading, setLoading] = useState(!isDemo)
+  const [busy, setBusy]   = useState(false)
+  const [msg, setMsg]     = useState('')
+  const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 2000) }
+
+  useEffect(() => {
+    if (isDemo) { setList(DEFAULT_STAFF); setLoading(false); return }
+    fetch('/api/staff')
+      .then(r => r.json())
+      .then(d => setList(Array.isArray(d.items) && d.items.length ? d.items : DEFAULT_STAFF))
+      .catch(() => setList(DEFAULT_STAFF))
+      .finally(() => setLoading(false))
+  }, [isDemo])
+
+  const add = async () => {
+    const n = name.trim()
+    if (!n) return
+    if (list.includes(n)) { flash('すでに登録済みです'); return }
+    if (isDemo) { setList(p => [...p, n]); setName(''); flash('追加しました（デモ：保存なし）'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/staff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: n }) })
+      const d = await r.json()
+      if (d.items) setList(d.items)
+      setName(''); flash('追加しました')
+    } catch { flash('追加に失敗しました') }
+    setBusy(false)
+  }
+
+  const remove = async (n) => {
+    if (isDemo) { setList(p => p.filter(s => s !== n)); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/staff', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: n }) })
+      const d = await r.json()
+      if (d.items) setList(d.items)
+    } catch { flash('削除に失敗しました') }
+    setBusy(false)
+  }
+
+  return (
+    <div className="card">
+      <div className="card-head"><h3>👥 担当者設定</h3>{msg && <span className="c-sub" style={{ color: '#15803D' }}>{msg}</span>}</div>
+      <div className="card-body">
+        <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>
+          名前を入力して「登録」すると、成約管理・成約登録の担当者プルダウンに表示されます。
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') add() }}
+            placeholder="例：古賀"
+            style={{ flex: 1, padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+          />
+          <button className="btn btn-primary" onClick={add} disabled={busy || !name.trim()} style={{ opacity: !name.trim() ? .5 : 1, whiteSpace: 'nowrap' }}>登録</button>
+        </div>
+        {loading ? (
+          <div style={{ fontSize: 12, color: '#94A3B8' }}>読み込み中...</div>
+        ) : list.length === 0 ? (
+          <div style={{ fontSize: 12, color: '#94A3B8' }}>担当者が登録されていません。</div>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {list.map(s => (
+              <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#F1F5FB', borderRadius: 20, padding: '5px 6px 5px 12px', fontSize: 13, fontWeight: 600, color: '#1E293B' }}>
+                {s}
+                <button onClick={() => remove(s)} disabled={busy} title="削除"
+                  style={{ border: 'none', background: '#fff', color: '#DC2626', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', lineHeight: 1, fontSize: 13, fontWeight: 700 }}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // 発信テスト：番号を入れて押すと /api/call が顧客に発信→自動音声→事務所へ転送
 function CallTest() {
@@ -91,13 +173,16 @@ function SettingRow({ label, desc, children }) {
   )
 }
 
-export default function Settings() {
+export default function Settings({ user }) {
+  const isDemo = user?.mode === 'demo'
   return (
     <div>
       <div className="page-hdr"><h1>設定</h1><p>システムの各種設定を管理します</p></div>
 
       <div className="two-col">
         <div>
+          <StaffSettings isDemo={isDemo} />
+
           <div className="card">
             <div className="card-head"><h3>📞 架電設定（Twilio）</h3></div>
             <div className="card-body">

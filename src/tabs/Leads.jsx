@@ -1,8 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import LeadDetailModal, { captureLagSec, lagText, lagColor, ConvertToContractModal } from '../components/LeadDetailModal'
+import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
+
+// CSV入出力の列定義
+const CSV_COLUMNS = [
+  { key: 'receivedAt', label: '受付日時' },
+  { key: 'name', label: '名前' },
+  { key: 'kana', label: 'フリガナ' },
+  { key: 'phone', label: '電話' },
+  { key: 'email', label: 'メール' },
+  { key: 'site', label: 'サイト' },
+  { key: 'from', label: '引越し元' },
+  { key: 'to', label: '引越し先' },
+  { key: 'count', label: '人数' },
+  { key: 'moveDate', label: '引越し希望日' },
+  { key: 'amount', label: '金額' },
+  { key: 'status', label: 'ステータス' },
+  { key: 'memo', label: 'メモ' },
+]
 
 // デモデータ：今回追加した機能（獲得スピード/詳細編集/見積書プリフィル）を試せる中身を含む
 // receivedAt と detectedAt の差で「獲得スピード」が緑/橙/赤に色分けされる
@@ -74,6 +92,10 @@ export default function Leads({ user, switchTab }) {
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [detailItem, setDetailItem] = useState(null)
   const [convertLead, setConvertLead] = useState(null) // ステータス「成約」変更時の登録モーダル
+  const [importing, setImporting] = useState(false)
+  const [toast, setToast] = useState('')
+  const fileRef = useRef(null)
+  const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2600) }
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
 
@@ -164,7 +186,7 @@ export default function Leads({ user, switchTab }) {
   // 詳細から「成約登録」→ 成約管理タブの新規追加に自動プリフィル
   const createContractFromLead = (item) => {
     const today = new Date().toISOString().slice(0, 10)
-    const SITE_TO_SRC = { 'ズバット': 'ズバット', '引越し侍': '引越し侍', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
+    const SITE_TO_SRC = { 'ズバット': 'ズバッと', 'ズバッと': 'ズバッと', '引越し侍': 'サムライ', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
     const fromShort = (item.from || item.fromAddress || '').replace(/^福岡県/, '').replace(/^福岡市/, '')
     const toShort   = (item.to   || item.toAddress   || '').replace(/^福岡県/, '').replace(/^福岡市/, '')
     const prefill = {
@@ -221,6 +243,54 @@ export default function Leads({ user, switchTab }) {
     setDeleteConfirm(null)
   }
 
+  // CSVエクスポート（現在の全リード）
+  const handleExport = () => {
+    const csv = toCSV(items, CSV_COLUMNS)
+    const stamp = new Date().toISOString().slice(0, 10)
+    downloadCSV(`リード管理_${stamp}.csv`, csv)
+  }
+
+  // CSVインポート（/api/inbound に upsert）
+  const handleImportFile = async (e) => {
+    const file = e.target.files && e.target.files[0]
+    if (fileRef.current) fileRef.current.value = ''
+    if (!file) return
+    setImporting(true)
+    try {
+      const text = await file.text()
+      const rows = parseCSV(text, CSV_COLUMNS)
+        .map(r => ({
+          ...r,
+          site: r.site || 'インポート',
+          status: r.status || '未架電',
+          amount: r.amount ? (Number(String(r.amount).replace(/[^\d.-]/g, '')) || 0) : undefined,
+        }))
+        .filter(r => r.phone || (r.name && String(r.name).trim()))
+      if (rows.length === 0) { showToast('取り込める行がありませんでした'); setImporting(false); return }
+      if (isDemo) {
+        const withIds = rows.map((r, i) => norm({ ...r, id: `${Date.now()}_${i}` }))
+        setItems(prev => [...withIds, ...prev])
+        showToast(`${rows.length}件を取り込みました（デモ：保存なし）`)
+        setImporting(false); return
+      }
+      let ok = 0
+      for (let i = 0; i < rows.length; i++) {
+        try {
+          await fetch('/api/inbound', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...rows[i], key: rows[i].phone || `${rows[i].site}:${rows[i].name}` }),
+          })
+          ok++
+        } catch (err) { console.error(err) }
+      }
+      await fetchItems()
+      showToast(`${ok}/${rows.length}件を取り込みました`)
+    } catch (err) {
+      console.error(err); showToast('インポートに失敗しました')
+    }
+    setImporting(false)
+  }
+
   const filtered = items
     .filter(i => period === 'today' ? isToday(i) : true)
     .filter(i => {
@@ -253,6 +323,14 @@ export default function Leads({ user, switchTab }) {
           {STATUS_LIST.map(s => <option key={s}>{s}</option>)}
         </select>
         <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={isDemo}>⟳ 更新</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginBottom: 10 }}>
+        <button className="btn btn-outline btn-sm" onClick={handleExport}>⬇ CSV出力</button>
+        <button className="btn btn-outline btn-sm" onClick={() => fileRef.current && fileRef.current.click()} disabled={importing}>
+          {importing ? '取込中…' : '⬆ CSV取込'}
+        </button>
+        <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} style={{ display: 'none' }} />
       </div>
 
       {loading ? (
@@ -338,6 +416,10 @@ export default function Leads({ user, switchTab }) {
             </div>
           </div>
         </div>
+      )}
+
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', background: '#0F2A4A', color: '#fff', padding: '10px 18px', borderRadius: 24, fontSize: 13, fontWeight: 700, boxShadow: '0 8px 24px rgba(0,0,0,.25)', zIndex: 2000 }}>{toast}</div>
       )}
     </div>
   )
