@@ -214,6 +214,28 @@ async function loadCreds() {
   if (zbaLoginId) document.getElementById('zbaId').value = zbaLoginId
 }
 
+// 自動再ログイン／監視状態の見える化
+function hhmm(ts) {
+  if (!ts) return ''
+  const d = new Date(ts)
+  return `${String(d.getMonth() + 1)}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+async function renderZbaStatus() {
+  const el = document.getElementById('zbaStatus')
+  if (!el) return
+  const s = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword', 'zbaAuthOk', 'zbaAuthAt', 'zbaReloginResult', 'zbaReloginAt'])
+  const lines = []
+  lines.push('自動再ログイン: ' + (s.zbaLoginId && s.zbaPassword ? '設定済み ✓' : '未設定（ID/PWを保存してください）'))
+  if (s.zbaAuthAt != null) {
+    lines.push('監視状態: ' + (s.zbaAuthOk === false ? 'ログイン切れ' : '正常') + `（最終確認 ${hhmm(s.zbaAuthAt)}）`)
+  }
+  if (s.zbaReloginAt) {
+    lines.push('最終 自動再ログイン: ' + (s.zbaReloginResult === 'success' ? '成功' : '失敗') + `（${hhmm(s.zbaReloginAt)}）`)
+  }
+  el.textContent = lines.join('\n')
+  el.style.whiteSpace = 'pre-line'
+}
+
 async function saveCredsFromFields() {
   const id = document.getElementById('zbaId').value.trim()
   const pw = document.getElementById('zbaPw').value
@@ -230,6 +252,7 @@ document.getElementById('zbaSave').addEventListener('click', async () => {
   if (!id) { res.style.color = '#dc2626'; res.textContent = 'IDを入力してください'; return }
   document.getElementById('zbaPw').value = ''
   res.style.color = '#16a34a'; res.textContent = '保存しました'
+  renderZbaStatus()
 })
 
 document.getElementById('zbaTest').addEventListener('click', async () => {
@@ -247,10 +270,12 @@ document.getElementById('zbaTest').addEventListener('click', async () => {
       headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
       body: JSON.stringify({ loginId: zbaLoginId, password: zbaPassword }),
     })
-    if (r.ok) { res.style.color = '#16a34a'; res.textContent = '✓ ログイン成功（自動再ログイン有効）'; document.getElementById('zbaPw').value = '' }
+    if (r.ok) { res.style.color = '#16a34a'; res.textContent = '✓ ログイン成功（自動再ログイン有効）'; document.getElementById('zbaPw').value = ''; await chrome.storage.local.set({ zbaReloginResult: 'success', zbaReloginAt: Date.now() }) }
     else { res.style.color = '#dc2626'; res.textContent = '✕ ログイン失敗（ID/PW要確認）: HTTP ' + r.status }
+    renderZbaStatus()
   } catch (e) { res.style.color = '#dc2626'; res.textContent = '通信エラー: ' + (e && e.message ? e.message : String(e)) }
 })
 
 loadCreds()
+renderZbaStatus()
 refresh()

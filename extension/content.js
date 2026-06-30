@@ -321,10 +321,12 @@ async function tryRecoverAuth() {
     reloginFails = 0
     setAuthState(true)
     postStatus(true, '')
+    safeStorageSet({ zbaReloginResult: 'success', zbaReloginAt: Date.now() })
     console.log(`[リード監視:${SITE}] ✓ 自動再ログイン成功`)
     return true
   }
   reloginFails++
+  safeStorageSet({ zbaReloginResult: 'fail', zbaReloginAt: Date.now() })
   console.warn(`[リード監視:${SITE}] 自動再ログイン失敗 (${reloginFails}/${RELOGIN_MAX_FAILS})`)
   return false
 }
@@ -341,6 +343,7 @@ function postStatus(ok, reason, count) {
 // 拡張アイコンの警告バッジ（background経由）。状態が変わった時だけ通知。
 let zbaAuthOk = null
 function setAuthState(ok) {
+  safeStorageSet({ zbaAuthOk: ok, zbaAuthAt: Date.now() }) // ポップアップ表示用（毎回更新）
   if (zbaAuthOk === ok) return
   zbaAuthOk = ok
   try {
@@ -498,16 +501,16 @@ async function fetchDetailViaApi(orderId, companyId) {
       body: JSON.stringify({ orderId, companyId }),
     })
     if (r.status === 401 || r.status === 403) { invalidateCsrf(); setAuthState(false); postStatus(false, 'auth'); return false }
-    if (!r.ok) { console.warn(`[リード監視:${SITE}] 詳細API失敗`, orderId, r.status); return false }
+    if (!r.ok) { console.log(`[リード監視:${SITE}] 詳細API失敗（リトライ対象）`, orderId, r.status); return false }
     const j = await r.json()
     const o = j && j.response
-    if (!o || !o.tel) { console.warn(`[リード監視:${SITE}] 詳細API 中身なし`, orderId); return false }
+    if (!o || !o.tel) { console.log(`[リード監視:${SITE}] 詳細API 中身なし（リトライ対象）`, orderId); return false }
     const d = detailFromApi(o)
     const res = await sendLead(d)
     const ok = !!(res && res.ok)
     console.log(`[リード監視:${SITE}] 自動詳細取得`, d.phone, ok ? 'OK' : 'NG', `家財${d.kazaiCount}種・箱${d.boxCount || 0}`)
     return ok
-  } catch (e) { console.warn(`[リード監視:${SITE}] 詳細API例外`, orderId, e); return false }
+  } catch (e) { console.log(`[リード監視:${SITE}] 詳細API一時失敗（リトライ対象）`, orderId, e && e.message); return false }
 }
 
 let apiSyncing = false
@@ -531,11 +534,11 @@ async function apiSync() {
       } else {
         // 500等の連続失敗はセッション不正のことがあるため、2回続いたら自動再ログインを試みる
         listFailStreak++
-        console.warn(`[リード監視:${SITE}] API一覧取得失敗 (${listFailStreak})`, e)
+        console.log(`[リード監視:${SITE}] API一覧取得失敗（リトライ対象 ${listFailStreak}）`, e && e.message)
         if (listFailStreak >= 2) {
           const ok = await tryRecoverAuth()
           if (ok) { listFailStreak = 0 }
-          else { setAuthState(false); postStatus(false, 'auth') }
+          else { setAuthState(false); postStatus(false, 'auth'); console.warn(`[リード監視:${SITE}] ⚠ 自動再ログインで回復できません。ID/PWの確認、または手動再ログインをしてください`) }
         } else {
           postStatus(false, 'error')
         }
