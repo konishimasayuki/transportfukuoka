@@ -6,6 +6,7 @@ const TITLES = {
   leads:     'リード管理',
   call:      '架電機能',
   estimate:  '見積書',
+  schedule:  'スケジュール',
   settings:  '設定',
 }
 
