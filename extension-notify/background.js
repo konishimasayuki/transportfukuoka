@@ -27,7 +27,7 @@ async function runBurst() {
   const start = Date.now()
   try {
     while (Date.now() - start < WINDOW_MS) {
-      await pollOnce()
+      try { await pollOnce() } catch (e) { console.warn('[新着通知] poll error', e) }
       if (Date.now() - start + STEP_MS >= WINDOW_MS) break
       await sleep(STEP_MS)
     }
