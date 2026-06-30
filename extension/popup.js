@@ -61,7 +61,8 @@ document.getElementById('resync').addEventListener('click', async () => {
 })
 
 // 引越し侍：取りこぼし取り込み。
-// 一覧ページに常駐する samurai.js へ依頼し、表示中ページの全依頼を詳細取得して送信させる。
+// content.js の有無に依存しないよう、その場でスクレイプ＆詳細取得をページへ注入して実行。
+// 返ってきたリードを background 経由でサーバへ送る（重複はサーバ側で除外）。
 document.getElementById('resyncSamurai').addEventListener('click', async () => {
   const btn = document.getElementById('resyncSamurai')
   const result = document.getElementById('resultSamurai')
@@ -72,25 +73,90 @@ document.getElementById('resyncSamurai').addEventListener('click', async () => {
     const tabs = await chrome.tabs.query({ url: 'https://hikkosizamurai.com/admin/*' })
     if (!tabs.length) {
       result.style.color = '#dc2626'
-      result.textContent = '引越し侍の一覧ページを開いてから実行してください'
+      result.textContent = '引越し侍の一覧ページ（/admin/...）を開いてから実行してください'
       return
     }
-    const res = await chrome.tabs.sendMessage(tabs[0].id, { type: 'SAMURAI_RESYNC' })
-    if (!res || !res.ok) {
+    const frames = await chrome.scripting.executeScript({
+      target: { tabId: tabs[0].id },
+      func: samuraiScrapeAndFetch,
+    })
+    const r = (frames && frames[0] && frames[0].result) || {}
+    if (r.error === 'rows-not-found' || !r.leads) {
       result.style.color = '#dc2626'
-      result.textContent = '失敗: ' + ((res && res.error) || '応答なし（一覧ページを再読込してください）')
+      result.textContent = '一覧の行が見つかりません。引越し侍の依頼一覧を表示してから実行してください'
       return
     }
-    result.style.color = res.added > 0 ? '#16a34a' : '#64748b'
-    result.textContent = `新規${res.added}件を取り込み（重複${res.dup}・失敗${res.fail}／一覧${res.total}件）`
+    const leads = r.leads
+    if (!leads.length) {
+      result.style.color = '#64748b'
+      result.textContent = '対象がありませんでした'
+      return
+    }
+    let added = 0, dup = 0, fail = 0
+    for (const lead of leads) {
+      const res = await chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead })
+      if (res && res.ok) { res.duplicate ? dup++ : added++ } else fail++
+    }
+    result.style.color = added > 0 ? '#16a34a' : '#64748b'
+    result.textContent = `新規${added}件を取り込み（重複${dup}・失敗${fail}／一覧${leads.length}件）`
     refresh()
   } catch (e) {
     result.style.color = '#dc2626'
-    result.textContent = 'エラー: ' + (e && e.message ? e.message : String(e)) + '（拡張をリロード＆一覧を再読込）'
+    result.textContent = 'エラー: ' + (e && e.message ? e.message : String(e))
   } finally {
     btn.disabled = false
   }
 })
+
+// ページ内で実行（自己完結。executeScript用）。表示中の一覧→依頼番号→詳細fetch→リード配列。
+async function samuraiScrapeAndFetch() {
+  const norm = s => (s == null ? '' : String(s)).replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
+  const textOf = el => norm(el ? el.textContent : '')
+  const links = [...document.querySelectorAll('a[href*="/request/detail/id/"]')]
+  const dedup = new Set(); const items = []
+  for (const a of links) {
+    const m = (a.getAttribute('href') || '').match(/id\/(\d+)/)
+    if (m && !dedup.has(m[1])) { dedup.add(m[1]); items.push({ id: m[1], tr: a.closest('tr') }) }
+  }
+  if (!items.length) return { error: 'rows-not-found' }
+  const padMD = s => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/); return m ? `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')} ${m[3].padStart(2, '0')}:${m[4]}` : (s || '') }
+  const baseOf = (id, tr) => { const c = tr ? [...tr.children].map(textOf) : []; return { id, name: c[1] || '', fromPref: c[2] || '', toPref: c[3] || '', type: c[4] || '', receivedAt: padMD(c[5] || ''), moveDate: c[6] || '' } }
+  const buildLabelMap = doc => { const map = {}; doc.querySelectorAll('tr').forEach(tr => { const cells = [...tr.children]; for (let i = 0; i + 1 < cells.length; i++) { const k = textOf(cells[i]); if (k && !(k in map)) map[k] = textOf(cells[i + 1]) } }); return map }
+  const parseKazai = doc => {
+    const lbl = [...doc.querySelectorAll('th,td')].find(c => textOf(c) === '家財')
+    if (!lbl) return []
+    const tokens = [...lbl.parentElement.querySelectorAll('th,td')].flatMap(c => textOf(c).split(' ')).filter(Boolean)
+    const cats = new Set(['家財', '家具', '家電', 'その他', '重量物'])
+    const out = []
+    for (let i = 0; i < tokens.length; i++) {
+      if (/^\d+$/.test(tokens[i])) { const qty = parseInt(tokens[i], 10); const name = tokens[i - 1]; if (qty > 0 && name && !cats.has(name)) out.push({ name, qty }) }
+    }
+    return out
+  }
+  const leads = []
+  for (const { id, tr } of items) {
+    try {
+      const b = baseOf(id, tr)
+      const res = await fetch(`/admin/request/detail/id/${id}`, { credentials: 'include', headers: { accept: 'text/html' } })
+      if (!res.ok) continue
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html')
+      const map = buildLabelMap(doc); const get = k => map[k] || ''
+      const phone = (get('電話番号').match(/0\d{1,4}-\d{1,4}-\d{3,4}/) || [''])[0]
+      const email = (get('メールアドレス').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [''])[0]
+      const name = get('名前').replace(/\s*様$/, '').replace(/\s*さん$/, '') || b.name
+      leads.push({
+        site: '引越し侍', key: phone || `引越し侍:${id}`, phone, name,
+        kana: get('フリガナ'), email, count: get('引越し人数') || b.type,
+        from: b.fromPref, to: b.toPref, receivedAt: b.receivedAt,
+        moveDate: get('引越し希望日') || b.moveDate, preferredTime: get('引越し希望時間'),
+        referenceFee: get('表示料金相場'), request: get('備考・その他要望'),
+        orderId: String(id), kazai: parseKazai(doc), detail: true, detectedAt: new Date().toISOString(),
+      })
+      await new Promise(r => setTimeout(r, 200))
+    } catch {}
+  }
+  return { leads }
+}
 
 // ページ内で実行される関数（外部変数を参照しない自己完結。executeScript用）
 function scrapeRows() {
