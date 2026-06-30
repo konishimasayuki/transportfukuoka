@@ -54,6 +54,12 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const items = await getItems()
+      // 軽量モード：?recent=N で直近N件（savedAt降順）＋総数だけ返す（新着通知ポーリング用）
+      const recent = parseInt((req.query && req.query.recent) || '', 10)
+      if (recent > 0) {
+        const sorted = [...items].sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
+        return res.json({ count: items.length, items: sorted.slice(0, recent) })
+      }
       return res.json({ items })
     }
 

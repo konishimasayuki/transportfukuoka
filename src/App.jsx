@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
+import LeadNotifier from './components/LeadNotifier'
 import Login from './tabs/Login'
 import Dashboard from './tabs/Dashboard'
 import Sales from './tabs/Sales'
@@ -85,6 +86,7 @@ export default function App() {
           <ActiveTab user={user} switchTab={switchTab} />
         </div>
       </div>
+      <LeadNotifier user={user} switchTab={switchTab} />
     </div>
   )
 }
