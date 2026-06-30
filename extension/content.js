@@ -277,6 +277,7 @@ async function getCsrfToken() {
 // ロック/BAN対策：最短5分に1回まで・連続失敗で停止。資格情報はこのPCのローカルのみ。
 let lastReloginAt = 0
 let reloginFails = 0
+let listFailStreak = 0 // 一覧取得の連続失敗（500等のセッション不正を再ログインで回復するため）
 const RELOGIN_MIN_GAP = 5 * 60 * 1000
 const RELOGIN_MAX_FAILS = 5
 
@@ -366,7 +367,7 @@ async function fetchOrderList() {
     body: JSON.stringify(body),
   })
   if (r.status === 401 || r.status === 403) { invalidateCsrf(); throw authError() }
-  if (!r.ok) throw new Error('order-info-list ' + r.status)
+  if (!r.ok) { invalidateCsrf(); throw new Error('order-info-list ' + r.status) } // 500等もCSRFを取り直す（古いトークン対策）
   const j = await r.json()
   return (j && j.response) || []
 }
@@ -528,11 +529,20 @@ async function apiSync() {
           postStatus(false, 'auth')
         }
       } else {
-        console.warn(`[リード監視:${SITE}] API一覧取得失敗`, e)
-        postStatus(false, 'error')
+        // 500等の連続失敗はセッション不正のことがあるため、2回続いたら自動再ログインを試みる
+        listFailStreak++
+        console.warn(`[リード監視:${SITE}] API一覧取得失敗 (${listFailStreak})`, e)
+        if (listFailStreak >= 2) {
+          const ok = await tryRecoverAuth()
+          if (ok) { listFailStreak = 0 }
+          else { setAuthState(false); postStatus(false, 'auth') }
+        } else {
+          postStatus(false, 'error')
+        }
       }
       return
     }
+    listFailStreak = 0
     setAuthState(true)
     markBeat() // セッション生存
     postStatus(true, '', list.length) // 生存ハートビート
