@@ -158,6 +158,16 @@ function samuraiLoop(gen, todayMD) {
     for (let i = 0; i < tokens.length; i++) { if (/^\d+$/.test(tokens[i])) { const q = parseInt(tokens[i], 10), n = tokens[i - 1]; if (!n || SKIP.has(n)) continue; if (n === 'ダンボール' || n === 'ダンボール箱') { if (q > 0) boxCount = String(q); continue } if (q > 0) kazai.push({ name: n, qty: q }) } }
     return { kazai, boxCount }
   }
+  // 住所抽出：ラベルと同じセルから「漢字の都道府県以降（市区町村＋番地）」を切り出す。〒・カナのフリガナは除外。
+  const PREF_RE = /(北海道|青森県|岩手県|宮城県|秋田県|山形県|福島県|茨城県|栃木県|群馬県|埼玉県|千葉県|東京都|神奈川県|新潟県|富山県|石川県|福井県|山梨県|長野県|岐阜県|静岡県|愛知県|三重県|滋賀県|京都府|大阪府|兵庫県|奈良県|和歌山県|鳥取県|島根県|岡山県|広島県|山口県|徳島県|香川県|愛媛県|高知県|福岡県|佐賀県|長崎県|熊本県|大分県|宮崎県|鹿児島県|沖縄県)/
+  const addrOf = (doc, label) => {
+    const cell = [...doc.querySelectorAll('th,td')].find(c => textOf(c).startsWith(label))
+    if (!cell) return ''
+    let s = textOf(cell); if (s.startsWith(label)) s = s.slice(label.length).trim()
+    const m = s.match(PREF_RE)
+    if (m) return s.slice(m.index).trim()
+    return s.replace(/〒?\d{3}-\d{4}/, '').trim()
+  }
   const HDR = { accept: 'text/html', 'cache-control': 'no-cache', pragma: 'no-cache' }
   const isToday = rs => /^\d{2}\/\d{2}/.test(rs || '') && String(rs).slice(0, 5) === todayMD
 
@@ -197,7 +207,7 @@ function samuraiLoop(gen, todayMD) {
             const email = (get('メールアドレス').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [''])[0]
             const name = get('名前').replace(/\s*様$/, '').replace(/\s*さん$/, '') || base.name
             const k = parseKazaiFull(doc)
-            const lead = { site: '引越し侍', key: phone || ('引越し侍:' + base.id), phone, name, kana: get('フリガナ'), email, count: get('引越し人数') || base.type, from: base.fromPref, to: base.toPref, receivedAt: base.receivedAt, moveDate: get('引越し希望日') || base.moveDate, preferredTime: get('引越し希望時間'), referenceFee: get('表示料金相場'), request: get('備考・その他要望'), orderId: String(base.id), kazai: k.kazai, boxCount: k.boxCount, detail: true, detectedAt: new Date().toISOString() }
+            const lead = { site: '引越し侍', key: phone || ('引越し侍:' + base.id), phone, name, kana: get('フリガナ'), email, count: get('引越し人数') || base.type, from: addrOf(doc, '現住所') || base.fromPref, to: addrOf(doc, '引越し先') || base.toPref, receivedAt: base.receivedAt, moveDate: get('引越し希望日') || base.moveDate, preferredTime: get('引越し希望時間'), referenceFee: get('表示料金相場'), request: get('備考・その他要望'), orderId: String(base.id), kazai: k.kazai, boxCount: k.boxCount, detail: true, detectedAt: new Date().toISOString() }
             const r = await send(lead)
             if (r && r.ok) { seen.add(base.id); changed = true; cnt++ }
           } catch (e) { /* skip */ }
