@@ -147,7 +147,7 @@ async function samuraiScrapeAndFetch() {
   for (const { id, tr } of items) {
     try {
       const b = baseOf(id, tr)
-      const res = await fetch(`/admin/request/detail/id/${id}`, { credentials: 'include', headers: { accept: 'text/html' } })
+      const res = await fetch(`/admin/request/detail/id/${id}`, { credentials: 'include', cache: 'no-store', headers: { accept: 'text/html', 'cache-control': 'no-cache' } })
       if (!res.ok) continue
       const doc = new DOMParser().parseFromString(await res.text(), 'text/html')
       const map = buildLabelMap(doc); const get = k => map[k] || ''

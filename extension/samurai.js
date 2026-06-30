@@ -181,7 +181,11 @@
 
   // ---- リスト取得（新着検知）----
   async function fetchListRows() {
-    const res = await fetch(LIST_PATH, { credentials: 'include', headers: { accept: 'text/html' } })
+    // cache:'no-store' とキャッシュバスターで毎回サーバー最新を取得（HTTPキャッシュで古い一覧が返るのを防ぐ）
+    const res = await fetch(`${LIST_PATH}?_=${Date.now()}`, {
+      credentials: 'include', cache: 'no-store',
+      headers: { accept: 'text/html', 'cache-control': 'no-cache', pragma: 'no-cache' },
+    })
     if (!res.ok) throw new Error('list ' + res.status)
     const html = await res.text()
     const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -201,7 +205,7 @@
   }
 
   async function fetchDetail(id) {
-    const res = await fetch(detailPath(id), { credentials: 'include', headers: { accept: 'text/html' } })
+    const res = await fetch(detailPath(id), { credentials: 'include', cache: 'no-store', headers: { accept: 'text/html', 'cache-control': 'no-cache' } })
     if (!res.ok) throw new Error('detail ' + res.status)
     const html = await res.text()
     return new DOMParser().parseFromString(html, 'text/html')
