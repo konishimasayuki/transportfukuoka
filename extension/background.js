@@ -1,49 +1,48 @@
 // =====================================================================
 // background service worker
-// content.js から受け取った新規リードを Vercel の受け口へ送信する。
-// host_permissions に送信先を入れているため CORS の影響を受けない。
+// - content.js（ズバット）から受け取ったリードを Vercel の受け口へ送信
+// - ズバットのセッション・キープアライブ（chrome.alarms）
+// - 引越し侍：ログイン中タブへ高速ポーリングループを注入（タブのリロード不要・約8秒間隔）
+// host_permissions に対象を入れているため CORS / Cookie の制約を受けない。
 // =====================================================================
 
 const API_URL = 'https://transportfukuoka.vercel.app/api/inbound'
 const STATUS_URL = 'https://transportfukuoka.vercel.app/api/status'
 const ZBA_CSRF = 'https://hikkoshi-kanri.zba.jp/hikkoshi-kanriengine-api/csrf'
 
-// ===== セッション・キープアライブ =====
-// content.js（タブ）が生存ポーリングしていれば任せる。タブが休止・夜間・PC復帰直後など
-// ポーリングが止まっている時だけ、背面で認証必須の軽量API(/csrf)を叩いてセッションを温め、
-// 生存状態をCRM(/api/status)に送る。これによりタブが休止してもセッションが切れにくくなる。
 const KEEPALIVE_ALARM    = 'zba-keepalive'
 const KEEPALIVE_STALE_MS = 90 * 1000   // タブ側ハートビートがこれより古ければ背面で生存確認
 const SAMURAI_ALARM      = 'samurai-poll'
-const SAMURAI_VERSION    = 2            // 取込ロジック変更で+1（seenをリセットし当日分を取り直す）
 
 chrome.runtime.onInstalled.addListener(ensureAlarm)
 chrome.runtime.onStartup.addListener(ensureAlarm)
 function ensureAlarm() {
-  // 1分ごとにチェック（タブが動いていれば実際の通信はスキップするので負荷は最小）
   chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 1 })
-  // 引越し侍：背面ポーリング（毎回最新コードを注入するためタブのリロード不要）
-  chrome.alarms.create(SAMURAI_ALARM, { periodInMinutes: 1 })
+  chrome.alarms.create(SAMURAI_ALARM, { periodInMinutes: 1 }) // ループ生存確認＆再注入用
 }
 ensureAlarm()
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === KEEPALIVE_ALARM) keepAlive()
-  if (alarm.name === SAMURAI_ALARM) samuraiPoll()
+  if (alarm.name === SAMURAI_ALARM) ensureSamuraiLoop()
 })
 
+// 引越し侍タブが読み込まれたら高速ループを注入（開き直し時も自動で復帰）
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.status === 'complete' && tab && tab.url && tab.url.startsWith('https://hikkosizamurai.com/admin')) {
+    ensureSamuraiLoop()
+  }
+})
+ensureSamuraiLoop() // SW起動時にも一度試行
+
+// ===== ズバット セッション・キープアライブ =====
 async function keepAlive() {
   try {
     const { lastBeatAt } = await chrome.storage.local.get(['lastBeatAt'])
     if (lastBeatAt && (Date.now() - lastBeatAt) < KEEPALIVE_STALE_MS) return // タブが生存ポーリング中
     const r = await fetch(ZBA_CSRF, { method: 'GET', credentials: 'include', headers: { accept: 'application/json' } })
-    if (r.status === 401 || r.status === 403) {
-      setAuthBadge(false)
-      await postStatus(false, 'auth')
-      return
-    }
+    if (r.status === 401 || r.status === 403) { setAuthBadge(false); await postStatus(false, 'auth'); return }
     if (!r.ok) { await postStatus(false, 'error'); return }
-    // 生存OK：セッションを温めつつ CRM へハートビート
     await chrome.storage.local.set({ lastBeatAt: Date.now() })
     setAuthBadge(true)
     await postStatus(true, '')
@@ -105,47 +104,43 @@ async function handleLead(lead) {
   }
 }
 
-// ===== 引越し侍：背面ポーリング =====
-// chrome.alarms で1分ごとに発火。ログイン中の引越し侍タブへ最新コードを注入して
-// 一覧＋詳細を取得（注入なので拡張更新後もタブのリロード不要）。当日分の未送信のみ取込。
-let samuraiBusy = false
-async function samuraiPoll() {
-  if (samuraiBusy) return
-  samuraiBusy = true
-  try {
-    const tabs = await chrome.tabs.query({ url: 'https://hikkosizamurai.com/admin/*' })
-    if (!tabs.length) return // ログイン中のタブが無いと取得できない（セッションCookie/注入先が必要）
-    const store = await chrome.storage.local.get(['samuraiSeen', 'samuraiVersion'])
-    const seenArr = store.samuraiVersion === SAMURAI_VERSION ? (store.samuraiSeen || []) : []
-    const td = new Date()
-    const todayMD = String(td.getMonth() + 1).padStart(2, '0') + '/' + String(td.getDate()).padStart(2, '0')
-
-    let frames
-    try {
-      frames = await chrome.scripting.executeScript({ target: { tabId: tabs[0].id }, func: samuraiCollect, args: [seenArr, todayMD] })
-    } catch (e) { console.warn('[引越し侍] 注入失敗', e); return }
-    const res = frames && frames[0] && frames[0].result
-    if (!res) return
-    if (res.auth) { console.warn('[引越し侍] ⚠ ログイン切れの可能性'); setAuthBadge(false); return }
-    if (res.error) { console.warn('[引越し侍] 取得失敗', res.error); return }
-
-    const seen = new Set(seenArr)
-    ;(res.allIds || []).forEach(x => { if (!x.today) seen.add(x.id) }) // 過去分は対象外として確定
-    let added = 0
-    for (const lead of (res.leads || [])) {
-      const r = await handleLead(lead)
-      if (r && r.ok) { seen.add(lead.orderId); if (!r.duplicate) added++ }
-    }
-    await chrome.storage.local.set({ samuraiSeen: Array.from(seen).slice(-5000), samuraiVersion: SAMURAI_VERSION })
-    if (res.leads && res.leads.length) {
-      console.log(`[引越し侍] ${res.leads.length}件処理（新規${added}）／当日未取込の残り≈${Math.max(0, (res.freshCount || 0) - res.leads.length)}`)
-    }
-  } finally { samuraiBusy = false }
+// 本日の検知件数をバッジに表示
+async function bumpCount() {
+  const today = new Date().toISOString().slice(0, 10)
+  const { countDate, count } = await chrome.storage.local.get(['countDate', 'count'])
+  const next = (countDate === today ? (count || 0) : 0) + 1
+  await chrome.storage.local.set({ countDate: today, count: next })
+  chrome.action.setBadgeText({ text: String(next) })
+  chrome.action.setBadgeBackgroundColor({ color: '#1E5FA8' })
 }
 
-// ページに注入される自己完結関数：一覧(no-store)＋当日未送信の詳細を取得してリード配列を返す
-async function samuraiCollect(seenArr, todayMD) {
-  const norm = s => (s == null ? '' : String(s)).replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
+// ===== 引越し侍：ページ内 高速ポーリングループの注入 =====
+// 1分ごとのアラーム＋タブ読み込み時に、ログイン中の引越し侍タブへ高速ループを注入する。
+// ループはページ側で約8秒間隔で回るためSWのスリープに影響されず、注入は常に最新コード
+// なので拡張更新後もタブのリロード不要。世代トークンで多重起動を防止（最新の注入が勝つ）。
+async function ensureSamuraiLoop() {
+  let tabs = []
+  try { tabs = await chrome.tabs.query({ url: 'https://hikkosizamurai.com/admin/*' }) } catch { return }
+  if (!tabs.length) return
+  const td = new Date()
+  const todayMD = String(td.getMonth() + 1).padStart(2, '0') + '/' + String(td.getDate()).padStart(2, '0')
+  const gen = Date.now()
+  try {
+    await chrome.scripting.executeScript({ target: { tabId: tabs[0].id }, func: samuraiLoop, args: [gen, todayMD] })
+  } catch (e) { /* タブが閉じた等 */ }
+}
+
+// ページに注入される自己完結ループ。約8秒ごとに一覧(no-store)を取得し、
+// 当日(依頼日=今日)で未送信のものだけ詳細取得して background(NEW_LEAD) へ送る。
+function samuraiLoop(gen, todayMD) {
+  window.__tfSamuraiGen = gen
+  window.__tfSamuraiSeen = window.__tfSamuraiSeen || [] // ページ存続中の取込済みid（リロードで自然リセット→当日分は再送・サーバ重複除外）
+  const seen = new Set(window.__tfSamuraiSeen)
+  const persist = () => { window.__tfSamuraiSeen = Array.from(seen).slice(-5000) }
+  const POLL_MS = 8000, PER = 8, GAP = 300
+  const INBOUND = 'https://transportfukuoka.vercel.app/api/inbound'
+
+  const norm = s => (s == null ? '' : String(s)).replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
   const textOf = el => norm(el ? el.textContent : '')
   const pad = n => String(n).padStart(2, '0')
   const padMD = s => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/); return m ? `${pad(m[1])}/${pad(m[2])} ${pad(m[3])}:${m[4]}` : (s || '') }
@@ -162,41 +157,54 @@ async function samuraiCollect(seenArr, todayMD) {
     return { kazai, boxCount }
   }
   const HDR = { accept: 'text/html', 'cache-control': 'no-cache', pragma: 'no-cache' }
-  let listHtml
-  try { const r = await fetch('/admin/request/list?_=' + Date.now(), { credentials: 'include', cache: 'no-store', headers: HDR }); if (!r.ok) return { error: 'list ' + r.status }; listHtml = await r.text() } catch (e) { return { error: String(e) } }
-  const ldoc = new DOMParser().parseFromString(listHtml, 'text/html')
-  const links = [...ldoc.querySelectorAll('a[href*="/request/detail/id/"]')]
-  if (!links.length) return { auth: true }
-  const dedup = new Set(); const rows = []
-  for (const a of links) { const m = (a.getAttribute('href') || '').match(/id\/(\d+)/); if (m && !dedup.has(m[1])) { dedup.add(m[1]); rows.push(baseOf(m[1], a.closest('tr'))) } }
-  const seen = new Set(seenArr || [])
   const isToday = rs => /^\d{2}\/\d{2}/.test(rs || '') && String(rs).slice(0, 5) === todayMD
-  const allIds = rows.map(r => ({ id: r.id, today: isToday(r.receivedAt) }))
-  const fresh = rows.filter(r => isToday(r.receivedAt) && !seen.has(r.id))
-  const PER = 8, GAP = 300
-  const leads = []
-  for (const base of fresh.slice(0, PER)) {
-    try {
-      const r = await fetch('/admin/request/detail/id/' + base.id, { credentials: 'include', cache: 'no-store', headers: HDR }); if (!r.ok) continue
-      const doc = new DOMParser().parseFromString(await r.text(), 'text/html')
-      const map = buildLabelMap(doc); const get = k => map[k] || ''
-      const phone = (get('電話番号').match(/0\d{1,4}-\d{1,4}-\d{3,4}/) || [''])[0]
-      const email = (get('メールアドレス').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [''])[0]
-      const name = get('名前').replace(/\s*様$/, '').replace(/\s*さん$/, '') || base.name
-      const k = parseKazaiFull(doc)
-      leads.push({ site: '引越し侍', key: phone || ('引越し侍:' + base.id), phone, name, kana: get('フリガナ'), email, count: get('引越し人数') || base.type, from: base.fromPref, to: base.toPref, receivedAt: base.receivedAt, moveDate: get('引越し希望日') || base.moveDate, preferredTime: get('引越し希望時間'), referenceFee: get('表示料金相場'), request: get('備考・その他要望'), orderId: String(base.id), kazai: k.kazai, boxCount: k.boxCount, detail: true, detectedAt: new Date().toISOString() })
-    } catch {}
-    await new Promise(res => setTimeout(res, GAP))
-  }
-  return { allIds, leads, freshCount: fresh.length }
-}
 
-// 本日の検知件数をバッジに表示
-async function bumpCount() {
-  const today = new Date().toISOString().slice(0, 10)
-  const { countDate, count } = await chrome.storage.local.get(['countDate', 'count'])
-  const next = (countDate === today ? (count || 0) : 0) + 1
-  await chrome.storage.local.set({ countDate: today, count: next })
-  chrome.action.setBadgeText({ text: String(next) })
-  chrome.action.setBadgeBackgroundColor({ color: '#1E5FA8' })
+  const send = (lead) => new Promise(res => {
+    let done = false
+    try {
+      chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead }, r => { done = true; if (chrome.runtime.lastError) res(null); else res(r) })
+    } catch { res(null) }
+    setTimeout(() => { if (!done) res(null) }, 4000)
+  }).then(r => r || fetch(INBOUND, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) }).then(() => ({ ok: true })).catch(() => ({ ok: false })))
+
+  async function fetchDoc(url) {
+    const r = await fetch(url, { credentials: 'include', cache: 'no-store', headers: HDR })
+    if (!r.ok) throw new Error(String(r.status))
+    return new DOMParser().parseFromString(await r.text(), 'text/html')
+  }
+
+  async function tick() {
+    if (window.__tfSamuraiGen !== gen) return // 新しい注入が来たら旧ループは終了
+    try {
+      const ldoc = await fetchDoc('/admin/request/list?_=' + Date.now())
+      const links = [...ldoc.querySelectorAll('a[href*="/request/detail/id/"]')]
+      if (links.length) {
+        const dd = new Set(); const rows = []
+        for (const a of links) { const m = (a.getAttribute('href') || '').match(/id\/(\d+)/); if (m && !dd.has(m[1])) { dd.add(m[1]); rows.push(baseOf(m[1], a.closest('tr'))) } }
+        let changed = false
+        rows.forEach(r => { if (!isToday(r.receivedAt) && !seen.has(r.id)) { seen.add(r.id); changed = true } })
+        const fresh = rows.filter(r => isToday(r.receivedAt) && !seen.has(r.id))
+        let cnt = 0
+        for (const base of fresh.slice(0, PER)) {
+          if (window.__tfSamuraiGen !== gen) return
+          try {
+            const doc = await fetchDoc('/admin/request/detail/id/' + base.id)
+            const map = buildLabelMap(doc); const get = k => map[k] || ''
+            const phone = (get('電話番号').match(/0\d{1,4}-\d{1,4}-\d{3,4}/) || [''])[0]
+            const email = (get('メールアドレス').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [''])[0]
+            const name = get('名前').replace(/\s*様$/, '').replace(/\s*さん$/, '') || base.name
+            const k = parseKazaiFull(doc)
+            const lead = { site: '引越し侍', key: phone || ('引越し侍:' + base.id), phone, name, kana: get('フリガナ'), email, count: get('引越し人数') || base.type, from: base.fromPref, to: base.toPref, receivedAt: base.receivedAt, moveDate: get('引越し希望日') || base.moveDate, preferredTime: get('引越し希望時間'), referenceFee: get('表示料金相場'), request: get('備考・その他要望'), orderId: String(base.id), kazai: k.kazai, boxCount: k.boxCount, detail: true, detectedAt: new Date().toISOString() }
+            const r = await send(lead)
+            if (r && r.ok) { seen.add(base.id); changed = true; cnt++ }
+          } catch (e) { /* skip */ }
+          await new Promise(res => setTimeout(res, GAP))
+        }
+        if (changed) persist()
+        if (cnt) console.log('[リード監視:引越し侍] 送信', cnt, '件')
+      }
+    } catch (e) { /* 一覧取得失敗。次のtickで再試行 */ }
+    if (window.__tfSamuraiGen === gen) setTimeout(tick, POLL_MS)
+  }
+  tick()
 }
