@@ -101,23 +101,35 @@
     }
   }
 
-  // 家財行（家具/家電/その他/重量物 の "品名 数量" の並び）を {name,qty}[] へ。
-  // セル単位でトークン化（行全体の textContent だと品名と数量が連結される恐れがあるため）。
-  function parseKazai(doc) {
+  // 家財欄を解析して { kazai:[{name,qty}], boxCount } を返す。
+  // 家財ラベルは rowspan で 家具/家電/その他/重量物 の複数行にまたがるため、
+  // ラベル行＋後続のサブカテゴリ行をすべて読む。ダンボールは箱数として分離。
+  const KAZAI_SUBCATS = new Set(['家具', '家電', 'その他', '重量物'])
+  const KAZAI_SKIP = new Set(['家財', '家具', '家電', 'その他', '重量物'])
+  function parseKazaiFull(doc) {
     const lbl = [...doc.querySelectorAll('th,td')].find(c => textOf(c) === '家財')
-    if (!lbl) return []
-    const cells = [...lbl.parentElement.querySelectorAll('th,td')]
-    const tokens = cells.flatMap(c => textOf(c).split(' ')).filter(Boolean)
-    const cats = new Set(['家財', '家具', '家電', 'その他', '重量物'])
-    const out = []
+    if (!lbl) return { kazai: [], boxCount: '' }
+    const rows = []
+    let tr = lbl.closest('tr')
+    if (tr) rows.push(tr)
+    let nx = tr ? tr.nextElementSibling : null
+    while (nx) {
+      const first = textOf(nx.querySelector('th,td'))
+      if (KAZAI_SUBCATS.has(first)) { rows.push(nx); nx = nx.nextElementSibling } else break
+    }
+    const tokens = rows.flatMap(r => [...r.querySelectorAll('th,td')]).flatMap(c => textOf(c).split(' ')).filter(Boolean)
+    const kazai = []
+    let boxCount = ''
     for (let i = 0; i < tokens.length; i++) {
       if (/^\d+$/.test(tokens[i])) {
         const qty = parseInt(tokens[i], 10)
         const name = tokens[i - 1]
-        if (qty > 0 && name && !cats.has(name)) out.push({ name, qty })
+        if (!name || KAZAI_SKIP.has(name)) continue
+        if (name === 'ダンボール' || name === 'ダンボール箱') { if (qty > 0) boxCount = String(qty); continue }
+        if (qty > 0) kazai.push({ name, qty })
       }
     }
-    return out
+    return { kazai, boxCount }
   }
 
   function parseDetailDoc(doc, id, base) {
@@ -127,6 +139,7 @@
     const email = (get('メールアドレス').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [''])[0]
     const name = get('名前').replace(/\s*様$/, '').replace(/\s*さん$/, '')
     const persons = get('引越し人数') || (base && base.type) || ''
+    const k = parseKazaiFull(doc)
     return {
       phone,
       email,
@@ -137,7 +150,8 @@
       preferredTime: get('引越し希望時間'),
       referenceFee: get('表示料金相場'),
       request: get('備考・その他要望'),
-      kazai: parseKazai(doc),
+      kazai: k.kazai,
+      boxCount: k.boxCount,
     }
   }
 
@@ -159,6 +173,7 @@
       request: detail.request || '',
       orderId: String(base.id),
       kazai: detail.kazai || [],
+      boxCount: detail.boxCount || '',
       detail: true,
       detectedAt: new Date().toISOString(),
     }

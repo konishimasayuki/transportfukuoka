@@ -122,16 +122,26 @@ async function samuraiScrapeAndFetch() {
   const padMD = s => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/); return m ? `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')} ${m[3].padStart(2, '0')}:${m[4]}` : (s || '') }
   const baseOf = (id, tr) => { const c = tr ? [...tr.children].map(textOf) : []; return { id, name: c[1] || '', fromPref: c[2] || '', toPref: c[3] || '', type: c[4] || '', receivedAt: padMD(c[5] || ''), moveDate: c[6] || '' } }
   const buildLabelMap = doc => { const map = {}; doc.querySelectorAll('tr').forEach(tr => { const cells = [...tr.children]; for (let i = 0; i + 1 < cells.length; i++) { const k = textOf(cells[i]); if (k && !(k in map)) map[k] = textOf(cells[i + 1]) } }); return map }
-  const parseKazai = doc => {
+  const SUBCATS = new Set(['家具', '家電', 'その他', '重量物'])
+  const SKIP = new Set(['家財', '家具', '家電', 'その他', '重量物'])
+  const parseKazaiFull = doc => {
     const lbl = [...doc.querySelectorAll('th,td')].find(c => textOf(c) === '家財')
-    if (!lbl) return []
-    const tokens = [...lbl.parentElement.querySelectorAll('th,td')].flatMap(c => textOf(c).split(' ')).filter(Boolean)
-    const cats = new Set(['家財', '家具', '家電', 'その他', '重量物'])
-    const out = []
+    if (!lbl) return { kazai: [], boxCount: '' }
+    const rows = []
+    let tr = lbl.closest('tr'); if (tr) rows.push(tr)
+    let nx = tr ? tr.nextElementSibling : null
+    while (nx) { const first = textOf(nx.querySelector('th,td')); if (SUBCATS.has(first)) { rows.push(nx); nx = nx.nextElementSibling } else break }
+    const tokens = rows.flatMap(r => [...r.querySelectorAll('th,td')]).flatMap(c => textOf(c).split(' ')).filter(Boolean)
+    const kazai = []; let boxCount = ''
     for (let i = 0; i < tokens.length; i++) {
-      if (/^\d+$/.test(tokens[i])) { const qty = parseInt(tokens[i], 10); const name = tokens[i - 1]; if (qty > 0 && name && !cats.has(name)) out.push({ name, qty }) }
+      if (/^\d+$/.test(tokens[i])) {
+        const qty = parseInt(tokens[i], 10); const name = tokens[i - 1]
+        if (!name || SKIP.has(name)) continue
+        if (name === 'ダンボール' || name === 'ダンボール箱') { if (qty > 0) boxCount = String(qty); continue }
+        if (qty > 0) kazai.push({ name, qty })
+      }
     }
-    return out
+    return { kazai, boxCount }
   }
   const leads = []
   for (const { id, tr } of items) {
@@ -144,13 +154,14 @@ async function samuraiScrapeAndFetch() {
       const phone = (get('電話番号').match(/0\d{1,4}-\d{1,4}-\d{3,4}/) || [''])[0]
       const email = (get('メールアドレス').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [''])[0]
       const name = get('名前').replace(/\s*様$/, '').replace(/\s*さん$/, '') || b.name
+      const k = parseKazaiFull(doc)
       leads.push({
         site: '引越し侍', key: phone || `引越し侍:${id}`, phone, name,
         kana: get('フリガナ'), email, count: get('引越し人数') || b.type,
         from: b.fromPref, to: b.toPref, receivedAt: b.receivedAt,
         moveDate: get('引越し希望日') || b.moveDate, preferredTime: get('引越し希望時間'),
         referenceFee: get('表示料金相場'), request: get('備考・その他要望'),
-        orderId: String(id), kazai: parseKazai(doc), detail: true, detectedAt: new Date().toISOString(),
+        orderId: String(id), kazai: k.kazai, boxCount: k.boxCount, detail: true, detectedAt: new Date().toISOString(),
       })
       await new Promise(r => setTimeout(r, 200))
     } catch {}
