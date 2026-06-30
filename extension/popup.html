@@ -16,6 +16,11 @@
     .site { border-top: 1px solid #e2e8f0; margin-top: 12px; padding-top: 8px; }
     .site-name { font-size: 12px; font-weight: 700; color: #334155; }
     .hint { font-size: 10px; color: #94a3b8; margin-top: 6px; line-height: 1.4; }
+    details { margin-top: 12px; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+    summary { font-size: 12px; font-weight: 700; color: #334155; cursor: pointer; }
+    .field { display: block; font-size: 11px; color: #64748b; margin: 8px 0 3px; }
+    input[type=text], input[type=password] { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; font-family: inherit; outline: none; }
+    button.outline { background: #fff; color: #1E5FA8; border: 1px solid #1E5FA8; }
   </style>
 </head>
 <body>
@@ -41,6 +46,18 @@
     <div class="result" id="resultSamurai"></div>
     <div class="hint">※ 引越し侍の一覧ページ（取り込みたいページ）を開いた状態で押してください。件数により時間がかかります。</div>
   </div>
+
+  <details>
+    <summary>🔑 ズバット 自動再ログイン</summary>
+    <div class="hint">セッション切れ時に自動でログインし直します。ID/PWはこのPCのローカルにのみ保存され、ズバット以外には送信しません。</div>
+    <label class="field">ログインID</label>
+    <input type="text" id="zbaId" autocomplete="off" placeholder="ズバットのログインID" />
+    <label class="field">パスワード</label>
+    <input type="password" id="zbaPw" autocomplete="off" placeholder="ズバットのパスワード" />
+    <button id="zbaSave">保存する</button>
+    <button id="zbaTest" class="outline">今すぐログインを試す</button>
+    <div class="result" id="zbaResult"></div>
+  </details>
 
   <div class="muted" id="status">—</div>
   <script src="popup.js"></script>

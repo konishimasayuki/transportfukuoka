@@ -271,6 +271,62 @@ async function getCsrfToken() {
   return token
 }
 
+// ===== 自動再ログイン =====
+// セッション切れ(401/403)を検知したら、保存した資格情報で1回ログインし直す。
+// ロック/BAN対策：最短5分に1回まで・連続失敗で停止。資格情報はこのPCのローカルのみ。
+let lastReloginAt = 0
+let reloginFails = 0
+const RELOGIN_MIN_GAP = 5 * 60 * 1000
+const RELOGIN_MAX_FAILS = 5
+
+// 未ログインでも /csrf は取得できる前提（ログインに必要なため）。authError を投げない版。
+async function csrfForLogin() {
+  try {
+    const r = await fetch(`${ZBA_API}/csrf`, { credentials: 'include', headers: { accept: 'application/json' } })
+    if (!r.ok) return null
+    const j = await r.json().catch(() => null)
+    return (j && j.csrfToken) || null
+  } catch { return null }
+}
+
+async function relogin() {
+  let creds = {}
+  try { creds = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword']) } catch { return false }
+  if (!creds.zbaLoginId || !creds.zbaPassword) return false
+  const token = await csrfForLogin()
+  if (!token) return false
+  try {
+    const r = await fetch(`${ZBA_API}/supplier-kanri/login`, {
+      method: 'POST', credentials: 'include',
+      headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
+      body: JSON.stringify({ loginId: creds.zbaLoginId, password: creds.zbaPassword }),
+    })
+    if (!r.ok) return false
+    invalidateCsrf() // ログイン後はトークンを取り直す
+    return true
+  } catch { return false }
+}
+
+// authError 時の回復試行。成功したら true（呼び出し側はそのまま継続/次サイクルで再取得）。
+async function tryRecoverAuth() {
+  const now = Date.now()
+  if (reloginFails >= RELOGIN_MAX_FAILS) return false   // 連続失敗で停止（手動対応へ）
+  if (now - lastReloginAt < RELOGIN_MIN_GAP) return false // 5分に1回まで
+  lastReloginAt = now
+  console.log(`[リード監視:${SITE}] 自動再ログインを試行`)
+  const ok = await relogin()
+  if (ok) {
+    reloginFails = 0
+    setAuthState(true)
+    postStatus(true, '')
+    console.log(`[リード監視:${SITE}] ✓ 自動再ログイン成功`)
+    return true
+  }
+  reloginFails++
+  console.warn(`[リード監視:${SITE}] 自動再ログイン失敗 (${reloginFails}/${RELOGIN_MAX_FAILS})`)
+  return false
+}
+
 // CRMへ生存ハートビート送信（取得成功＝ok:true、ログイン切れ＝ok:false reason:'auth'）
 function postStatus(ok, reason, count) {
   return fetch(STATUS_URL, {
@@ -339,7 +395,7 @@ async function fetchTodayCount() {
       j.count || j.dataNum || j.total || null
     )
   } catch (e) {
-    if (e && e.auth) { setAuthState(false); postStatus(false, 'auth') }
+    if (e && e.auth) { const ok = await tryRecoverAuth(); if (!ok) { setAuthState(false); postStatus(false, 'auth') } }
     return null
   }
 }
@@ -464,9 +520,12 @@ async function apiSync() {
       list = await fetchOrderList()
     } catch (e) {
       if (e && e.auth) {
-        console.warn(`[リード監視:${SITE}] ⚠ ログイン切れの可能性。ズバットに再ログインしてください`)
-        setAuthState(false)
-        postStatus(false, 'auth')
+        const ok = await tryRecoverAuth() // 保存資格情報で自動再ログイン（5分に1回まで）
+        if (!ok) {
+          console.warn(`[リード監視:${SITE}] ⚠ ログイン切れ。自動再ログイン未設定/失敗 → 手動で再ログインしてください`)
+          setAuthState(false)
+          postStatus(false, 'auth')
+        }
       } else {
         console.warn(`[リード監視:${SITE}] API一覧取得失敗`, e)
         postStatus(false, 'error')
