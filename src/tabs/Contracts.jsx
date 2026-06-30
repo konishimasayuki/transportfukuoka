@@ -131,6 +131,15 @@ export default function Contracts({ user }) {
     setDeleteConfirm(null)
   }
 
+  // 一覧から担当者をインライン変更（全項目を保持して保存）
+  const updateContractStaff = async (item, staff) => {
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, staff } : i))
+    if (isDemo) return
+    try {
+      await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...item, staff }) })
+    } catch (e) { console.error(e) }
+  }
+
   // CSVエクスポート（現在の一覧をすべて）
   const handleExport = () => {
     const csv = toCSV(items, CSV_COLUMNS)
@@ -224,11 +233,11 @@ export default function Contracts({ user }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>ステータス</th><th>操作</th></tr>
+                <tr><th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
+                  <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id}>
                     <td><b>{item.name}</b></td>
@@ -237,6 +246,17 @@ export default function Contracts({ user }) {
                     <td>{item.route}</td>
                     <td>¥{(item.amount||0).toLocaleString()}</td>
                     <td><span className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}>{item.status}</span></td>
+                    <td>
+                      <select
+                        value={item.staff || ''}
+                        onChange={e => updateContractStaff(item, e.target.value)}
+                        style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 6px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', background: '#fff', color: item.staff ? '#1E293B' : '#94A3B8' }}
+                      >
+                        <option value="">未割当</option>
+                        {staffList.map(s => <option key={s} value={s}>{s}</option>)}
+                        {item.staff && !staffList.includes(item.staff) && <option value={item.staff}>{item.staff}</option>}
+                      </select>
+                    </td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button className="btn btn-outline btn-sm" onClick={() => openEdit(item)}>編集</button>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import LeadDetailModal, { captureLagSec, lagText, lagColor, ConvertToContractModal } from '../components/LeadDetailModal'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
+import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
@@ -94,10 +95,12 @@ export default function Leads({ user, switchTab }) {
   const [convertLead, setConvertLead] = useState(null) // ステータス「成約」変更時の登録モーダル
   const [importing, setImporting] = useState(false)
   const [toast, setToast] = useState('')
+  const [staffList, setStaffList] = useState(DEFAULT_STAFF)
   const fileRef = useRef(null)
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2600) }
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
+  useEffect(() => { if (isDemo) { setStaffList(DEFAULT_STAFF); return } fetchStaffList().then(setStaffList) }, [isDemo])
 
   const fetchItems = async () => {
     setLoading(true)
@@ -340,11 +343,11 @@ export default function Leads({ user, switchTab }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>受付日時</th><th>獲得</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>サイト</th><th style={{ textAlign: 'right' }}>金額</th><th>ステータス</th><th>操作</th></tr>
+                <tr><th>受付日時</th><th>獲得</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>サイト</th><th style={{ textAlign: 'right' }}>金額</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
+                  <tr><td colSpan={12} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
                 ) : filtered.map(item => {
                   const lag = captureLagSec(item)
                   return (
@@ -367,6 +370,18 @@ export default function Leads({ user, switchTab }) {
                         style={{ border: 'none', fontFamily: 'inherit', cursor: 'pointer', fontWeight: 700 }}
                       >
                         {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        value={item.staff || ''}
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => savePatch(item, { staff: e.target.value })}
+                        style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 6px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', background: '#fff', color: item.staff ? '#1E293B' : '#94A3B8' }}
+                      >
+                        <option value="">未割当</option>
+                        {staffList.map(s => <option key={s} value={s}>{s}</option>)}
+                        {item.staff && !staffList.includes(item.staff) && <option value={item.staff}>{item.staff}</option>}
                       </select>
                     </td>
                     <td>
