@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; width: 250px; padding: 14px; margin: 0; color: #1e293b; }
+    h1 { font-size: 14px; margin: 0 0 4px; }
+    .sub { font-size: 11px; color: #64748b; margin-bottom: 12px; }
+    .row { display: flex; align-items: center; justify-content: space-between; margin: 10px 0; font-size: 13px; }
+    .state-on { color: #16a34a; font-weight: 700; }
+    .state-off { color: #94a3b8; font-weight: 700; }
+    button { width: 100%; margin-top: 10px; padding: 9px; border: none; border-radius: 8px; background: #1E5FA8; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
+    button.outline { background: #fff; color: #1E5FA8; border: 1px solid #1E5FA8; }
+    .muted { color: #94a3b8; font-size: 10px; margin-top: 10px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <h1>🔔 新着リード通知</h1>
+  <div class="sub">トランスポート福岡（通知専用）</div>
+  <div class="row">
+    <span>通知</span>
+    <label><input type="checkbox" id="toggle" /> <span id="state" class="state-on">ON</span></label>
+  </div>
+  <button id="test" class="outline">テスト通知を出す</button>
+  <div class="muted" id="status">新着を約12秒間隔でチェックします。CRMを開かなくても、Chromeが起動していれば通知します。</div>
+  <script src="popup.js"></script>
+</body>
+</html>
