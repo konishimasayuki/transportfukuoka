@@ -38,6 +38,8 @@ ensureSamuraiLoop() // SW起動時にも一度試行
 // ===== ズバット セッション・キープアライブ =====
 async function keepAlive() {
   try {
+    // ズバットのタブがメモリセーバーで休止していたら復帰（content.jsを再起動して監視継続）
+    try { const zt = await chrome.tabs.query({ url: 'https://hikkoshi-kanri.zba.jp/*' }); zt.forEach(t => { if (t.discarded) chrome.tabs.reload(t.id) }) } catch {}
     const { lastBeatAt } = await chrome.storage.local.get(['lastBeatAt'])
     if (lastBeatAt && (Date.now() - lastBeatAt) < KEEPALIVE_STALE_MS) return // タブが生存ポーリング中
     const r = await fetch(ZBA_CSRF, { method: 'GET', credentials: 'include', headers: { accept: 'application/json' } })
@@ -154,11 +156,14 @@ async function ensureSamuraiLoop() {
   let tabs = []
   try { tabs = await chrome.tabs.query({ url: 'https://hikkosizamurai.com/admin/*' }) } catch { return }
   if (!tabs.length) return
+  const tab = tabs[0]
+  // Chromeのメモリセーバーでタブが休止されたら復帰させる（→onUpdated完了でループ再注入）
+  if (tab.discarded) { try { await chrome.tabs.reload(tab.id) } catch {} return }
   const td = new Date()
   const todayMD = String(td.getMonth() + 1).padStart(2, '0') + '/' + String(td.getDate()).padStart(2, '0')
   const gen = Date.now()
   try {
-    await chrome.scripting.executeScript({ target: { tabId: tabs[0].id }, func: samuraiLoop, args: [gen, todayMD] })
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: samuraiLoop, args: [gen, todayMD] })
   } catch (e) { /* タブが閉じた等 */ }
 }
 
