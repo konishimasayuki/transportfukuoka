@@ -137,7 +137,9 @@ function samuraiLoop(gen, todayMD) {
   window.__tfSamuraiSeen = window.__tfSamuraiSeen || [] // ページ存続中の取込済みid（リロードで自然リセット→当日分は再送・サーバ重複除外）
   const seen = new Set(window.__tfSamuraiSeen)
   const persist = () => { window.__tfSamuraiSeen = Array.from(seen).slice(-5000) }
-  const POLL_MS = 8000, PER = 8, GAP = 300
+  const PER = 8, GAP = 300, FAST_MS = 15000, SLOW_MS = 120000
+  // 巡回間隔：ほぼ終日(7-24時)は15秒＋0〜8秒ジッター、深夜(0-7時)は120秒に減速（負荷・BAN配慮）
+  const nextDelay = () => { const h = new Date().getHours(); const base = (h >= 7 && h < 24) ? FAST_MS : SLOW_MS; return base + Math.floor(Math.random() * 8000) }
   const INBOUND = 'https://transportfukuoka.vercel.app/api/inbound'
 
   const norm = s => (s == null ? '' : String(s)).replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
@@ -167,8 +169,9 @@ function samuraiLoop(gen, todayMD) {
     setTimeout(() => { if (!done) res(null) }, 4000)
   }).then(r => r || fetch(INBOUND, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) }).then(() => ({ ok: true })).catch(() => ({ ok: false })))
 
-  async function fetchDoc(url) {
-    const r = await fetch(url, { credentials: 'include', cache: 'no-store', headers: HDR })
+  async function fetchDoc(url, mode) {
+    // 一覧は no-cache（条件付きGET：変化なしは304で軽量／古い内容は出さない）。詳細は no-store。
+    const r = await fetch(url, { credentials: 'include', cache: mode || 'no-store', headers: HDR })
     if (!r.ok) throw new Error(String(r.status))
     return new DOMParser().parseFromString(await r.text(), 'text/html')
   }
@@ -176,7 +179,7 @@ function samuraiLoop(gen, todayMD) {
   async function tick() {
     if (window.__tfSamuraiGen !== gen) return // 新しい注入が来たら旧ループは終了
     try {
-      const ldoc = await fetchDoc('/admin/request/list?_=' + Date.now())
+      const ldoc = await fetchDoc('/admin/request/list', 'no-cache')
       const links = [...ldoc.querySelectorAll('a[href*="/request/detail/id/"]')]
       if (links.length) {
         const dd = new Set(); const rows = []
@@ -204,7 +207,7 @@ function samuraiLoop(gen, todayMD) {
         if (cnt) console.log('[リード監視:引越し侍] 送信', cnt, '件')
       }
     } catch (e) { /* 一覧取得失敗。次のtickで再試行 */ }
-    if (window.__tfSamuraiGen === gen) setTimeout(tick, POLL_MS)
+    if (window.__tfSamuraiGen === gen) setTimeout(tick, nextDelay())
   }
   tick()
 }
