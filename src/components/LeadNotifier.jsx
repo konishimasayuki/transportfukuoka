@@ -8,6 +8,15 @@ import { useEffect, useRef, useState } from 'react'
 
 const POLL_MS = 12000
 
+function urlB64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base64)
+  const arr = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i)
+  return arr
+}
+
 export default function LeadNotifier({ user, switchTab }) {
   const isDemo = user?.mode === 'demo'
   const supported = typeof Notification !== 'undefined'
@@ -15,6 +24,25 @@ export default function LeadNotifier({ user, switchTab }) {
   const [toast, setToast] = useState(null)
   const seenAtRef = useRef(null)   // これより新しい savedAt を新着とみなす
   const audioRef = useRef(null)
+  const pushRef = useRef(false)    // Web Push 購読済みなら poll 側のOS通知を抑制（二重通知防止）
+
+  // Web Push 購読：SW登録→公開鍵取得→購読→サーバ保存。サーバ未設定/非対応ならポーリング通知にフォールバック。
+  const setupPush = async () => {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+      const info = await fetch('/api/push').then(r => r.json()).catch(() => null)
+      if (!info || !info.enabled || !info.publicKey) return // VAPID未設定
+      const reg = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.ready
+      let sub = await reg.pushManager.getSubscription()
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(info.publicKey) })
+      }
+      await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub }) })
+      pushRef.current = true
+    } catch (e) { /* フォールバック（ポーリング通知） */ }
+  }
 
   // 任意のクリックで音声を解錠（自動再生制限の回避）
   useEffect(() => {
@@ -34,8 +62,15 @@ export default function LeadNotifier({ user, switchTab }) {
       const p = await Notification.requestPermission()
       setPerm(p)
       if (!audioRef.current) { try { audioRef.current = new (window.AudioContext || window.webkitAudioContext)() } catch {} }
+      if (p === 'granted') setupPush()
     } catch {}
   }
+
+  // 既に許可済みなら（再訪時）自動で購読を確立
+  useEffect(() => {
+    if (isDemo) return
+    if (supported && Notification.permission === 'granted') setupPush()
+  }, [isDemo])
 
   const beep = () => {
     try {
@@ -58,7 +93,8 @@ export default function LeadNotifier({ user, switchTab }) {
     const title = `🆕 新規リード（${site}）`
     const body = `${(lead.name || '名前なし')}　${lead.phone || ''}`.trim() + (route ? `\n${route}` : '')
     try {
-      if (supported && Notification.permission === 'granted') {
+      // Web Push 購読済みのときはサーバー側プッシュがOS通知を出すので、ここでは重複を避ける
+      if (!pushRef.current && supported && Notification.permission === 'granted') {
         const n = new Notification(title, { body, tag: lead.key || lead.id })
         n.onclick = () => { try { window.focus() } catch {}; if (typeof switchTab === 'function') switchTab('leads'); n.close() }
       }

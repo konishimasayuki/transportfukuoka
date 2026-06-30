@@ -1,4 +1,5 @@
 import { placeCall, twilioReady } from './_twilio.js'
+import { sendPushToAll } from './_push.js'
 
 const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
@@ -97,6 +98,16 @@ export default async function handler(req, res) {
       }
       await setItems([newItem, ...items])
       await maybeAutoCall(newItem)
+      // 新着プッシュ通知（拡張なしのブラウザにも即時通知。失敗しても保存は止めない）
+      try {
+        const route = [newItem.from, newItem.to].filter(Boolean).join(' → ')
+        await sendPushToAll({
+          title: `🆕 新規リード（${newItem.site || ''}）`,
+          body: `${(newItem.name || '名前なし')}　${newItem.phone || ''}`.trim() + (route ? `\n${route}` : ''),
+          tag: newItem.key,
+          url: '/',
+        })
+      } catch (e) { console.error('push failed:', e.message) }
       return res.json({ ok: true, duplicate: false })
     }
 
