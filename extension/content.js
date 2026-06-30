@@ -241,6 +241,7 @@ const BUSY_HOUR_TO     = 23
 // 詳細取り込みロジックを変えたら +1。既存の取得済みフラグをリセットして全件取り直す。
 const DETAIL_VERSION   = 3          // v3: 家財品名マップを43品に拡充（乾燥機/ゴルフセット追加）
 const detailDone = new Set()       // 詳細取得済みの orderId（永続）
+const detailFail = new Map()       // 詳細取得の失敗回数（一時的なfetch失敗をリトライするため）
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 function persistDetailDone() {
@@ -554,9 +555,17 @@ async function apiSync() {
     for (const o of list) {
       if (cnt >= DETAIL_PER_CYCLE) break
       if (!o.orderId || detailDone.has(o.orderId)) continue
-      await fetchDetailViaApi(o.orderId, o.companyId)
-      detailDone.add(o.orderId)
-      persistDetailDone()
+      const ok = await fetchDetailViaApi(o.orderId, o.companyId)
+      if (ok) {
+        detailDone.add(o.orderId)
+        detailFail.delete(o.orderId)
+        persistDetailDone()
+      } else {
+        // 一時的なfetch失敗などはリトライ（次サイクルで再取得）。3回失敗で打ち切り（基本情報は送信済み）。
+        const n = (detailFail.get(o.orderId) || 0) + 1
+        detailFail.set(o.orderId, n)
+        if (n >= 3) { detailDone.add(o.orderId); persistDetailDone() }
+      }
       cnt++
       await sleep(DETAIL_GAP_MS)
     }
