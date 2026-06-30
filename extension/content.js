@@ -258,6 +258,9 @@ const CSRF_TTL_MS = 4 * 60 * 1000
 let csrfCache = null // { token, at }
 function invalidateCsrf() { csrfCache = null }
 
+// タブが生存ポーリング中であることを記録（background.js のキープアライブが二重打ちしないため）
+function markBeat() { safeStorageSet({ lastBeatAt: Date.now() }) }
+
 async function getCsrfToken() {
   if (csrfCache && (Date.now() - csrfCache.at) < CSRF_TTL_MS) return csrfCache.token
   const r = await fetch(`${ZBA_API}/csrf`, { credentials: 'include', headers: { accept: 'application/json' } })
@@ -326,6 +329,7 @@ async function fetchTodayCount() {
     })
     if (r.status === 401 || r.status === 403) { invalidateCsrf(); throw authError() }
     if (!r.ok) return null
+    markBeat() // セッション生存
     const j = await r.json().catch(() => null)
     if (!j) return null
     // レスポンス形状は不確定。よくありそうなプロパティを順に探す。
@@ -470,6 +474,7 @@ async function apiSync() {
       return
     }
     setAuthState(true)
+    markBeat() // セッション生存
     postStatus(true, '', list.length) // 生存ハートビート
     const todo = list.filter(o => o.orderId && !detailDone.has(o.orderId)).length
     console.log(`[リード監視:${SITE}] API同期 一覧${list.length}件 / 詳細未取得${todo}件`)
@@ -547,6 +552,19 @@ function scheduleNextWatch() {
   watchTimer = setTimeout(watchTick, ms)
 }
 
+// PCスリープ復帰・ネット再接続・タブ再表示で即チェック（セッション復帰を素早く検知・再同期）
+let lastKickAt = 0
+function kickNow(reason) {
+  if (!enabled || window.top !== window.self) return
+  const now = Date.now()
+  if (now - lastKickAt < 8000) return // 連発防止
+  lastKickAt = now
+  console.log(`[リード監視:${SITE}] 復帰トリガー(${reason}) → 即時チェック`)
+  invalidateCsrf()
+  if (watchTimer) clearTimeout(watchTimer)
+  watchTick()
+}
+
 async function init() {
   const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined', 'detailDoneIds', 'detailVersion'])
   enabled = st.enabled !== false
@@ -572,6 +590,10 @@ async function init() {
   // バックグラウンド自動取得：初回は通常同期、以降は watchTick が動的に駆動
   apiSync().then(() => { lastForceAt = Date.now() })
   scheduleNextWatch()
+
+  // 復帰トリガー：ネット再接続・タブ再表示で即チェック（スリープ復帰後の取りこぼし防止）
+  window.addEventListener('online', () => kickNow('online'))
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') kickNow('visible') })
 
   console.log(`[リード監視:${SITE}] 起動 enabled=${enabled} 営業時間=${BUSY_HOUR_FROM}-${BUSY_HOUR_TO}時 / 高速${WATCH_FAST_MS/1000}秒 夜間${WATCH_SLOW_MS/1000}秒`)
 }
