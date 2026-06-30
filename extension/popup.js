@@ -46,7 +46,7 @@ document.getElementById('resync').addEventListener('click', async () => {
     // 取得した全行をサーバへ。重複はサーバ側で除外されるので、新規だけ取り込まれる。
     let added = 0, dup = 0, fail = 0
     for (const lead of leads) {
-      const res = await chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead })
+      const res = await chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead, notify: false })
       if (res && res.ok) { res.duplicate ? dup++ : added++ } else fail++
     }
     result.style.color = added > 0 ? '#16a34a' : '#64748b'
@@ -94,7 +94,7 @@ document.getElementById('resyncSamurai').addEventListener('click', async () => {
     }
     let added = 0, dup = 0, fail = 0
     for (const lead of leads) {
-      const res = await chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead })
+      const res = await chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead, notify: false })
       if (res && res.ok) { res.duplicate ? dup++ : added++ } else fail++
     }
     result.style.color = added > 0 ? '#16a34a' : '#64748b'

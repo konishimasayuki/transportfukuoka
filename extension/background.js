@@ -61,13 +61,42 @@ function postStatus(ok, reason) {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'NEW_LEAD') {
-    handleLead(msg.lead).then(sendResponse)
+    handleLead(msg.lead, msg.notify !== false).then(sendResponse) // notify:false で通知抑制（一括取込など）
     return true // 非同期レスポンス
   }
   if (msg?.type === 'ZBA_AUTH') {
     setAuthBadge(msg.ok)
     return
   }
+})
+
+// ===== 新規リードのWindows通知（ブラウザ起動中＝Chrome実行中に表示）=====
+function notifyNewLead(lead) {
+  try {
+    const route = [lead.from, lead.to].filter(Boolean).join(' → ')
+    const lines = [`${lead.name || '名前なし'}　${lead.phone || ''}`.trim()]
+    if (route) lines.push(route)
+    if (lead.moveDate) lines.push('引越し希望: ' + lead.moveDate)
+    chrome.notifications.create('lead_' + Date.now() + '_' + Math.floor(Math.random() * 1000), {
+      type: 'basic',
+      iconUrl: 'icon128.png',
+      title: `🆕 新規リード（${lead.site || ''}）`,
+      message: lines.join('\n'),
+      priority: 2,
+      requireInteraction: false,
+    })
+  } catch (e) { /* notifications未許可など */ }
+}
+
+// 通知クリックでCRMを開く（既存タブがあれば前面に）
+chrome.notifications.onClicked.addListener(async (id) => {
+  const URL = 'https://transportfukuoka.vercel.app/'
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://transportfukuoka.vercel.app/*' })
+    if (tabs.length) { await chrome.tabs.update(tabs[0].id, { active: true }); if (tabs[0].windowId != null) chrome.windows.update(tabs[0].windowId, { focused: true }) }
+    else await chrome.tabs.create({ url: URL })
+  } catch { try { await chrome.tabs.create({ url: URL }) } catch {} }
+  chrome.notifications.clear(id)
 })
 
 // ログインセッション切れ時はアイコンに赤い「!」、復帰時は本日件数バッジへ戻す
@@ -88,7 +117,7 @@ async function restoreCountBadge() {
   chrome.action.setBadgeBackgroundColor({ color: '#1E5FA8' })
 }
 
-async function handleLead(lead) {
+async function handleLead(lead, notify = true) {
   try {
     const res = await fetch(API_URL, {
       method: 'POST',
@@ -96,7 +125,10 @@ async function handleLead(lead) {
       body: JSON.stringify(lead),
     })
     const data = await res.json().catch(() => ({}))
-    if (data && data.duplicate === false) await bumpCount()
+    if (data && data.duplicate === false) {
+      await bumpCount()
+      if (notify) notifyNewLead(lead) // 新規（重複でない）かつ通知許可時のみトースト
+    }
     return { ok: true, duplicate: !!(data && data.duplicate) }
   } catch (e) {
     console.error('[リード監視] 送信失敗', e)
