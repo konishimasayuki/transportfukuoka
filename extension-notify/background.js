@@ -11,6 +11,7 @@ const STEP_MS    = 12000   // バースト内のポーリング間隔（約12秒
 const WINDOW_MS  = 56000   // 1分アラーム内で動かす時間（次のアラームまで継続）
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+let bursting = false // ※ setup()→runBurst() より前に初期化しておく（TDZ回避）
 
 chrome.runtime.onInstalled.addListener(setup)
 chrome.runtime.onStartup.addListener(setup)
@@ -20,7 +21,6 @@ setup()
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === POLL_ALARM) runBurst() })
 
 // SWはアイドルで止まるため、アラームで起きている間だけ短間隔ループを回す（実効 約12秒間隔）
-let bursting = false
 async function runBurst() {
   if (bursting) return
   bursting = true

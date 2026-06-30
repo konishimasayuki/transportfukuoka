@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "トランスポート福岡 新着通知",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "新規リードをWindows通知でお知らせします（監視はしません・通知専用）。CRMを開かずログイン不要で動作します。",
   "permissions": ["alarms", "notifications", "storage"],
   "host_permissions": ["https://transportfukuoka.vercel.app/*"],
