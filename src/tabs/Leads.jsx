@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import LeadDetailModal, { ConvertToContractModal } from '../components/LeadDetailModal'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
+import { receivedAtMs } from '../lib/sortLeads'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
@@ -305,7 +306,7 @@ export default function Leads({ user, switchTab }) {
       return !q || (i.name || '').toLowerCase().includes(q) || (i.phone || '').includes(q) || (i.from || '').includes(q) || (i.to || '').includes(q)
     })
     .filter(i => !filterStatus || i.status === filterStatus)
-    .sort((a, b) => String(b.receivedAt || b.savedAt || '').localeCompare(String(a.receivedAt || a.savedAt || '')))
+    .sort((a, b) => receivedAtMs(b) - receivedAtMs(a))
 
   const countBy = (s) => items.filter(i => i.status === s).length
 

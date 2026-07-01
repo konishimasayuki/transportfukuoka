@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import LeadDetailModal, { ConvertToContractModal } from '../components/LeadDetailModal'
+import { receivedAtMs } from '../lib/sortLeads'
 
 const DEMO_LOGS = [
   { icon:'📞', bg:'#F0FDF4', name:'山田 太郎', meta:'引越し侍 / 090-XXXX-1234 / 10:23', badge:'bg', status:'通話成立' },
@@ -156,10 +157,8 @@ export default function Call({ user, switchTab }) {
     return () => { alive = false; clearInterval(t) }
   }, [isDemo])
 
-  // 受付日時の新しい順（最新が一番上）に並べ替え
-  const sortedLeads = [...leads].sort((a, b) =>
-    String(b.receivedAt || b.savedAt || '').localeCompare(String(a.receivedAt || a.savedAt || ''))
-  )
+  // 受付日時の新しい順（最新が一番上）に並べ替え（サイト別の表記差を吸収して時系列ソート）
+  const sortedLeads = [...leads].sort((a, b) => receivedAtMs(b) - receivedAtMs(a))
 
   // 「本日」判定：受付日時(MM/DD)が今日と一致（無ければ保存日時で判定）
   const now = new Date()
