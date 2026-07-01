@@ -85,8 +85,10 @@ export default function Debug({ user }) {
       const d = await r.json()
       if (d.ok) {
         showToast(`発信しました（SID: ${d.sid || '-'}）`)
-        setItems(p => p.map(i => i.id === item.id ? { ...i, status: '架電済', callSid: d.sid, callStatus: d.status, callStartAt: startedAt, callEndAt: null, elapsedSec: null } : i))
-        if (!isDemo) fetch('/api/debug', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, status: '架電済', callStartAt: startedAt, callEndAt: null, elapsedSec: null }) }).catch(() => {})
+        const callPatch = { status: '架電済', callSid: d.sid, callStatus: d.status, callStartAt: startedAt, callEndAt: null, elapsedSec: null, callCost: null, callCostComplete: false }
+        setItems(p => p.map(i => i.id === item.id ? { ...i, ...callPatch } : i))
+        // callSid をRedisに保存（更新・別端末でも「結果確認」できるように）
+        if (!isDemo) fetch('/api/debug', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, ...callPatch }) }).catch(() => {})
       } else showToast('発信失敗: ' + (d.error || `HTTP ${r.status}`))
     } catch (e) { showToast('通信エラー: ' + (e && e.message ? e.message : String(e))) }
     setCallingId(null)
@@ -115,7 +117,7 @@ export default function Debug({ user }) {
         const grand = cost != null ? cost + AMD_FEE_USD : null // 通話料＋留守電判定
         const cs = grand != null && costComplete ? ` / 料金$${grand.toFixed(4)}(約¥${Math.round(grand * JPY_PER_USD)})` : (cost != null ? ' / 料金確定待ち' : '')
         const patch = {
-          callStatus: d.status, callDuration: d.duration,
+          callSid: item.callSid, callStatus: d.status, callDuration: d.duration,
           callStartAt: startAt, callEndAt: endedAt, elapsedSec,
           callCost: cost, callCostComplete: costComplete, callCostUnit: d.priceUnit || 'USD',
           customerLeg: d.customerLeg || null, officeLegs: d.officeLegs || [],

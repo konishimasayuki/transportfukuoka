@@ -116,9 +116,18 @@ export async function getCallStatus(sid) {
   const officeLegs = children.map(legOf)
   const allLegs = [customerLeg, ...officeLegs]
   const priced = allLegs.filter(l => l.price != null)
-  const priceComplete = allLegs.length > 0 && priced.length === allLegs.length // 全レッグ確定済みか
-  const totalPrice = priced.reduce((s, l) => s + l.price, 0)                    // 実請求合計(USD)
+  const totalPrice = priced.reduce((s, l) => s + l.price, 0) // 実請求合計(USD)
   const totalDuration = allLegs.reduce((s, l) => s + (l.duration || 0), 0)
+
+  // 課金対象＝実際に接続したレッグ(duration>0)。未応答(no-answer/busy等でduration=0)の
+  // レッグは課金されず price が付かないため、確定判定から除外する（永久待ち防止）。
+  // 親コールが終端状態(completed/no-answer/busy/failed/canceled)で、課金対象レッグが
+  // すべて price 確定していれば「確定」とみなす。
+  const parentTerminal = ['completed', 'no-answer', 'busy', 'failed', 'canceled'].includes(p.status)
+  const billable = allLegs.filter(l => (l.duration || 0) > 0)
+  const priceComplete = parentTerminal && (billable.length === 0
+    ? true                                     // 誰も接続せず＝課金なし → 確定(合計0)
+    : billable.every(l => l.price != null))    // 接続した全レッグの price 確定
 
   return {
     status: p.status,
