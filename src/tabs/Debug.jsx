@@ -13,6 +13,10 @@ const CALL_STATUS_JA = { queued: '発信待ち', initiated: '発信中', ringing
 
 const ip = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }
 const lb = { fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4, display: 'block' }
+// 秒数 → 「m分s秒」表記
+const fmtDur = (s) => { const n = Number(s); if (!isFinite(n)) return '-'; const m = Math.floor(n / 60), ss = n % 60; return m ? `${m}分${ss}秒` : `${ss}秒` }
+// epoch(ms) → HH:MM:SS
+const fmtClock = (ms) => (ms ? new Date(ms).toLocaleTimeString('ja-JP', { hour12: false }) : '-')
 
 export default function Debug({ user }) {
   const isDemo = user?.mode === 'demo'
@@ -65,14 +69,15 @@ export default function Debug({ user }) {
     if (!item.phone) { showToast('電話番号がありません'); return }
     setCallingId(item.id)
     try {
+      const startedAt = Date.now() // 架電開始時刻（経過時間の計測基準）
       const body = { phone: item.phone }
       if (voiceMsg.trim()) body.message = voiceMsg.trim() // 音声文面を差し替え（空＝既定）
       const r = await fetch('/api/call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const d = await r.json()
       if (d.ok) {
         showToast(`発信しました（SID: ${d.sid || '-'}）`)
-        setItems(p => p.map(i => i.id === item.id ? { ...i, status: '架電済', callSid: d.sid, callStatus: d.status } : i))
-        if (!isDemo) fetch('/api/debug', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, status: '架電済' }) }).catch(() => {})
+        setItems(p => p.map(i => i.id === item.id ? { ...i, status: '架電済', callSid: d.sid, callStatus: d.status, callStartAt: startedAt, callEndAt: null, elapsedSec: null } : i))
+        if (!isDemo) fetch('/api/debug', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, status: '架電済', callStartAt: startedAt, callEndAt: null, elapsedSec: null }) }).catch(() => {})
       } else showToast('発信失敗: ' + (d.error || `HTTP ${r.status}`))
     } catch (e) { showToast('通信エラー: ' + (e && e.message ? e.message : String(e))) }
     setCallingId(null)
@@ -85,9 +90,13 @@ export default function Debug({ user }) {
       const d = await fetch(`/api/call?sid=${encodeURIComponent(item.callSid)}`).then(r => r.json())
       if (d.ok) {
         const ja = CALL_STATUS_JA[d.status] || d.status
-        const dur = d.duration ? `（${d.duration}秒）` : ''
-        setItems(p => p.map(i => i.id === item.id ? { ...i, callStatus: d.status, callDuration: d.duration } : i))
-        showToast(`通話結果：${ja}${dur}`)
+        const endedAt = Date.now() // テスト終了（結果確認）時刻
+        const elapsedSec = item.callStartAt ? Math.round((endedAt - item.callStartAt) / 1000) : null
+        const dur = d.duration ? `（通話${d.duration}秒）` : ''
+        const el = elapsedSec != null ? ` / 経過${fmtDur(elapsedSec)}` : ''
+        setItems(p => p.map(i => i.id === item.id ? { ...i, callStatus: d.status, callDuration: d.duration, callEndAt: endedAt, elapsedSec } : i))
+        if (!isDemo) fetch('/api/debug', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, callStatus: d.status, callDuration: d.duration, callEndAt: endedAt, elapsedSec }) }).catch(() => {})
+        showToast(`通話結果：${ja}${dur}${el}`)
       } else showToast('結果取得失敗: ' + (d.error || ''))
     } catch (e) { showToast('通信エラー: ' + (e && e.message ? e.message : String(e))) }
   }
@@ -221,9 +230,22 @@ export default function Debug({ user }) {
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {item.callSid ? (
-                        <span style={{ fontSize: 12 }}>
-                          {CALL_STATUS_JA[item.callStatus] || item.callStatus || '—'}{item.callDuration ? `（${item.callDuration}秒）` : ''}
-                        </span>
+                        <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+                          <div>
+                            {CALL_STATUS_JA[item.callStatus] || item.callStatus || '—'}
+                            {item.callDuration ? <span style={{ color: '#64748B' }}>（通話{item.callDuration}秒）</span> : ''}
+                          </div>
+                          {item.elapsedSec != null && (
+                            <div style={{ fontSize: 10, color: '#0F766E', fontWeight: 700 }}>
+                              経過 {fmtDur(item.elapsedSec)}
+                            </div>
+                          )}
+                          {item.callStartAt && (
+                            <div style={{ fontSize: 10, color: '#94A3B8' }}>
+                              {fmtClock(item.callStartAt)} → {item.callEndAt ? fmtClock(item.callEndAt) : '（結果確認待ち）'}
+                            </div>
+                          )}
+                        </div>
                       ) : <span style={{ color: '#CBD5E1' }}>—</span>}
                     </td>
                     <td>
