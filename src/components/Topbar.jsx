@@ -8,6 +8,7 @@ const TITLES = {
   estimate:  '見積書',
   schedule:  'スケジュール',
   settings:  '設定',
+  debug:     'デバッグ（架電テスト）',
 }
 
 export default function Topbar({ activeTab, onMenuClick, onRefresh, loading, user }) {

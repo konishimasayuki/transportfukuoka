@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { tab: 'estimate',  icon: '📝', label: '見積書', isNew: true },
   { tab: 'schedule',  icon: '📅', label: 'スケジュール', isNew: true },
   { tab: 'settings',  icon: '⚙️', label: '設定' },
+  { tab: 'debug',     icon: '🧪', label: 'デバッグ' },
 ]
 
 export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout }) {

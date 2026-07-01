@@ -12,6 +12,7 @@ import Call from './tabs/Call'
 import Estimate from './tabs/Estimate'
 import Schedule from './tabs/Schedule'
 import Settings from './tabs/Settings'
+import Debug from './tabs/Debug'
 
 const TABS = {
   dashboard: Dashboard,
@@ -23,6 +24,7 @@ const TABS = {
   estimate: Estimate,
   schedule: Schedule,
   settings: Settings,
+  debug: Debug,
 }
 
 const USERS = {
