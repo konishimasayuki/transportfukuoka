@@ -18,7 +18,8 @@ const fmtDur = (s) => { const n = Number(s); if (!isFinite(n)) return '-'; const
 // epoch(ms) → HH:MM:SS
 const fmtClock = (ms) => (ms ? new Date(ms).toLocaleTimeString('ja-JP', { hour12: false }) : '-')
 // 円換算レート（参考表示用）。Twilioの請求はUSD建てのため、円は概算表示。
-const JPY_PER_USD = 155
+const JPY_PER_USD = 162.67
+const JPY_RATE_NOTE = '¥162.67/$（2026/7/1時点）'
 
 export default function Debug({ user }) {
   const isDemo = user?.mode === 'demo'
@@ -215,7 +216,8 @@ export default function Debug({ user }) {
       {/* デバッグリード一覧 */}
       <div className="card">
         <div className="card-head"><h3>デバッグリード一覧</h3>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: 10, color: '#94A3B8' }}>料金はTwilio実請求(USD) ／ 円換算 {JPY_RATE_NOTE}</span>
             {!isDemo && <button className="btn btn-outline btn-sm" onClick={fetchItems}>⟳ 更新</button>}
             <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={clearAll}>全削除</button>
           </div>
