@@ -3,7 +3,9 @@
 // 顧客に発信し、応答したら社名アナウンス後に事務所へ接続（ブリッジ）する。
 // 必要な環境変数（Vercel）:
 //   TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM / OFFICE_PHONE
-//   (任意) CALL_MESSAGE … 冒頭アナウンス文言
+//   (任意) CALL_MESSAGE … 人が出た時の冒頭アナウンス文言
+//   (任意) CALL_VOICEMAIL_MESSAGE … 留守電/機械が出た時に残すメッセージ
+//   (任意) PUBLIC_BASE_URL … TwiML Webhook のベースURL（既定: 本番ドメイン）
 // =====================================================================
 
 const SID     = process.env.TWILIO_ACCOUNT_SID
@@ -12,6 +14,9 @@ const FROM    = process.env.TWILIO_FROM
 const OFFICE  = process.env.OFFICE_PHONE
 const MESSAGE = process.env.CALL_MESSAGE ||
   'お電話ありがとうございます。トランスポート福岡です。担当者におつなぎしますので、少々お待ちください。'
+const VOICEMAIL = process.env.CALL_VOICEMAIL_MESSAGE ||
+  'トランスポート福岡です。引越しのお見積りを拝見しました。他社より安くご案内いたします。恐れ入りますが、折り返しご連絡いただけますようお願いいたします。'
+const BASE_URL = process.env.PUBLIC_BASE_URL || 'https://transportfukuoka.vercel.app'
 
 export function twilioReady() {
   return !!(SID && TOKEN && FROM && OFFICE)
@@ -30,28 +35,31 @@ export function toE164(p) {
   return '+81' + d                                  // それ以外は国内番号として扱う
 }
 
-function escapeXml(s) {
-  return String(s).replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]))
-}
-
-// 顧客(to)に発信 → 応答後にアナウンス → 事務所(OFFICE)へ接続
-// message を渡すと冒頭アナウンスをその文言に差し替え（デバッグの音声テスト用）
-export async function placeCall(to, message) {
+// 顧客(to)に発信 → 応答者判定(AMD):
+//   人が出た   → message を再生 → 事務所(OFFICE)へ接続（ブリッジ）
+//   留守電/機械 → voicemail を残して切断（事務所には繋がない）
+// message / voicemail を渡すとそれぞれ差し替え（デバッグの音声テスト用）
+// TwiMLは /api/voice が AnsweredBy を見て動的に返す（下の Url を参照）
+export async function placeCall(to, message, voicemail) {
   if (!twilioReady()) throw new Error('Twilio env vars (SID/TOKEN/FROM/OFFICE_PHONE) missing')
   const toE = toE164(to)
   const fromE = toE164(FROM)
-  const officeE = toE164(OFFICE)
   if (!toE) throw new Error('invalid destination number')
 
-  const msg = (message && String(message).trim()) || MESSAGE
-  const twiml =
-    `<?xml version="1.0" encoding="UTF-8"?>` +
-    `<Response>` +
-    `<Say language="ja-JP" voice="Polly.Mizuki">${escapeXml(msg)}</Say>` +
-    `<Dial callerId="${fromE}">${officeE}</Dial>` +
-    `</Response>`
+  const msg  = (message  && String(message).trim())  || MESSAGE
+  const vmsg = (voicemail && String(voicemail).trim()) || VOICEMAIL
+  // 応答時にTwiMLを取りに来るWebhook。留守電メッセージ再生後まで判定するため
+  // MachineDetection=DetectMessageEnd（ビープ後にメッセージを残せる）を使う。
+  const url = `${BASE_URL}/api/voice?msg=${encodeURIComponent(msg)}&vmsg=${encodeURIComponent(vmsg)}`
 
-  const body = new URLSearchParams({ To: toE, From: fromE, Twiml: twiml })
+  const body = new URLSearchParams({
+    To: toE,
+    From: fromE,
+    Url: url,
+    Method: 'POST',
+    MachineDetection: 'DetectMessageEnd',
+    MachineDetectionTimeout: '30',
+  })
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${SID}/Calls.json`, {
     method: 'POST',
     headers: {

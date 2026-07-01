@@ -22,11 +22,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { phone, message } = req.body || {}
+  const { phone, message, voicemail } = req.body || {}
   if (!phone) return res.status(400).json({ error: 'phone required' })
 
   try {
-    const r = await placeCall(phone, message)
+    const r = await placeCall(phone, message, voicemail)
     return res.json({ ok: true, sid: r.sid, status: r.status })
   } catch (e) {
     console.error(e)
