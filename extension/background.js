@@ -24,7 +24,7 @@ ensureAlarm()
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === KEEPALIVE_ALARM) keepAlive()
-  if (alarm.name === SAMURAI_ALARM) ensureSamuraiLoop()
+  if (alarm.name === SAMURAI_ALARM) { ensureSamuraiLoop(); ensureKakakuLoop() }
 })
 
 // 引越し侍タブが読み込まれたら高速ループを注入（開き直し時も自動で復帰）
@@ -32,8 +32,13 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (info.status === 'complete' && tab && tab.url && tab.url.startsWith('https://hikkosizamurai.com/admin')) {
     ensureSamuraiLoop()
   }
+  // 価格.com 管理画面タブが読み込まれたら高速ループを注入
+  if (info.status === 'complete' && tab && tab.url && tab.url.startsWith('https://ssl.kakaku.com/hikkoshi/vender/admin')) {
+    ensureKakakuLoop()
+  }
 })
 ensureSamuraiLoop() // SW起動時にも一度試行
+ensureKakakuLoop()
 
 // ===== ズバット セッション・キープアライブ =====
 async function keepAlive() {
@@ -165,6 +170,152 @@ async function ensureSamuraiLoop() {
   try {
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: samuraiLoop, args: [gen, todayMD] })
   } catch (e) { /* タブが閉じた等 */ }
+}
+
+// ===== 価格.com：ページ内 高速ポーリングループの注入 =====
+// 1分ごとのアラーム＋タブ読み込み時に、価格.com管理画面タブへ高速ループを注入する。
+// 価格.comはサーバー描画HTML（一覧＝/admin/Index、詳細＝/admin/userdetail/?orderid=）。
+async function ensureKakakuLoop() {
+  let tabs = []
+  try { tabs = await chrome.tabs.query({ url: 'https://ssl.kakaku.com/hikkoshi/vender/admin/*' }) } catch { return }
+  if (!tabs.length) return
+  const tab = tabs[0]
+  if (tab.discarded) { try { await chrome.tabs.reload(tab.id) } catch {} return }
+  const td = new Date()
+  const today = td.getFullYear() + '/' + String(td.getMonth() + 1).padStart(2, '0') + '/' + String(td.getDate()).padStart(2, '0')
+  const gen = Date.now()
+  try {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: kakakuLoop, args: [gen, today] })
+  } catch (e) { /* タブが閉じた等 */ }
+}
+
+// ページに注入される自己完結ループ。約15秒ごとに一覧(no-cache)を取得し、
+// 当日(依頼日=今日)で未送信のものだけ詳細取得して background(NEW_LEAD) へ送る。
+function kakakuLoop(gen, today) {
+  window.__tfKakakuGen = gen
+  window.__tfKakakuSeen = window.__tfKakakuSeen || [] // ページ存続中の取込済みorderid（リロードで自然リセット→当日分は再送・サーバ重複除外）
+  const seen = new Set(window.__tfKakakuSeen)
+  const persist = () => { window.__tfKakakuSeen = Array.from(seen).slice(-5000) }
+  const PER = 8, GAP = 300, FAST_MS = 15000, SLOW_MS = 120000
+  // 巡回間隔：ほぼ終日(7-24時)は15秒＋0〜8秒ジッター、深夜(0-7時)は120秒に減速（負荷・BAN配慮）
+  const nextDelay = () => { const h = new Date().getHours(); const base = (h >= 7 && h < 24) ? FAST_MS : SLOW_MS; return base + Math.floor(Math.random() * 8000) }
+  const INBOUND = 'https://transportfukuoka.vercel.app/api/inbound'
+  const LIST = '/hikkoshi/vender/admin/Index'
+  const DETAIL = id => '/hikkoshi/vender/admin/userdetail/?orderid=' + id
+
+  const norm = s => (s == null ? '' : String(s)).replace(/　/g, ' ').replace(/\s+/g, ' ').trim()
+  const textOf = el => norm(el ? el.textContent : '')
+  const PHONE_RE = /0\d{9,10}|0\d{1,4}-\d{1,4}-\d{3,4}/
+  const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
+  const HDR = { accept: 'text/html', 'cache-control': 'no-cache', pragma: 'no-cache' }
+
+  async function fetchDoc(url, mode) {
+    const r = await fetch(url, { credentials: 'include', cache: mode || 'no-store', headers: HDR })
+    if (!r.ok) throw new Error(String(r.status))
+    return new DOMParser().parseFromString(await r.text(), 'text/html')
+  }
+
+  // 詳細ページからラベル→値を取得（table/dl/div いずれの構造にも対応する総当り）
+  const valueFor = (doc, label) => {
+    const els = [...doc.querySelectorAll('th,td,dt,dd,div,span,label,p')]
+    for (const el of els) {
+      if (textOf(el) !== label) continue
+      let v = textOf(el.nextElementSibling)
+      if (v && v !== label) return v
+      const cell = el.closest('td,th,dt,div,li')
+      if (cell && cell.nextElementSibling) { v = textOf(cell.nextElementSibling); if (v && v !== label) return v }
+    }
+    return ''
+  }
+
+  const send = (lead) => new Promise(res => {
+    let done = false
+    try {
+      chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead }, r => { done = true; if (chrome.runtime.lastError) res(null); else res(r) })
+    } catch { res(null) }
+    setTimeout(() => { if (!done) res(null) }, 4000)
+  }).then(r => r || fetch(INBOUND, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) }).then(() => ({ ok: true })).catch(() => ({ ok: false })))
+
+  // 依頼日 "2026/07/01 19:37:05" の先頭10文字が今日か
+  const isToday = s => norm(s).slice(0, 10) === today
+
+  async function tick() {
+    if (window.__tfKakakuGen !== gen) return // 新しい注入が来たら旧ループは終了
+    try {
+      const ldoc = await fetchDoc(LIST, 'no-cache')
+      const rows = [...ldoc.querySelectorAll('tr')].filter(tr => tr.querySelector('a[href*="userdetail"]'))
+      if (rows.length) {
+        const parsed = []; const dd = new Set()
+        for (const tr of rows) {
+          const a = tr.querySelector('a[href*="userdetail"]')
+          const m = (a.getAttribute('href') || '').match(/orderid=(\d+)/)
+          if (!m || dd.has(m[1])) continue
+          dd.add(m[1])
+          // 列: 0依頼日 1顧客ステータス 2引越し希望日 3人数 4元 5先 6名前 7電話 8メール 9同時見積社数 10見積もりID 11詳細
+          const c = [...tr.children].map(textOf)
+          parsed.push({
+            id: m[1], requestedAt: c[0], status: c[1], moveDate: c[2], count: c[3],
+            fromPref: c[4], toPref: c[5], name: c[6],
+            phone: (c[7].match(PHONE_RE) || [''])[0], email: (c[8].match(EMAIL_RE) || [''])[0],
+            quoteId: c[10] || '',
+          })
+        }
+        let changed = false
+        // 当日以外の既存行は「既知」登録のみ（過去ぶんの一括送信を防ぐ）
+        parsed.forEach(r => { if (!isToday(r.requestedAt) && !seen.has(r.id)) { seen.add(r.id); changed = true } })
+        const fresh = parsed.filter(r => isToday(r.requestedAt) && !seen.has(r.id))
+        let cnt = 0
+        for (const base of fresh.slice(0, PER)) {
+          if (window.__tfKakakuGen !== gen) return
+          try {
+            let name = base.name, kana = '', fromAddr = '', toAddr = '', fromZip = '', fromType = '', layout = '', floor = '', elevator = ''
+            try {
+              const doc = await fetchDoc(DETAIL(base.id))
+              const shimei = valueFor(doc, '氏名')
+              const mk = shimei.match(/^(.+?)[（(](.+?)[）)]/) // 氏名（カナ）
+              if (mk) { name = mk[1].trim(); kana = mk[2].trim() } else if (shimei) { name = shimei }
+              fromZip = valueFor(doc, '郵便番号')
+              fromAddr = valueFor(doc, '発地（住所）') || valueFor(doc, '発地(住所)')
+              fromType = valueFor(doc, '建物のタイプ')
+              layout = valueFor(doc, '間取り')
+              floor = valueFor(doc, 'お住まいの階数')
+              elevator = valueFor(doc, 'エレベーター')
+              toAddr = valueFor(doc, '着地（お引越し先）') || valueFor(doc, '着地(お引越し先)')
+            } catch (e) { /* 詳細失敗→一覧情報だけで送る */ }
+            const memo = [
+              layout && '間取り:' + layout,
+              floor && '階数:' + floor,
+              elevator && 'EV:' + elevator,
+              base.status && '状況:' + base.status,
+            ].filter(Boolean).join(' / ')
+            const lead = {
+              site: '価格.com',
+              key: base.phone || ('価格.com:' + base.id),
+              phone: base.phone,
+              name, kana, email: base.email,
+              count: base.count,
+              from: fromAddr || base.fromPref,
+              to: toAddr || base.toPref,
+              fromZip, fromType,
+              receivedAt: base.requestedAt,
+              moveDate: base.moveDate,
+              memo,
+              orderId: base.quoteId || ('A000' + base.id),
+              detail: true,
+              detectedAt: new Date().toISOString(),
+            }
+            const r = await send(lead)
+            if (r && r.ok) { seen.add(base.id); changed = true; cnt++ }
+          } catch (e) { /* skip */ }
+          await new Promise(res => setTimeout(res, GAP))
+        }
+        if (changed) persist()
+        if (cnt) console.log('[リード監視:価格.com] 送信', cnt, '件')
+      }
+    } catch (e) { /* 一覧取得失敗。次のtickで再試行 */ }
+    if (window.__tfKakakuGen === gen) setTimeout(tick, nextDelay())
+  }
+  tick()
 }
 
 // ページに注入される自己完結ループ。約8秒ごとに一覧(no-store)を取得し、

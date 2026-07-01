@@ -108,6 +108,119 @@ document.getElementById('resyncSamurai').addEventListener('click', async () => {
   }
 })
 
+// 価格.com：取りこぼし取り込み。一覧(/admin/Index)→orderid→詳細fetch→リード配列。
+document.getElementById('resyncKakaku').addEventListener('click', async () => {
+  const btn = document.getElementById('resyncKakaku')
+  const result = document.getElementById('resultKakaku')
+  btn.disabled = true
+  result.style.color = '#64748b'
+  result.textContent = '取り込み中…（件数により時間がかかります）'
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://ssl.kakaku.com/hikkoshi/vender/admin/*' })
+    if (!tabs.length) {
+      result.style.color = '#dc2626'
+      result.textContent = '価格.comの一覧ページ（/admin/Index）を開いてから実行してください'
+      return
+    }
+    const frames = await chrome.scripting.executeScript({
+      target: { tabId: tabs[0].id },
+      func: kakakuScrapeAndFetch,
+    })
+    const r = (frames && frames[0] && frames[0].result) || {}
+    if (r.error === 'rows-not-found' || !r.leads) {
+      result.style.color = '#dc2626'
+      result.textContent = '一覧の行が見つかりません。価格.comの見積もり一覧を表示してから実行してください'
+      return
+    }
+    const leads = r.leads
+    if (!leads.length) {
+      result.style.color = '#64748b'
+      result.textContent = '対象がありませんでした'
+      return
+    }
+    let added = 0, dup = 0, fail = 0
+    for (const lead of leads) {
+      const res = await chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead, notify: false })
+      if (res && res.ok) { res.duplicate ? dup++ : added++ } else fail++
+    }
+    result.style.color = added > 0 ? '#16a34a' : '#64748b'
+    result.textContent = `新規${added}件を取り込み（重複${dup}・失敗${fail}／一覧${leads.length}件）`
+    refresh()
+  } catch (e) {
+    result.style.color = '#dc2626'
+    result.textContent = 'エラー: ' + (e && e.message ? e.message : String(e))
+  } finally {
+    btn.disabled = false
+  }
+})
+
+// ページ内で実行（自己完結。executeScript用）。価格.com 一覧→orderid→詳細fetch→リード配列。
+async function kakakuScrapeAndFetch() {
+  const norm = s => (s == null ? '' : String(s)).replace(/　/g, ' ').replace(/\s+/g, ' ').trim()
+  const textOf = el => norm(el ? el.textContent : '')
+  const PHONE_RE = /0\d{9,10}|0\d{1,4}-\d{1,4}-\d{3,4}/
+  const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
+  const rows = [...document.querySelectorAll('tr')].filter(tr => tr.querySelector('a[href*="userdetail"]'))
+  if (!rows.length) return { error: 'rows-not-found' }
+  const valueFor = (doc, label) => {
+    const els = [...doc.querySelectorAll('th,td,dt,dd,div,span,label,p')]
+    for (const el of els) {
+      if (textOf(el) !== label) continue
+      let v = textOf(el.nextElementSibling)
+      if (v && v !== label) return v
+      const cell = el.closest('td,th,dt,div,li')
+      if (cell && cell.nextElementSibling) { v = textOf(cell.nextElementSibling); if (v && v !== label) return v }
+    }
+    return ''
+  }
+  const dd = new Set(); const bases = []
+  for (const tr of rows) {
+    const a = tr.querySelector('a[href*="userdetail"]')
+    const m = (a.getAttribute('href') || '').match(/orderid=(\d+)/)
+    if (!m || dd.has(m[1])) continue
+    dd.add(m[1])
+    const c = [...tr.children].map(textOf)
+    bases.push({
+      id: m[1], requestedAt: c[0], status: c[1], moveDate: c[2], count: c[3],
+      fromPref: c[4], toPref: c[5], name: c[6],
+      phone: (c[7].match(PHONE_RE) || [''])[0], email: (c[8].match(EMAIL_RE) || [''])[0],
+      quoteId: c[10] || '',
+    })
+  }
+  const leads = []
+  for (const base of bases) {
+    try {
+      let name = base.name, kana = '', fromAddr = '', toAddr = '', fromZip = '', fromType = '', layout = '', floor = '', elevator = ''
+      try {
+        const res = await fetch('/hikkoshi/vender/admin/userdetail/?orderid=' + base.id, { credentials: 'include', cache: 'no-store', headers: { accept: 'text/html', 'cache-control': 'no-cache' } })
+        if (res.ok) {
+          const doc = new DOMParser().parseFromString(await res.text(), 'text/html')
+          const shimei = valueFor(doc, '氏名')
+          const mk = shimei.match(/^(.+?)[（(](.+?)[）)]/)
+          if (mk) { name = mk[1].trim(); kana = mk[2].trim() } else if (shimei) { name = shimei }
+          fromZip = valueFor(doc, '郵便番号')
+          fromAddr = valueFor(doc, '発地（住所）') || valueFor(doc, '発地(住所)')
+          fromType = valueFor(doc, '建物のタイプ')
+          layout = valueFor(doc, '間取り')
+          floor = valueFor(doc, 'お住まいの階数')
+          elevator = valueFor(doc, 'エレベーター')
+          toAddr = valueFor(doc, '着地（お引越し先）') || valueFor(doc, '着地(お引越し先)')
+        }
+      } catch (e) { /* 詳細失敗→一覧情報だけ */ }
+      const memo = [layout && '間取り:' + layout, floor && '階数:' + floor, elevator && 'EV:' + elevator, base.status && '状況:' + base.status].filter(Boolean).join(' / ')
+      leads.push({
+        site: '価格.com', key: base.phone || ('価格.com:' + base.id), phone: base.phone,
+        name, kana, email: base.email, count: base.count,
+        from: fromAddr || base.fromPref, to: toAddr || base.toPref, fromZip, fromType,
+        receivedAt: base.requestedAt, moveDate: base.moveDate, memo,
+        orderId: base.quoteId || ('A000' + base.id), detail: true, detectedAt: new Date().toISOString(),
+      })
+      await new Promise(r => setTimeout(r, 200))
+    } catch {}
+  }
+  return { leads }
+}
+
 // ページ内で実行（自己完結。executeScript用）。表示中の一覧→依頼番号→詳細fetch→リード配列。
 async function samuraiScrapeAndFetch() {
   const norm = s => (s == null ? '' : String(s)).replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
