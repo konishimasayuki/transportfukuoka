@@ -17,6 +17,7 @@ export default function Debug({ user }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(!isDemo)
   const [ready, setReady] = useState(null) // Twilio ready
+  const [autoCall, setAutoCall] = useState(false) // 申込と同時に即発信
   const [callingId, setCallingId] = useState(null)
   const [toast, setToast] = useState('')
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 3000) }
@@ -36,10 +37,21 @@ export default function Debug({ user }) {
   const submit = async () => {
     if (!form.phone) { showToast('電話番号を入力してください'); return }
     const lead = { ...form, site: 'デバッグ' }
-    if (isDemo) { setItems(p => [{ ...lead, id: Date.now().toString(), status: '未架電' }, ...p]); showToast('申込しました（デモ：保存なし）'); return }
+    if (isDemo) {
+      setItems(p => [{ ...lead, id: Date.now().toString(), status: '未架電' }, ...p])
+      showToast(autoCall ? '申込しました（デモ：発信は無効）' : '申込しました（デモ：保存なし）')
+      return
+    }
     try {
-      await fetch('/api/debug', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) })
-      await fetchItems(); showToast('デバッグリードに申込を追加しました')
+      const r = await fetch('/api/debug', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) })
+      const d = await r.json()
+      await fetchItems()
+      if (autoCall && d.item) {
+        showToast('申込 → 即発信します')
+        await call(d.item) // 申込と同時に発信（本番の自動架電フローをテスト）
+      } else {
+        showToast('デバッグリードに申込を追加しました')
+      }
     } catch (e) { console.error(e); showToast('追加に失敗しました') }
   }
 
@@ -104,10 +116,16 @@ export default function Debug({ user }) {
             <div style={{ marginBottom: 12 }}>
               <label style={lb}>引越し希望日</label><input style={ip} value={form.moveDate} onChange={e => f('moveDate')(e.target.value)} />
             </div>
-            <div style={{ marginBottom: 14 }}>
+            <div style={{ marginBottom: 12 }}>
               <label style={lb}>メモ</label><input style={ip} value={form.memo} onChange={e => f('memo')(e.target.value)} />
             </div>
-            <button className="btn btn-primary" style={{ width: '100%' }} onClick={submit}>申し込む（デバッグリードに追加）</button>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 13, fontWeight: 700, cursor: 'pointer', color: autoCall ? '#B91C1C' : '#334155' }}>
+              <input type="checkbox" checked={autoCall} onChange={e => setAutoCall(e.target.checked)} />
+              ⚡ 申込と同時に即発信する（本番の自動架電をテスト）
+            </label>
+            <button className="btn btn-primary" style={{ width: '100%' }} onClick={submit}>
+              {autoCall ? '申し込む＋即発信' : '申し込む（デバッグリードに追加）'}
+            </button>
           </div>
         </div>
 
