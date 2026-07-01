@@ -1,10 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
-import LeadDetailModal, { captureLagSec, lagText, lagColor, ConvertToContractModal } from '../components/LeadDetailModal'
+import LeadDetailModal, { ConvertToContractModal } from '../components/LeadDetailModal'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
+
+// 監視サイト名 → 流入元の統一ラベル
+const SITE_TO_SRC = { 'ズバット': 'ズバッと', 'ズバッと': 'ズバッと', '引越し侍': 'サムライ', 'サムライ': 'サムライ', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
+const srcLabel = (site) => SITE_TO_SRC[site] || site || '—'
 
 // CSV入出力の列定義
 const CSV_COLUMNS = [
@@ -343,23 +347,21 @@ export default function Leads({ user, switchTab }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>受付日時</th><th>獲得</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>サイト</th><th style={{ textAlign: 'right' }}>金額</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
+                <tr><th>受付日時</th><th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th style={{ textAlign: 'right' }}>金額</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={12} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
+                  <tr><td colSpan={11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
                 ) : filtered.map(item => {
-                  const lag = captureLagSec(item)
                   return (
                   <tr key={item.id} onClick={() => setDetailItem(item)} style={{ cursor: 'pointer' }}>
                     <td style={{ whiteSpace: 'nowrap' }}>{item.receivedAt || ''}</td>
-                    <td style={{ whiteSpace: 'nowrap', fontWeight: 800, color: lagColor(lag), fontSize: 11 }}>{lag != null ? lagText(lag) : '—'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}><span className="badge bk">{srcLabel(item.site)}</span></td>
                     <td><b>{item.name || '（名前なし）'}</b></td>
                     <td style={{ whiteSpace: 'nowrap' }}><a href={`tel:${item.phone}`} onClick={e => e.stopPropagation()} style={{ color: '#1E5FA8', textDecoration: 'none', fontWeight: 700 }}>{item.phone}</a></td>
                     <td style={{ whiteSpace: 'nowrap' }}>{(item.from || '').replace('福岡県福岡市', '')} → {(item.to || '').replace('福岡県福岡市', '')}</td>
                     <td>{item.count}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{item.moveDate}</td>
-                    <td><span className="badge bk">{item.site}</span></td>
                     <td style={{ whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 700 }}>{item.amount ? `¥${Number(item.amount).toLocaleString('ja-JP')}` : '—'}</td>
                     <td>
                       <select

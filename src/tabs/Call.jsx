@@ -13,10 +13,19 @@ const DEMO_SITES = [
   { name:'ズバット',  status:'監視中', dotColor:'#22c55e', count:'今日 32件 / 新規3件', newCount:'🔴 NEW 3件' },
   { name:'引越し侍', status:'監視中', dotColor:'#22c55e', count:'今日 28件 / 新規2件', newCount:'🔴 NEW 2件' },
   { name:'価格.com', status:'監視中', dotColor:'#22c55e', count:'今日 14件 / 新規1件', newCount:'🔴 NEW 1件' },
-  { name:'SUUMO',    status:'待機中', dotColor:'#F59E0B', count:'今日 8件 / 新規0件',  newCount:null },
 ]
 
-function CallUI({ callOn, setCallOn, sites, logs, stats, onOpenLog }) {
+// 監視サイトの表示順と色（新規検知グラフ・監視カード共通）
+const MON_SITES = ['ズバット', '引越し侍', '価格.com']
+const SITE_COLOR = { 'ズバット': '#1E5FA8', '引越し侍': '#7C3AED', '価格.com': '#0E8A7A', 'SUUMO': '#94A3B8', 'その他': '#94A3B8' }
+
+const DEMO_DETECTIONS = [
+  { label:'ズバット',  color:'#1E5FA8', val:'3件', pct:100 },
+  { label:'引越し侍', color:'#7C3AED', val:'2件', pct:67 },
+  { label:'価格.com', color:'#0E8A7A', val:'1件', pct:34 },
+]
+
+function CallUI({ callOn, setCallOn, sites, logs, stats, detections, onOpenLog }) {
   return (
     <div>
       {/* ステータスバー */}
@@ -84,11 +93,7 @@ function CallUI({ callOn, setCallOn, sites, logs, stats, onOpenLog }) {
               <div className="kpi-card c-blue" style={{ padding:12 }}><div className="kpi-label">架電総数</div><div className="kpi-val">{stats.total}<span>件</span></div></div>
             </div>
             <div style={{ fontSize:11, fontWeight:700, color:'#64748B', marginBottom:8 }}>サイト別 新規検知</div>
-            {[
-              { label:'引越し侍', color:'#1E5FA8', pct:stats.total>0?68:0, val:stats.total>0?'2件':'0件' },
-              { label:'価格.com', color:'#0E8A7A', pct:stats.total>0?34:0, val:stats.total>0?'1件':'0件' },
-              { label:'SUUMO',    color:'#94A3B8', pct:0, val:'0件' },
-            ].map(b => (
+            {detections.map(b => (
               <div key={b.label} style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, marginBottom:8 }}>
                 <span style={{ width:65, color:'#64748B' }}>{b.label}</span>
                 <div style={{ flex:1, background:'#F1F5FB', borderRadius:4, height:7 }}>
@@ -271,9 +276,25 @@ export default function Call({ user, switchTab }) {
     if (typeof switchTab === 'function') switchTab('estimate')
   }
 
-  const liveSites = [
-    { name: 'ズバット', status: callOn ? '監視中' : '待機中', dotColor: callOn ? '#22c55e' : '#94A3B8', count: `取得済み ${leads.length}件`, newCount: null },
-  ]
+  // サイト別 取得済み件数（監視カード用）
+  const siteCount = (name) => leads.filter(l => l.site === name).length
+  const liveSites = MON_SITES.map(name => ({
+    name,
+    status: callOn ? '監視中' : '待機中',
+    dotColor: callOn ? '#22c55e' : '#94A3B8',
+    count: `取得済み ${siteCount(name)}件`,
+    newCount: null,
+  }))
+
+  // サイト別 新規検知（本日の取得をサイトで集計）
+  const detCounts = {}
+  todaysLeads.forEach(l => { const k = l.site || 'その他'; detCounts[k] = (detCounts[k] || 0) + 1 })
+  const chartSites = Array.from(new Set([...MON_SITES, ...Object.keys(detCounts)]))
+  const maxDet = Math.max(1, ...chartSites.map(s => detCounts[s] || 0))
+  const liveDetections = chartSites.map(s => ({
+    label: s, color: SITE_COLOR[s] || '#94A3B8',
+    val: `${detCounts[s] || 0}件`, pct: (detCounts[s] || 0) / maxDet * 100,
+  }))
 
   const mon = monHealth(monStatus)
 
@@ -295,6 +316,7 @@ export default function Call({ user, switchTab }) {
         sites={isDemo ? DEMO_SITES : liveSites}
         logs={isDemo ? DEMO_LOGS : liveLogs}
         stats={isDemo ? { total:7, success:5 } : { total: todaysLeads.length, success: 0 }}
+        detections={isDemo ? DEMO_DETECTIONS : liveDetections}
         onOpenLog={setDetailItem}
       />
       <LeadDetailModal
