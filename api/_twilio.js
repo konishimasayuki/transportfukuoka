@@ -3,15 +3,19 @@
 // 顧客に発信し、応答したら社名アナウンス後に事務所へ接続（ブリッジ）する。
 // 必要な環境変数（Vercel）:
 //   TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM / OFFICE_PHONE
+//   (任意) CALLER_ID … お客様に表示する発信者番号。事務所番号(092/0944)を
+//                      TwilioでVerified Caller IDとして認証済みならここに設定。
+//                      未設定なら TWILIO_FROM を使用。折り返しを事務所に直接届かせる用途。
 //   (任意) CALL_MESSAGE … 人が出た時の冒頭アナウンス文言
 //   (任意) CALL_VOICEMAIL_MESSAGE … 留守電/機械が出た時に残すメッセージ
 //   (任意) PUBLIC_BASE_URL … TwiML Webhook のベースURL（既定: 本番ドメイン）
 // =====================================================================
 
-const SID     = process.env.TWILIO_ACCOUNT_SID
-const TOKEN   = process.env.TWILIO_AUTH_TOKEN
-const FROM    = process.env.TWILIO_FROM
-const OFFICE  = process.env.OFFICE_PHONE
+const SID       = process.env.TWILIO_ACCOUNT_SID
+const TOKEN     = process.env.TWILIO_AUTH_TOKEN
+const FROM      = process.env.TWILIO_FROM
+const OFFICE    = process.env.OFFICE_PHONE
+const CALLER_ID = process.env.CALLER_ID || FROM // お客様に見せる発信者番号（既定=FROM）
 const MESSAGE = process.env.CALL_MESSAGE ||
   'お電話ありがとうございます。トランスポート福岡です。担当者におつなぎしますので、少々お待ちください。'
 const VOICEMAIL = process.env.CALL_VOICEMAIL_MESSAGE ||
@@ -43,7 +47,7 @@ export function toE164(p) {
 export async function placeCall(to, message, voicemail) {
   if (!twilioReady()) throw new Error('Twilio env vars (SID/TOKEN/FROM/OFFICE_PHONE) missing')
   const toE = toE164(to)
-  const fromE = toE164(FROM)
+  const fromE = toE164(CALLER_ID) // お客様に表示する発信者番号（事務所番号 or FROM）
   if (!toE) throw new Error('invalid destination number')
 
   const msg  = (message  && String(message).trim())  || MESSAGE

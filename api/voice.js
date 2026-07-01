@@ -5,8 +5,8 @@ import { toE164 } from './_twilio.js'
 //   human / unknown / 空 → msg を再生 → 事務所へ <Dial>（ブリッジ）
 //   machine_* / fax      → vmsg（留守電用メッセージ）を残して <Hangup/>
 // msg / vmsg はクエリ（発信時に placeCall が付与）。無ければ環境変数の既定。
-const OFFICE  = process.env.OFFICE_PHONE
-const FROM    = process.env.TWILIO_FROM
+const OFFICE    = process.env.OFFICE_PHONE
+const CALLER_ID = process.env.CALLER_ID || process.env.TWILIO_FROM // 発信者番号（事務所番号 or FROM）
 const DEFAULT_MSG = process.env.CALL_MESSAGE ||
   'お電話ありがとうございます。トランスポート福岡です。担当者におつなぎしますので、少々お待ちください。'
 const DEFAULT_VM = process.env.CALL_VOICEMAIL_MESSAGE ||
@@ -37,7 +37,7 @@ export default function handler(req, res) {
       `</Response>`
   } else {
     // 人 / 判定不能 → 通常アナウンス → 事務所へ接続
-    const fromE = toE164(FROM)
+    const fromE = toE164(CALLER_ID)
     const officeE = toE164(OFFICE)
     twiml =
       `<?xml version="1.0" encoding="UTF-8"?>` +
