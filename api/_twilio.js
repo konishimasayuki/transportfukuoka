@@ -96,6 +96,8 @@ export async function getCallStatus(sid) {
     price: x.price != null && x.price !== '' ? Math.abs(Number(x.price)) : null,
     priceUnit: x.price_unit || 'USD',
     status: x.status,
+    startTime: x.start_time || null, // Twilio実通話 開始時刻（RFC2822）
+    endTime: x.end_time || null,     // Twilio実通話 終了時刻（RFC2822）
   })
 
   const customerLeg = legOf(p)

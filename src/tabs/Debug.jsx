@@ -93,24 +93,28 @@ export default function Debug({ user }) {
       const d = await fetch(`/api/call?sid=${encodeURIComponent(item.callSid)}`).then(r => r.json())
       if (d.ok) {
         const ja = CALL_STATUS_JA[d.status] || d.status
-        const endedAt = Date.now() // テスト終了（結果確認）時刻
-        const elapsedSec = item.callStartAt ? Math.round((endedAt - item.callStartAt) / 1000) : null
+        // 経過はTwilioの実通話時刻（開始→終了）から算出。通話終了時点で確定するので
+        // 何回「結果確認」しても値は変わらない（＝止まる）。取得できない場合のみ null。
+        const cl = d.customerLeg || {}
+        const twStart = cl.startTime ? Date.parse(cl.startTime) : null
+        const twEnd = cl.endTime ? Date.parse(cl.endTime) : null
+        const startAt = (twStart && isFinite(twStart)) ? twStart : (item.callStartAt || null)
+        const endedAt = (twEnd && isFinite(twEnd)) ? twEnd : null
+        const elapsedSec = (startAt && endedAt) ? Math.round((endedAt - startAt) / 1000) : null
         const dur = d.duration ? `（通話${d.duration}秒）` : ''
         const el = elapsedSec != null ? ` / 経過${fmtDur(elapsedSec)}` : ''
         // Twilioの実請求額（両レッグ合算・確定分）。priceComplete=false は一部未確定。
         const cost = typeof d.totalPrice === 'number' ? d.totalPrice : null
         const costComplete = !!d.priceComplete
         const cs = cost != null && costComplete ? ` / 料金$${cost.toFixed(4)}(約¥${Math.round(cost * JPY_PER_USD)})` : (cost != null ? ' / 料金確定待ち' : '')
-        setItems(p => p.map(i => i.id === item.id ? {
-          ...i, callStatus: d.status, callDuration: d.duration, callEndAt: endedAt, elapsedSec,
+        const patch = {
+          callStatus: d.status, callDuration: d.duration,
+          callStartAt: startAt, callEndAt: endedAt, elapsedSec,
           callCost: cost, callCostComplete: costComplete, callCostUnit: d.priceUnit || 'USD',
           customerLeg: d.customerLeg || null, officeLegs: d.officeLegs || [],
-        } : i))
-        if (!isDemo) fetch('/api/debug', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          id: item.id, callStatus: d.status, callDuration: d.duration, callEndAt: endedAt, elapsedSec,
-          callCost: cost, callCostComplete: costComplete, callCostUnit: d.priceUnit || 'USD',
-          customerLeg: d.customerLeg || null, officeLegs: d.officeLegs || [],
-        }) }).catch(() => {})
+        }
+        setItems(p => p.map(i => i.id === item.id ? { ...i, ...patch } : i))
+        if (!isDemo) fetch('/api/debug', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, ...patch }) }).catch(() => {})
         showToast(`通話結果：${ja}${dur}${el}${cs}`)
       } else showToast('結果取得失敗: ' + (d.error || ''))
     } catch (e) { showToast('通信エラー: ' + (e && e.message ? e.message : String(e))) }
