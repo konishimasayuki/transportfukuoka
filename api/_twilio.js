@@ -17,14 +17,17 @@ export function twilioReady() {
   return !!(SID && TOKEN && FROM && OFFICE)
 }
 
-// 国内番号を E.164 へ（090-1234-5678 → +819012345678）
+// 番号を E.164 へ。既に + 付き（例 +15075415802 の米国番号）はそのまま使う。
+// 国内表記（0944-.. / 090-..）だけ +81 に変換する。
 export function toE164(p) {
-  const d = String(p || '').replace(/[^0-9]/g, '')
+  const s = String(p || '').trim()
+  if (!s) return ''
+  if (s.startsWith('+')) return '+' + s.replace(/[^0-9]/g, '') // 既に国際表記 → 記号だけ除去して維持
+  const d = s.replace(/[^0-9]/g, '')
   if (!d) return ''
-  if (d.startsWith('0'))  return '+81' + d.slice(1)
-  if (d.startsWith('81')) return '+' + d
-  if (d.startsWith('+'))  return d
-  return '+81' + d
+  if (d.startsWith('0'))  return '+81' + d.slice(1) // 国内 0始まり → 日本
+  if (d.startsWith('81')) return '+' + d            // 81始まり
+  return '+81' + d                                  // それ以外は国内番号として扱う
 }
 
 function escapeXml(s) {
