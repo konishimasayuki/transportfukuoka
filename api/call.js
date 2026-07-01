@@ -1,15 +1,20 @@
-import { placeCall, twilioReady } from './_twilio.js'
+import { placeCall, twilioReady, getCallStatus } from './_twilio.js'
 
 // 手動発信＆発信テスト用エンドポイント
-// POST { phone: "090-..." } → その番号に発信し、応答後に事務所へ接続
+// POST { phone, message? } → 発信（messageで冒頭音声を差し替え可）
+// GET  ?sid=... → 発信済み通話の結果（status/duration）／ paramなし → { ready }
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
   if (req.method === 'GET') {
-    // 設定確認用（番号などは返さない）
+    const sid = req.query && req.query.sid
+    if (sid) {
+      try { const c = await getCallStatus(sid); return res.json({ ok: true, ...c }) }
+      catch (e) { return res.status(500).json({ ok: false, error: e.message }) }
+    }
     return res.json({ ready: twilioReady() })
   }
 
@@ -17,11 +22,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { phone } = req.body || {}
+  const { phone, message } = req.body || {}
   if (!phone) return res.status(400).json({ error: 'phone required' })
 
   try {
-    const r = await placeCall(phone)
+    const r = await placeCall(phone, message)
     return res.json({ ok: true, sid: r.sid, status: r.status })
   } catch (e) {
     console.error(e)

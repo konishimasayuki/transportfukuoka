@@ -7,6 +7,9 @@ const STATUS_LIST = ['未架電', '架電済', '留守', 'テスト完了']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', 'テスト完了': 'bg' }
 
 const EMPTY = { name: 'テスト太郎', phone: '', from: '福岡市中央区', to: '福岡市博多区', persons: '2人', moveDate: '来月上旬', memo: 'デバッグ申込' }
+const DEFAULT_MSG = 'お電話ありがとうございます。トランスポート福岡です。担当者におつなぎしますので、少々お待ちください。'
+// Twilioの通話ステータス → 日本語
+const CALL_STATUS_JA = { queued: '発信待ち', initiated: '発信中', ringing: '呼出中', 'in-progress': '通話中', completed: '完了', busy: '話中', 'no-answer': '不在', failed: '失敗', canceled: '取消' }
 
 const ip = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }
 const lb = { fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4, display: 'block' }
@@ -18,6 +21,7 @@ export default function Debug({ user }) {
   const [loading, setLoading] = useState(!isDemo)
   const [ready, setReady] = useState(null) // Twilio ready
   const [autoCall, setAutoCall] = useState(false) // 申込と同時に即発信
+  const [voiceMsg, setVoiceMsg] = useState('')     // 自動音声のテスト文面（空＝既定）
   const [callingId, setCallingId] = useState(null)
   const [toast, setToast] = useState('')
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 3000) }
@@ -61,12 +65,31 @@ export default function Debug({ user }) {
     if (!item.phone) { showToast('電話番号がありません'); return }
     setCallingId(item.id)
     try {
-      const r = await fetch('/api/call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: item.phone }) })
+      const body = { phone: item.phone }
+      if (voiceMsg.trim()) body.message = voiceMsg.trim() // 音声文面を差し替え（空＝既定）
+      const r = await fetch('/api/call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const d = await r.json()
-      if (d.ok) { showToast(`発信しました（SID: ${d.sid || '-'}）`); updateStatus(item, '架電済') }
-      else showToast('発信失敗: ' + (d.error || `HTTP ${r.status}`))
+      if (d.ok) {
+        showToast(`発信しました（SID: ${d.sid || '-'}）`)
+        setItems(p => p.map(i => i.id === item.id ? { ...i, status: '架電済', callSid: d.sid, callStatus: d.status } : i))
+        if (!isDemo) fetch('/api/debug', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, status: '架電済' }) }).catch(() => {})
+      } else showToast('発信失敗: ' + (d.error || `HTTP ${r.status}`))
     } catch (e) { showToast('通信エラー: ' + (e && e.message ? e.message : String(e))) }
     setCallingId(null)
+  }
+
+  // 通話結果の確認（SID→Twilioの状態を取得）
+  const checkResult = async (item) => {
+    if (!item.callSid) return
+    try {
+      const d = await fetch(`/api/call?sid=${encodeURIComponent(item.callSid)}`).then(r => r.json())
+      if (d.ok) {
+        const ja = CALL_STATUS_JA[d.status] || d.status
+        const dur = d.duration ? `（${d.duration}秒）` : ''
+        setItems(p => p.map(i => i.id === item.id ? { ...i, callStatus: d.status, callDuration: d.duration } : i))
+        showToast(`通話結果：${ja}${dur}`)
+      } else showToast('結果取得失敗: ' + (d.error || ''))
+    } catch (e) { showToast('通信エラー: ' + (e && e.message ? e.message : String(e))) }
   }
 
   const updateStatus = async (item, status) => {
@@ -143,6 +166,20 @@ export default function Debug({ user }) {
               下のリスト各行の <b>📞架電</b> を押すと、その番号に発信します（応答後に自動音声→事務所へ転送）。<br />
               まず<b>自分の携帯</b>で申込→架電し、着信〜転送まで確認してください。
             </div>
+
+            <div style={{ marginTop: 12 }}>
+              <label style={lb}>自動音声メッセージ（テスト用・空欄なら既定）</label>
+              <textarea style={{ ...ip, resize: 'vertical', minHeight: 64 }} value={voiceMsg}
+                onChange={e => setVoiceMsg(e.target.value)} placeholder={DEFAULT_MSG} />
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setVoiceMsg(DEFAULT_MSG)}>既定文を入れる</button>
+                <button className="btn btn-outline btn-sm" onClick={() => setVoiceMsg('')}>クリア（既定を使用）</button>
+              </div>
+              <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 6 }}>
+                ここに文を入れて架電すると、その文面で発信します（本番の CALL_MESSAGE 相当を耳で確認・調整）。
+              </div>
+            </div>
+
             {ready === false && (
               <div style={{ fontSize: 11, color: '#B91C1C', marginTop: 10 }}>
                 Vercelに TWILIO_ACCOUNT_SID / AUTH_TOKEN / FROM / OFFICE_PHONE を設定してください。
@@ -165,10 +202,10 @@ export default function Debug({ user }) {
             <div style={{ textAlign: 'center', padding: 30, color: '#64748B' }}>読み込み中...</div>
           ) : (
             <table>
-              <thead><tr><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>希望日</th><th>ステータス</th><th>操作</th></tr></thead>
+              <thead><tr><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>希望日</th><th>ステータス</th><th>通話結果</th><th>操作</th></tr></thead>
               <tbody>
                 {items.length === 0 ? (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94A3B8', padding: 28 }}>デバッグリードがありません。左のフォームから申し込んでください。</td></tr>
+                  <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94A3B8', padding: 28 }}>デバッグリードがありません。左のフォームから申し込んでください。</td></tr>
                 ) : items.map(item => (
                   <tr key={item.id}>
                     <td><b>{item.name || '（名前なし）'}</b></td>
@@ -182,11 +219,21 @@ export default function Debug({ user }) {
                         {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {item.callSid ? (
+                        <span style={{ fontSize: 12 }}>
+                          {CALL_STATUS_JA[item.callStatus] || item.callStatus || '—'}{item.callDuration ? `（${item.callDuration}秒）` : ''}
+                        </span>
+                      ) : <span style={{ color: '#CBD5E1' }}>—</span>}
+                    </td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button className="btn btn-primary btn-sm" onClick={() => call(item)} disabled={callingId === item.id || ready === false || isDemo}>
                           {callingId === item.id ? '発信中…' : '📞架電'}
                         </button>
+                        {item.callSid && (
+                          <button className="btn btn-outline btn-sm" onClick={() => checkResult(item)}>結果確認</button>
+                        )}
                         <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={() => remove(item)}>削除</button>
                       </div>
                     </td>

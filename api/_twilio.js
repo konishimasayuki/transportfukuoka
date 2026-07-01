@@ -32,17 +32,19 @@ function escapeXml(s) {
 }
 
 // 顧客(to)に発信 → 応答後にアナウンス → 事務所(OFFICE)へ接続
-export async function placeCall(to) {
+// message を渡すと冒頭アナウンスをその文言に差し替え（デバッグの音声テスト用）
+export async function placeCall(to, message) {
   if (!twilioReady()) throw new Error('Twilio env vars (SID/TOKEN/FROM/OFFICE_PHONE) missing')
   const toE = toE164(to)
   const fromE = toE164(FROM)
   const officeE = toE164(OFFICE)
   if (!toE) throw new Error('invalid destination number')
 
+  const msg = (message && String(message).trim()) || MESSAGE
   const twiml =
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<Response>` +
-    `<Say language="ja-JP" voice="Polly.Mizuki">${escapeXml(MESSAGE)}</Say>` +
+    `<Say language="ja-JP" voice="Polly.Mizuki">${escapeXml(msg)}</Say>` +
     `<Dial callerId="${fromE}">${officeE}</Dial>` +
     `</Response>`
 
@@ -58,4 +60,15 @@ export async function placeCall(to) {
   const data = await res.json()
   if (!res.ok) throw new Error('Twilio: ' + (data.message || res.status))
   return data
+}
+
+// 発信済み通話の結果を取得（SID指定）。status: queued/ringing/in-progress/completed/busy/no-answer/failed/canceled
+export async function getCallStatus(sid) {
+  if (!twilioReady()) throw new Error('Twilio env vars missing')
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${SID}/Calls/${encodeURIComponent(sid)}.json`, {
+    headers: { Authorization: 'Basic ' + Buffer.from(`${SID}:${TOKEN}`).toString('base64') },
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error('Twilio: ' + (data.message || res.status))
+  return { status: data.status, duration: data.duration, to: data.to, from: data.from }
 }
