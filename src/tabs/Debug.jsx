@@ -17,6 +17,8 @@ const lb = { fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4, d
 const fmtDur = (s) => { const n = Number(s); if (!isFinite(n)) return '-'; const m = Math.floor(n / 60), ss = n % 60; return m ? `${m}分${ss}秒` : `${ss}秒` }
 // epoch(ms) → HH:MM:SS
 const fmtClock = (ms) => (ms ? new Date(ms).toLocaleTimeString('ja-JP', { hour12: false }) : '-')
+// 円換算レート（参考表示用）。Twilioの請求はUSD建てのため、円は概算表示。
+const JPY_PER_USD = 155
 
 export default function Debug({ user }) {
   const isDemo = user?.mode === 'demo'
@@ -94,9 +96,21 @@ export default function Debug({ user }) {
         const elapsedSec = item.callStartAt ? Math.round((endedAt - item.callStartAt) / 1000) : null
         const dur = d.duration ? `（通話${d.duration}秒）` : ''
         const el = elapsedSec != null ? ` / 経過${fmtDur(elapsedSec)}` : ''
-        setItems(p => p.map(i => i.id === item.id ? { ...i, callStatus: d.status, callDuration: d.duration, callEndAt: endedAt, elapsedSec } : i))
-        if (!isDemo) fetch('/api/debug', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, callStatus: d.status, callDuration: d.duration, callEndAt: endedAt, elapsedSec }) }).catch(() => {})
-        showToast(`通話結果：${ja}${dur}${el}`)
+        // Twilioの実請求額（両レッグ合算・確定分）。priceComplete=false は一部未確定。
+        const cost = typeof d.totalPrice === 'number' ? d.totalPrice : null
+        const costComplete = !!d.priceComplete
+        const cs = cost != null && costComplete ? ` / 料金$${cost.toFixed(4)}(約¥${Math.round(cost * JPY_PER_USD)})` : (cost != null ? ' / 料金確定待ち' : '')
+        setItems(p => p.map(i => i.id === item.id ? {
+          ...i, callStatus: d.status, callDuration: d.duration, callEndAt: endedAt, elapsedSec,
+          callCost: cost, callCostComplete: costComplete, callCostUnit: d.priceUnit || 'USD',
+          customerLeg: d.customerLeg || null, officeLegs: d.officeLegs || [],
+        } : i))
+        if (!isDemo) fetch('/api/debug', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          id: item.id, callStatus: d.status, callDuration: d.duration, callEndAt: endedAt, elapsedSec,
+          callCost: cost, callCostComplete: costComplete, callCostUnit: d.priceUnit || 'USD',
+          customerLeg: d.customerLeg || null, officeLegs: d.officeLegs || [],
+        }) }).catch(() => {})
+        showToast(`通話結果：${ja}${dur}${el}${cs}`)
       } else showToast('結果取得失敗: ' + (d.error || ''))
     } catch (e) { showToast('通信エラー: ' + (e && e.message ? e.message : String(e))) }
   }
@@ -233,8 +247,18 @@ export default function Debug({ user }) {
                         <div style={{ fontSize: 12, lineHeight: 1.5 }}>
                           <div>
                             {CALL_STATUS_JA[item.callStatus] || item.callStatus || '—'}
-                            {item.callDuration ? <span style={{ color: '#64748B' }}>（通話{item.callDuration}秒）</span> : ''}
+                            {item.callDuration ? <span style={{ color: '#64748B' }}>（顧客{item.callDuration}秒{item.officeLegs && item.officeLegs.length ? ` / 事務所${item.officeLegs.reduce((s, l) => s + (l.duration || 0), 0)}秒` : ''}）</span> : ''}
                           </div>
+                          {item.callCost != null && item.callCostComplete && (
+                            <div style={{ fontSize: 11, color: '#B45309', fontWeight: 700 }}>
+                              料金 ${item.callCost.toFixed(4)}（約¥{Math.round(item.callCost * JPY_PER_USD)}）
+                            </div>
+                          )}
+                          {item.callCost != null && !item.callCostComplete && (
+                            <div style={{ fontSize: 10, color: '#94A3B8' }}>
+                              料金確定待ち（数分後に再度「結果確認」）
+                            </div>
+                          )}
                           {item.elapsedSec != null && (
                             <div style={{ fontSize: 10, color: '#0F766E', fontWeight: 700 }}>
                               経過 {fmtDur(item.elapsedSec)}

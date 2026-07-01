@@ -65,13 +65,53 @@ export async function placeCall(to, message) {
   return data
 }
 
-// 発信済み通話の結果を取得（SID指定）。status: queued/ringing/in-progress/completed/busy/no-answer/failed/canceled
+// 発信済み通話の結果＋実請求額を取得（SID指定）。
+// ブリッジ方式では 親コール(=顧客レッグ) と <Dial> の子コール(=事務所レッグ) の
+// 2本が発生するため、両方の price/duration を取得して合算する。
+// price は Twilio が確定後に付与する「実際に請求される金額(USD, 負値)」。未確定の間は null。
+// status: queued/ringing/in-progress/completed/busy/no-answer/failed/canceled
 export async function getCallStatus(sid) {
   if (!twilioReady()) throw new Error('Twilio env vars missing')
-  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${SID}/Calls/${encodeURIComponent(sid)}.json`, {
-    headers: { Authorization: 'Basic ' + Buffer.from(`${SID}:${TOKEN}`).toString('base64') },
+  const auth = 'Basic ' + Buffer.from(`${SID}:${TOKEN}`).toString('base64')
+  const base = `https://api.twilio.com/2010-04-01/Accounts/${SID}`
+
+  // 親（顧客レッグ）
+  const pRes = await fetch(`${base}/Calls/${encodeURIComponent(sid)}.json`, { headers: { Authorization: auth } })
+  const p = await pRes.json()
+  if (!pRes.ok) throw new Error('Twilio: ' + (p.message || pRes.status))
+
+  // 子（事務所レッグ＝<Dial>で生成される子コール群）
+  let children = []
+  try {
+    const cRes = await fetch(`${base}/Calls.json?ParentCallSid=${encodeURIComponent(sid)}&PageSize=20`, { headers: { Authorization: auth } })
+    const c = await cRes.json()
+    if (cRes.ok && Array.isArray(c.calls)) children = c.calls
+  } catch { /* 子取得失敗時は親のみで返す */ }
+
+  // Twilio の price は負値文字列（例 "-0.01850"）→ 絶対値の数値に。未確定は null。
+  const legOf = (x) => ({
+    sid: x.sid,
+    to: x.to,
+    duration: x.duration != null && x.duration !== '' ? Number(x.duration) : null,
+    price: x.price != null && x.price !== '' ? Math.abs(Number(x.price)) : null,
+    priceUnit: x.price_unit || 'USD',
+    status: x.status,
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error('Twilio: ' + (data.message || res.status))
-  return { status: data.status, duration: data.duration, to: data.to, from: data.from }
+
+  const customerLeg = legOf(p)
+  const officeLegs = children.map(legOf)
+  const allLegs = [customerLeg, ...officeLegs]
+  const priced = allLegs.filter(l => l.price != null)
+  const priceComplete = allLegs.length > 0 && priced.length === allLegs.length // 全レッグ確定済みか
+  const totalPrice = priced.reduce((s, l) => s + l.price, 0)                    // 実請求合計(USD)
+  const totalDuration = allLegs.reduce((s, l) => s + (l.duration || 0), 0)
+
+  return {
+    status: p.status,
+    duration: customerLeg.duration, // 顧客レッグ秒（従来互換）
+    to: p.to, from: p.from,
+    customerLeg, officeLegs,
+    totalPrice, priceComplete, priceUnit: customerLeg.priceUnit || 'USD',
+    totalDuration,
+  }
 }
