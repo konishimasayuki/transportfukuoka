@@ -138,3 +138,28 @@ export async function getCallStatus(sid) {
     totalDuration,
   }
 }
+
+// 診断用: 親コール＋子コールの Twilio 生データ（課金関連フィールド）を返す。
+// price が本当に null なのか（Twilio遅延）を事実で確認するために使う。
+export async function getCallRaw(sid) {
+  if (!twilioReady()) throw new Error('Twilio env vars missing')
+  const auth = 'Basic ' + Buffer.from(`${SID}:${TOKEN}`).toString('base64')
+  const base = `https://api.twilio.com/2010-04-01/Accounts/${SID}`
+  const pick = (x) => ({
+    sid: x.sid, parent_call_sid: x.parent_call_sid,
+    status: x.status, direction: x.direction, answered_by: x.answered_by,
+    duration: x.duration, price: x.price, price_unit: x.price_unit,
+    start_time: x.start_time, end_time: x.end_time,
+    from: x.from, to: x.to, account_sid: x.account_sid,
+  })
+  const pRes = await fetch(`${base}/Calls/${encodeURIComponent(sid)}.json`, { headers: { Authorization: auth } })
+  const p = await pRes.json()
+  if (!pRes.ok) throw new Error('Twilio: ' + (p.message || pRes.status))
+  let children = []
+  try {
+    const cRes = await fetch(`${base}/Calls.json?ParentCallSid=${encodeURIComponent(sid)}&PageSize=20`, { headers: { Authorization: auth } })
+    const c = await cRes.json()
+    if (cRes.ok && Array.isArray(c.calls)) children = c.calls
+  } catch { /* ignore */ }
+  return { parent: pick(p), children: children.map(pick) }
+}

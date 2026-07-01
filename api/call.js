@@ -1,4 +1,4 @@
-import { placeCall, twilioReady, getCallStatus } from './_twilio.js'
+import { placeCall, twilioReady, getCallStatus, getCallRaw } from './_twilio.js'
 
 // 手動発信＆発信テスト用エンドポイント
 // POST { phone, message? } → 発信（messageで冒頭音声を差し替え可）
@@ -12,6 +12,11 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const sid = req.query && req.query.sid
     if (sid) {
+      // 診断: ?sid=..&raw=1 → Twilio生データ（price/status等）を返す
+      if (req.query.raw) {
+        try { const r = await getCallRaw(sid); return res.json({ ok: true, raw: r }) }
+        catch (e) { return res.status(500).json({ ok: false, error: e.message }) }
+      }
       try { const c = await getCallStatus(sid); return res.json({ ok: true, ...c }) }
       catch (e) { return res.status(500).json({ ok: false, error: e.message }) }
     }

@@ -129,6 +129,19 @@ export default function Debug({ user }) {
     } catch (e) { showToast('通信エラー: ' + (e && e.message ? e.message : String(e))) }
   }
 
+  // 診断: Twilioの生データ（price/status）を取得して表示（確定待ちの原因切り分け用）
+  const showRaw = async (item) => {
+    if (!item.callSid) return
+    try {
+      const d = await fetch(`/api/call?sid=${encodeURIComponent(item.callSid)}&raw=1`).then(r => r.json())
+      if (d.ok) {
+        const txt = JSON.stringify(d.raw, null, 2)
+        console.log('Twilio raw:', d.raw)
+        alert('Twilio 生データ（price/status）:\n\n' + txt)
+      } else alert('取得失敗: ' + (d.error || ''))
+    } catch (e) { alert('通信エラー: ' + (e && e.message ? e.message : String(e))) }
+  }
+
   const updateStatus = async (item, status) => {
     setItems(p => p.map(i => i.id === item.id ? { ...i, status } : i))
     if (isDemo) return
@@ -320,6 +333,9 @@ export default function Debug({ user }) {
                         </button>
                         {item.callSid && (
                           <button className="btn btn-outline btn-sm" onClick={() => checkResult(item)}>結果確認</button>
+                        )}
+                        {item.callSid && (
+                          <button className="btn btn-outline btn-sm" onClick={() => showRaw(item)} title="Twilio生データ">🔍</button>
                         )}
                         <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={() => remove(item)}>削除</button>
                       </div>
