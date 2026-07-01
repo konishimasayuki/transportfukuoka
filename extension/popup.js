@@ -194,7 +194,15 @@ async function kakakuScrapeAndFetch() {
       try {
         const res = await fetch('/hikkoshi/vender/admin/userdetail/?orderid=' + base.id, { credentials: 'include', cache: 'no-store', headers: { accept: 'text/html', 'cache-control': 'no-cache' } })
         if (res.ok) {
-          const doc = new DOMParser().parseFromString(await res.text(), 'text/html')
+          // 価格.comは Shift_JIS。charsetを見て明示デコード（UTF-8既定だと文字化け）
+          const buf = await res.arrayBuffer()
+          let enc = ((res.headers.get('content-type') || '').match(/charset=([\w-]+)/i) || [])[1]
+          if (!enc) { const head = new TextDecoder('ascii').decode(buf.slice(0, 4096)); enc = ((head.match(/charset=["']?([\w-]+)/i)) || [])[1] }
+          enc = (enc || 'shift_jis').toLowerCase()
+          if (['sjis', 'x-sjis', 'ms932', 'windows-31j', 'shift-jis'].includes(enc)) enc = 'shift_jis'
+          let text
+          try { text = new TextDecoder(enc).decode(buf) } catch { text = new TextDecoder('shift_jis').decode(buf) }
+          const doc = new DOMParser().parseFromString(text, 'text/html')
           const shimei = valueFor(doc, '氏名')
           const mk = shimei.match(/^(.+?)[（(](.+?)[）)]/)
           if (mk) { name = mk[1].trim(); kana = mk[2].trim() } else if (shimei) { name = shimei }

@@ -209,10 +209,19 @@ function kakakuLoop(gen, today) {
   const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
   const HDR = { accept: 'text/html', 'cache-control': 'no-cache', pragma: 'no-cache' }
 
+  // 価格.comは Shift_JIS。r.text()（UTF-8既定）だと日本語が文字化けするため、
+  // バイト列を取得し charset（Content-Type→metaタグ→既定SJIS）で明示デコードする。
   async function fetchDoc(url, mode) {
     const r = await fetch(url, { credentials: 'include', cache: mode || 'no-store', headers: HDR })
     if (!r.ok) throw new Error(String(r.status))
-    return new DOMParser().parseFromString(await r.text(), 'text/html')
+    const buf = await r.arrayBuffer()
+    let enc = ((r.headers.get('content-type') || '').match(/charset=([\w-]+)/i) || [])[1]
+    if (!enc) { const head = new TextDecoder('ascii').decode(buf.slice(0, 4096)); enc = ((head.match(/charset=["']?([\w-]+)/i)) || [])[1] }
+    enc = (enc || 'shift_jis').toLowerCase()
+    if (['sjis', 'x-sjis', 'ms932', 'windows-31j', 'shift-jis'].includes(enc)) enc = 'shift_jis'
+    let text
+    try { text = new TextDecoder(enc).decode(buf) } catch { text = new TextDecoder('shift_jis').decode(buf) }
+    return new DOMParser().parseFromString(text, 'text/html')
   }
 
   // 詳細ページからラベル→値を取得（table/dl/div いずれの構造にも対応する総当り）
