@@ -288,9 +288,17 @@ export default function Debug({ user }) {
                             </>
                           )}
                           {item.callCost != null && !item.callCostComplete && (
-                            <div style={{ fontSize: 10, color: '#94A3B8' }}>
-                              料金確定待ち（数分後に再度「結果確認」）
-                            </div>
+                            <>
+                              <div style={{ fontSize: 10, color: '#94A3B8' }}>
+                                料金確定待ち（数分後に再度「結果確認」）
+                              </div>
+                              <div style={{ fontSize: 10, color: '#94A3B8' }}>
+                                顧客: {item.customerLeg && item.customerLeg.price != null ? `$${item.customerLeg.price.toFixed(4)}` : '確定待ち'}
+                                {' / '}事務所: {(item.officeLegs && item.officeLegs.length)
+                                  ? item.officeLegs.map(l => l.price != null ? `$${l.price.toFixed(4)}` : '確定待ち').join(', ')
+                                  : '—'}
+                              </div>
+                            </>
                           )}
                           {item.elapsedSec != null && (
                             <div style={{ fontSize: 10, color: '#0F766E', fontWeight: 700 }}>
