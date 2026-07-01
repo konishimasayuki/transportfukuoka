@@ -21,6 +21,9 @@ const fmtClock = (ms) => (ms ? new Date(ms).toLocaleTimeString('ja-JP', { hour12
 // 円換算レート（参考表示用）。Twilioの請求はUSD建てのため、円は概算表示。
 const JPY_PER_USD = 162.67
 const JPY_RATE_NOTE = '¥162.67/$（2026/7/1時点）'
+// 留守電判定(MachineDetection=DetectMessageEnd)の追加料金。Twilio回答値: $0.0075/通話。
+// Twilioのcall.priceは通話分のみで本アドオンは含まないため、別途加算する。
+const AMD_FEE_USD = 0.0075
 
 export default function Debug({ user }) {
   const isDemo = user?.mode === 'demo'
@@ -109,7 +112,8 @@ export default function Debug({ user }) {
         // Twilioの実請求額（両レッグ合算・確定分）。priceComplete=false は一部未確定。
         const cost = typeof d.totalPrice === 'number' ? d.totalPrice : null
         const costComplete = !!d.priceComplete
-        const cs = cost != null && costComplete ? ` / 料金$${cost.toFixed(4)}(約¥${Math.round(cost * JPY_PER_USD)})` : (cost != null ? ' / 料金確定待ち' : '')
+        const grand = cost != null ? cost + AMD_FEE_USD : null // 通話料＋留守電判定
+        const cs = grand != null && costComplete ? ` / 料金$${grand.toFixed(4)}(約¥${Math.round(grand * JPY_PER_USD)})` : (cost != null ? ' / 料金確定待ち' : '')
         const patch = {
           callStatus: d.status, callDuration: d.duration,
           callStartAt: startAt, callEndAt: endedAt, elapsedSec,
@@ -272,9 +276,14 @@ export default function Debug({ user }) {
                             {item.callDuration ? <span style={{ color: '#64748B' }}>（顧客{item.callDuration}秒{item.officeLegs && item.officeLegs.length ? ` / 事務所${item.officeLegs.reduce((s, l) => s + (l.duration || 0), 0)}秒` : ''}）</span> : ''}
                           </div>
                           {item.callCost != null && item.callCostComplete && (
-                            <div style={{ fontSize: 11, color: '#B45309', fontWeight: 700 }}>
-                              料金 ${item.callCost.toFixed(4)}（約¥{Math.round(item.callCost * JPY_PER_USD)}）
-                            </div>
+                            <>
+                              <div style={{ fontSize: 11, color: '#B45309', fontWeight: 700 }}>
+                                料金 ${(item.callCost + AMD_FEE_USD).toFixed(4)}（約¥{Math.round((item.callCost + AMD_FEE_USD) * JPY_PER_USD)}）
+                              </div>
+                              <div style={{ fontSize: 10, color: '#94A3B8' }}>
+                                内訳: 通話${item.callCost.toFixed(4)} ＋ 留守電判定${AMD_FEE_USD}
+                              </div>
+                            </>
                           )}
                           {item.callCost != null && !item.callCostComplete && (
                             <div style={{ fontSize: 10, color: '#94A3B8' }}>
