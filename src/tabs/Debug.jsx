@@ -24,6 +24,17 @@ const JPY_RATE_NOTE = '¥162.67/$（2026/7/1時点）'
 // 留守電判定(MachineDetection=DetectMessageEnd)の追加料金。Twilio回答値: $0.0075/通話。
 // Twilioのcall.priceは通話分のみで本アドオンは含まないため、別途加算する。
 const AMD_FEE_USD = 0.0075
+const AMD_FEE_JPY = AMD_FEE_USD * JPY_PER_USD // 留守電判定の円概算（約¥1.2）
+
+// Twilioの通話料金(callCost)は price_unit(JPY/USD)に依存する。単位を尊重して円換算する。
+// 戻り値: { callJpy(通話分の円), totalJpy(通話+AMDの円概算), callNative(元単位の文字列) }
+function costParts(item) {
+  const unit = item.callCostUnit || 'USD'
+  const call = Number(item.callCost) || 0
+  const callJpy = unit === 'JPY' ? call : call * JPY_PER_USD // JPY建てはそのまま円
+  const callNative = unit === 'JPY' ? `¥${call.toFixed(2)}` : `$${call.toFixed(4)}`
+  return { unit, callJpy, callNative, totalJpy: callJpy + AMD_FEE_JPY }
+}
 
 export default function Debug({ user }) {
   const isDemo = user?.mode === 'demo'
@@ -114,8 +125,11 @@ export default function Debug({ user }) {
         // Twilioの実請求額（両レッグ合算・確定分）。priceComplete=false は一部未確定。
         const cost = typeof d.totalPrice === 'number' ? d.totalPrice : null
         const costComplete = !!d.priceComplete
-        const grand = cost != null ? cost + AMD_FEE_USD : null // 通話料＋留守電判定
-        const cs = grand != null && costComplete ? ` / 料金$${grand.toFixed(4)}(約¥${Math.round(grand * JPY_PER_USD)})` : (cost != null ? ' / 料金確定待ち' : '')
+        // 通貨(price_unit)を尊重して円換算＋AMD加算
+        const unit = d.priceUnit || 'USD'
+        const callJpy = cost != null ? (unit === 'JPY' ? cost : cost * JPY_PER_USD) : null
+        const totalJpy = callJpy != null ? callJpy + AMD_FEE_JPY : null
+        const cs = totalJpy != null && costComplete ? ` / 料金約¥${Math.round(totalJpy)}` : (cost != null ? ' / 料金確定待ち' : '')
         const patch = {
           callSid: item.callSid, callStatus: d.status, callDuration: d.duration,
           callStartAt: startAt, callEndAt: endedAt, elapsedSec,
@@ -256,7 +270,7 @@ export default function Debug({ user }) {
       <div className="card">
         <div className="card-head"><h3>デバッグリード一覧</h3>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ fontSize: 10, color: '#94A3B8' }}>料金はTwilio実請求(USD) ／ 円換算 {JPY_RATE_NOTE}</span>
+            <span style={{ fontSize: 10, color: '#94A3B8' }}>料金＝Twilio実請求（本アカウントはJPY建て。USD時のみ {JPY_RATE_NOTE} で換算）</span>
             {!isDemo && <button className="btn btn-outline btn-sm" onClick={fetchItems}>⟳ 更新</button>}
             <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={clearAll}>全削除</button>
           </div>
@@ -290,16 +304,19 @@ export default function Debug({ user }) {
                             {CALL_STATUS_JA[item.callStatus] || item.callStatus || '—'}
                             {item.callDuration ? <span style={{ color: '#64748B' }}>（顧客{item.callDuration}秒{item.officeLegs && item.officeLegs.length ? ` / 事務所${item.officeLegs.reduce((s, l) => s + (l.duration || 0), 0)}秒` : ''}）</span> : ''}
                           </div>
-                          {item.callCost != null && item.callCostComplete && (
-                            <>
-                              <div style={{ fontSize: 11, color: '#B45309', fontWeight: 700 }}>
-                                料金 ${(item.callCost + AMD_FEE_USD).toFixed(4)}（約¥{Math.round((item.callCost + AMD_FEE_USD) * JPY_PER_USD)}）
-                              </div>
-                              <div style={{ fontSize: 10, color: '#94A3B8' }}>
-                                内訳: 通話${item.callCost.toFixed(4)} ＋ 留守電判定${AMD_FEE_USD}
-                              </div>
-                            </>
-                          )}
+                          {item.callCost != null && item.callCostComplete && (() => {
+                            const { callNative, totalJpy } = costParts(item)
+                            return (
+                              <>
+                                <div style={{ fontSize: 11, color: '#B45309', fontWeight: 700 }}>
+                                  料金 約¥{Math.round(totalJpy)}
+                                </div>
+                                <div style={{ fontSize: 10, color: '#94A3B8' }}>
+                                  内訳: 通話{callNative} ＋ 留守電判定 約¥{Math.round(AMD_FEE_JPY)}
+                                </div>
+                              </>
+                            )
+                          })()}
                           {item.callCost != null && !item.callCostComplete && (
                             <>
                               <div style={{ fontSize: 10, color: '#94A3B8' }}>
