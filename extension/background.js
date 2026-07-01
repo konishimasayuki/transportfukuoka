@@ -245,19 +245,34 @@ function kakakuLoop(gen, today) {
       const ldoc = await fetchDoc(LIST, 'no-cache')
       const rows = [...ldoc.querySelectorAll('tr')].filter(tr => tr.querySelector('a[href*="userdetail"]'))
       if (rows.length) {
+        // ヘッダ行から「列名→index」を作り、列順が変わっても正しく読めるようにする（フォールバック付き）
+        let cm = null
+        for (const tr of ldoc.querySelectorAll('tr')) {
+          const cells = [...tr.children].map(textOf)
+          if (cells.includes('名前') && cells.includes('電話番号')) { cm = {}; cells.forEach((c, i) => { if (c && !(c in cm)) cm[c] = i }); break }
+        }
+        const idx = (label, fb) => (cm && cm[label] != null) ? cm[label] : fb
+        // 指定列で見つからなければ全セルから正規表現で拾う（列ズレ耐性）
+        const findBy = (c, re, i) => (c[i] && (c[i].match(re) || [])[0]) || (c.map(x => (x.match(re) || [''])[0]).find(Boolean) || '')
         const parsed = []; const dd = new Set()
         for (const tr of rows) {
           const a = tr.querySelector('a[href*="userdetail"]')
           const m = (a.getAttribute('href') || '').match(/orderid=(\d+)/)
           if (!m || dd.has(m[1])) continue
           dd.add(m[1])
-          // 列: 0依頼日 1顧客ステータス 2引越し希望日 3人数 4元 5先 6名前 7電話 8メール 9同時見積社数 10見積もりID 11詳細
           const c = [...tr.children].map(textOf)
           parsed.push({
-            id: m[1], requestedAt: c[0], status: c[1], moveDate: c[2], count: c[3],
-            fromPref: c[4], toPref: c[5], name: c[6],
-            phone: (c[7].match(PHONE_RE) || [''])[0], email: (c[8].match(EMAIL_RE) || [''])[0],
-            quoteId: c[10] || '',
+            id: m[1],
+            requestedAt: c[idx('依頼日', 0)] || '',
+            status: c[idx('顧客ステータス', 1)] || '',
+            moveDate: c[idx('引越し希望日', 2)] || '',
+            count: c[idx('引越し人数', 3)] || '',
+            fromPref: c[idx('引越し元', 4)] || '',
+            toPref: c[idx('引越し先', 5)] || '',
+            name: c[idx('名前', 6)] || '',
+            phone: findBy(c, PHONE_RE, idx('電話番号', 7)),
+            email: findBy(c, EMAIL_RE, idx('メールアドレス', 8)),
+            quoteId: c[idx('見積もりID', 10)] || '',
           })
         }
         let changed = false
