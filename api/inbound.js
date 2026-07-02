@@ -36,6 +36,14 @@ async function getItems() {
   try { return JSON.parse(raw) } catch { return [] }
 }
 
+// お知らせメッセージ（/api/broadcast で保存）。?recent 応答に混ぜて子拡張へ届ける。
+const BROADCAST_KEY = 'transportfukuoka:broadcasts'
+async function getBroadcasts() {
+  const raw = await redis(['GET', BROADCAST_KEY])
+  if (!raw) return []
+  try { return JSON.parse(raw) } catch { return [] }
+}
+
 async function setItems(items) {
   await redis(['SET', KEY, JSON.stringify(items)])
 }
@@ -56,10 +64,24 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const items = await getItems()
       // 軽量モード：?recent=N で直近N件（savedAt降順）＋総数だけ返す（新着通知ポーリング用）
+      // お知らせメッセージ（broadcast）も擬似リードとして混ぜ、子拡張(無改修)に通知させる。
       const recent = parseInt((req.query && req.query.recent) || '', 10)
       if (recent > 0) {
-        const sorted = [...items].sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
-        return res.json({ count: items.length, items: sorted.slice(0, recent) })
+        let bcItems = []
+        try {
+          const bc = await getBroadcasts()
+          // 子拡張の表示形式に合わせる：title→site（見出し）、body→name（本文）。
+          bcItems = bc.map(b => ({
+            key: 'bc_' + b.id,
+            site: b.title || 'お知らせ',
+            name: '📢 ' + (b.body || ''),
+            savedAt: b.savedAt,
+            broadcast: true,
+          }))
+        } catch (e) { /* broadcast取得失敗は無視 */ }
+        const merged = [...items, ...bcItems]
+          .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
+        return res.json({ count: items.length, items: merged.slice(0, recent) })
       }
       return res.json({ items })
     }

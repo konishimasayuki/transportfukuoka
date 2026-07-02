@@ -327,6 +327,36 @@ function scrapeRows() {
   return out
 }
 
+// ===== 通知メッセージ送信（子拡張・CRMへ届く）=====
+const BROADCAST_URL = 'https://transportfukuoka.vercel.app/api/broadcast'
+document.getElementById('bcSend').addEventListener('click', async () => {
+  const btn = document.getElementById('bcSend')
+  const result = document.getElementById('bcResult')
+  const title = document.getElementById('bcTitle').value.trim()
+  const body = document.getElementById('bcBody').value.trim()
+  if (!body) { result.style.color = '#dc2626'; result.textContent = 'メッセージを入力してください'; return }
+  btn.disabled = true
+  result.style.color = '#64748b'; result.textContent = '送信中…'
+  try {
+    const r = await fetch(BROADCAST_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, body }),
+    })
+    const d = await r.json()
+    if (d.ok) {
+      result.style.color = '#16a34a'; result.textContent = '✓ 送信しました（約12秒以内に通知）'
+      document.getElementById('bcTitle').value = ''
+      document.getElementById('bcBody').value = ''
+    } else {
+      result.style.color = '#dc2626'; result.textContent = '送信失敗: ' + (d.error || `HTTP ${r.status}`)
+    }
+  } catch (e) {
+    result.style.color = '#dc2626'; result.textContent = '通信エラー: ' + (e && e.message ? e.message : String(e))
+  } finally {
+    btn.disabled = false
+  }
+})
+
 // ===== ズバット 自動再ログインの資格情報 =====
 const ZBA_API = 'https://hikkoshi-kanri.zba.jp/hikkoshi-kanriengine-api'
 
