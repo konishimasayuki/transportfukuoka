@@ -129,15 +129,16 @@ export default function Debug({ user }) {
         // Twilioの実請求額（両レッグ合算・確定分）。priceComplete=false は一部未確定。
         const cost = typeof d.totalPrice === 'number' ? d.totalPrice : null
         const costComplete = !!d.priceComplete
-        // 通貨(price_unit)を尊重して円換算＋AMD加算
-        const unit = d.priceUnit || 'USD'
-        const callJpy = cost != null ? (unit === 'JPY' ? cost : cost * JPY_PER_USD) : null
-        const totalJpy = callJpy != null ? callJpy + AMD_FEE_JPY : null
-        const cs = totalJpy != null && costComplete ? ` / 料金約¥${Math.round(totalJpy)}` : (cost != null ? ' / 料金確定待ち' : '')
+        // 1通話の料金は 料率×実秒(概算) を主に使う（本アカウントは Call.price が出ないため）
+        const estJpy = (typeof d.estCost === 'number')
+          ? ((d.estUnit === 'JPY' ? d.estCost : d.estCost * JPY_PER_USD) + AMD_FEE_JPY)
+          : null
+        const cs = estJpy != null ? ` / 料金約¥${estJpy.toFixed(1)}` : ''
         const patch = {
           callSid: item.callSid, callStatus: d.status, callDuration: d.duration,
           callStartAt: startAt, callEndAt: endedAt, elapsedSec,
           callCost: cost, callCostComplete: costComplete, callCostUnit: d.priceUnit || 'USD',
+          estCost: (typeof d.estCost === 'number' ? d.estCost : null), estUnit: d.estUnit || null, estComplete: !!d.estComplete,
           customerLeg: d.customerLeg || null, officeLegs: d.officeLegs || [],
         }
         setItems(p => p.map(i => i.id === item.id ? { ...i, ...patch } : i))
@@ -347,32 +348,33 @@ export default function Debug({ user }) {
                             {CALL_STATUS_JA[item.callStatus] || item.callStatus || '—'}
                             {item.callDuration ? <span style={{ color: '#64748B' }}>（顧客{item.callDuration}秒{item.officeLegs && item.officeLegs.length ? ` / 事務所${item.officeLegs.reduce((s, l) => s + (l.duration || 0), 0)}秒` : ''}）</span> : ''}
                           </div>
-                          {item.callCost != null && item.callCostComplete && (() => {
-                            const { callNative, totalJpy } = costParts(item)
-                            return (
-                              <>
-                                <div style={{ fontSize: 11, color: '#B45309', fontWeight: 700 }}>
-                                  料金 約¥{Math.round(totalJpy)}
-                                </div>
-                                <div style={{ fontSize: 10, color: '#94A3B8' }}>
-                                  内訳: 通話{callNative} ＋ 留守電判定 約¥{Math.round(AMD_FEE_JPY)}
-                                </div>
-                              </>
-                            )
+                          {(() => {
+                            const eu = item.estUnit || 'JPY'
+                            const toYen = (v) => v == null ? null : (eu === 'JPY' ? v : v * JPY_PER_USD)
+                            // 実請求priceが確定していればそれを優先
+                            if (item.callCost != null && item.callCostComplete) {
+                              const { callNative, totalJpy } = costParts(item)
+                              return (
+                                <>
+                                  <div style={{ fontSize: 11, color: '#B45309', fontWeight: 700 }}>料金 約¥{Math.round(totalJpy)}</div>
+                                  <div style={{ fontSize: 10, color: '#94A3B8' }}>内訳: 通話{callNative} ＋ 留守電判定 約¥{Math.round(AMD_FEE_JPY)}</div>
+                                </>
+                              )
+                            }
+                            // 1通話ごとの概算（Twilio料率×実秒）
+                            if (item.estCost != null) {
+                              const custY = toYen(item.customerLeg && item.customerLeg.estCost)
+                              const offY = (item.officeLegs || []).reduce((s, l) => s + (toYen(l.estCost) || 0), 0)
+                              const totalY = (toYen(item.estCost) || 0) + AMD_FEE_JPY
+                              return (
+                                <>
+                                  <div style={{ fontSize: 11, color: '#B45309', fontWeight: 700 }}>料金 約¥{totalY.toFixed(1)}<span style={{ fontSize: 9, color: '#94A3B8', fontWeight: 600 }}> (概算)</span></div>
+                                  <div style={{ fontSize: 10, color: '#94A3B8' }}>顧客 ¥{custY != null ? custY.toFixed(1) : '—'} / 事務所 ¥{offY.toFixed(1)} ＋留守電判定 約¥{AMD_FEE_JPY.toFixed(1)}</div>
+                                </>
+                              )
+                            }
+                            return <div style={{ fontSize: 10, color: '#94A3B8' }}>料金 取得待ち（「結果確認」を押す）</div>
                           })()}
-                          {item.callCost != null && !item.callCostComplete && (
-                            <>
-                              <div style={{ fontSize: 10, color: '#94A3B8' }}>
-                                ※1通話ごとの料金は本アカウント非対応 → 上の「Twilio利用料金（実績）」で総額確認
-                              </div>
-                              <div style={{ fontSize: 10, color: '#94A3B8' }}>
-                                顧客: {item.customerLeg && item.customerLeg.price != null ? `$${item.customerLeg.price.toFixed(4)}` : '確定待ち'}
-                                {' / '}事務所: {(item.officeLegs && item.officeLegs.length)
-                                  ? item.officeLegs.map(l => l.price != null ? `$${l.price.toFixed(4)}` : '確定待ち').join(', ')
-                                  : '—'}
-                              </div>
-                            </>
-                          )}
                           {item.elapsedSec != null && (
                             <div style={{ fontSize: 10, color: '#0F766E', fontWeight: 700 }}>
                               経過 {fmtDur(item.elapsedSec)}

@@ -129,6 +129,23 @@ export async function getCallStatus(sid) {
     ? true                                     // 誰も接続せず＝課金なし → 確定(合計0)
     : billable.every(l => l.price != null))    // 接続した全レッグの price 確定
 
+  // 1通話ごとの料金: 本アカウントは Call.price が null のままなので、
+  // Twilioの料率(このアカウントの実レート)× 実通話秒数(秒課金) でレッグ別に算出する。
+  let est = null
+  try {
+    const pricing = await getJpVoicePricing()
+    const estOf = (leg) => {
+      if (leg.duration == null) return null
+      const rate = rateForNumber(pricing, leg.to) // 分単価(pricing.unit建て)
+      if (rate == null) return null
+      return (leg.duration / 60) * rate           // 秒課金 → 秒/60 × 分単価
+    }
+    customerLeg.estCost = estOf(customerLeg)
+    officeLegs.forEach(l => { l.estCost = estOf(l) })
+    const vals = allLegs.map(l => l.estCost).filter(v => v != null)
+    est = { total: vals.reduce((s, v) => s + v, 0), unit: pricing.unit, hasAll: vals.length === billable.length }
+  } catch (e) { /* 料率取得失敗時は estなし */ }
+
   return {
     status: p.status,
     duration: customerLeg.duration, // 顧客レッグ秒（従来互換）
@@ -136,7 +153,42 @@ export async function getCallStatus(sid) {
     customerLeg, officeLegs,
     totalPrice, priceComplete, priceUnit: customerLeg.priceUnit || 'USD',
     totalDuration,
+    estCost: est ? est.total : null,     // 1通話の料金(概算・料率×実秒)
+    estUnit: est ? est.unit : null,
+    estComplete: est ? est.hasAll : false,
   }
+}
+
+// Twilio Voice Pricing(日本向け)を取得してキャッシュ。current_price=このアカウントの実レート。
+let _jpPricing = null
+export async function getJpVoicePricing() {
+  if (_jpPricing) return _jpPricing
+  if (!SID || !TOKEN) throw new Error('Twilio creds missing')
+  const auth = 'Basic ' + Buffer.from(`${SID}:${TOKEN}`).toString('base64')
+  const r = await fetch('https://pricing.twilio.com/v1/Voice/Countries/JP', { headers: { Authorization: auth } })
+  const d = await r.json()
+  if (!r.ok) throw new Error('Pricing: ' + (d.message || r.status))
+  const unit = d.price_unit || 'USD'
+  const list = (d.outbound_prefix_prices || []).map(p => ({
+    prefixes: (p.prefixes || []).map(x => String(x).replace(/[^0-9]/g, '')),
+    name: p.friendly_name || '',
+    price: Number(p.current_price != null && p.current_price !== '' ? p.current_price : p.base_price),
+  })).filter(x => isFinite(x.price))
+  _jpPricing = { unit, list }
+  return _jpPricing
+}
+
+// E.164番号に最長一致するprefixの分単価を返す（mobile/landline等を自動判別）
+export function rateForNumber(pricing, e164) {
+  const digits = String(e164 || '').replace(/[^0-9]/g, '')
+  if (!digits || !pricing) return null
+  let best = null, bestLen = -1
+  for (const item of pricing.list) {
+    for (const pre of item.prefixes) {
+      if (pre && digits.startsWith(pre) && pre.length > bestLen) { bestLen = pre.length; best = item.price }
+    }
+  }
+  return best
 }
 
 // 診断用: 親コール＋子コールの Twilio 生データ（課金関連フィールド）を返す。
