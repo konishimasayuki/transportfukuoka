@@ -47,11 +47,15 @@ export default function Debug({ user }) {
   const [vmMsg, setVmMsg] = useState('')           // 留守電/機械が出た時の音声（空＝既定）
   const [callingId, setCallingId] = useState(null)
   const [toast, setToast] = useState('')
+  const [usage, setUsage] = useState(null) // Twilio利用実績（実請求）
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 3000) }
   const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }))
 
+  const loadUsage = () => {
+    fetch('/api/usage').then(r => r.json()).then(d => setUsage(d)).catch(() => setUsage(null))
+  }
   useEffect(() => {
-    if (!isDemo) fetchItems()
+    if (!isDemo) { fetchItems(); loadUsage() }
     fetch('/api/call').then(r => r.json()).then(d => setReady(!!d.ready)).catch(() => setReady(false))
   }, [isDemo])
 
@@ -266,6 +270,45 @@ export default function Debug({ user }) {
         </div>
       </div>
 
+      {/* Twilio利用実績（実請求）：1通話ごとのpriceが本アカウントでは出ないため、請求元データから実額表示 */}
+      {!isDemo && (
+        <div className="card">
+          <div className="card-head"><h3>💰 Twilio利用料金（実績）</h3>
+            <button className="btn btn-outline btn-sm" onClick={loadUsage}>⟳ 更新</button>
+          </div>
+          <div className="card-body">
+            {usage == null ? (
+              <div style={{ fontSize: 12, color: '#94A3B8' }}>読み込み中…</div>
+            ) : usage.ready === false ? (
+              <div style={{ fontSize: 12, color: '#B91C1C' }}>Twilio未設定のため取得できません</div>
+            ) : usage.error ? (
+              <div style={{ fontSize: 12, color: '#B91C1C' }}>取得エラー: {usage.error}</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {[{ k: 'today', label: '本日' }, { k: 'month', label: '今月' }].map(({ k, label }) => {
+                  const u = usage[k] || {}
+                  const yen = u.unit === 'JPY' ? u.price : (u.price || 0) * JPY_PER_USD
+                  return (
+                    <div key={k} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '12px 14px' }}>
+                      <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700, marginBottom: 4 }}>{label}の通話料</div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>
+                        {u.unit === 'JPY' ? '¥' : '$'}{(u.price || 0).toFixed(u.unit === 'JPY' ? 0 : 4)}
+                        {u.unit !== 'JPY' && <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>（約¥{Math.round(yen)}）</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{u.count || 0}通話 / {Math.round((u.usage || 0) * 10) / 10}{u.usageUnit === 'minutes' ? '分' : (u.usageUnit || '')}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 8 }}>
+              ※ 本アカウントは「1通話ごとの料金」をAPIで返さないため、Twilioの請求元データ（Usage Records）から集計した<b>実額</b>です。
+              昨日のテスト料金は「本日/今月」の合計に含まれます（テスト以外の発信が無ければ、その額＝テスト分）。
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* デバッグリード一覧 */}
       <div className="card">
         <div className="card-head"><h3>デバッグリード一覧</h3>
@@ -320,7 +363,7 @@ export default function Debug({ user }) {
                           {item.callCost != null && !item.callCostComplete && (
                             <>
                               <div style={{ fontSize: 10, color: '#94A3B8' }}>
-                                料金確定待ち（数分後に再度「結果確認」）
+                                ※1通話ごとの料金は本アカウント非対応 → 上の「Twilio利用料金（実績）」で総額確認
                               </div>
                               <div style={{ fontSize: 10, color: '#94A3B8' }}>
                                 顧客: {item.customerLeg && item.customerLeg.price != null ? `$${item.customerLeg.price.toFixed(4)}` : '確定待ち'}
