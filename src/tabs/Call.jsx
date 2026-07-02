@@ -232,6 +232,13 @@ export default function Call({ user, switchTab }) {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, ...patch }),
       })
+      // 金額編集は紐づく成約(leadKey一致)へも反映（成約管理・売上管理に波及）
+      if (patch.amount !== undefined) {
+        await fetch('/api/contracts', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leadKey: item.key || item.phone, amount: Number(patch.amount) || 0 }),
+        })
+      }
     } catch (e) { console.error(e) }
   }
 

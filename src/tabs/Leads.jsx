@@ -5,6 +5,19 @@ import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { receivedAtMs } from '../lib/sortLeads'
 import { SourceTag } from '../lib/source'
 
+// 住所を「区／市／町」まで短縮（デモの区間表記に合わせる。例: 福岡市中央区 平尾… → 中央区）
+function shortArea(s) {
+  s = String(s || '').replace(/　/g, ' ').trim()
+  if (!s) return ''
+  let m = s.match(/([^\s\d都道府県市区]{1,8}区)/) // 政令市の区（中央区・小倉南区 等）優先
+  if (m) return m[1]
+  m = s.match(/([^\s\d都道府県市]{1,8}市)/)         // 市（大野城市 等）
+  if (m) return m[1]
+  m = s.match(/([^\s\d]{1,8}[町村郡])/)             // 町/村/郡
+  if (m) return m[1]
+  return (s.split(/[\s\d]/)[0] || s)                // 都道府県のみ等はそのまま
+}
+
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
 
@@ -185,6 +198,13 @@ export default function Leads({ user, switchTab }) {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, ...patch }),
       })
+      // 金額を編集したら、紐づく成約（leadKey一致）にも反映（成約管理・売上管理に波及）
+      if (patch.amount !== undefined) {
+        await fetch('/api/contracts', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leadKey: item.key || item.phone, amount: Number(patch.amount) || 0 }),
+        })
+      }
     } catch (e) { console.error(e) }
   }
 
@@ -357,11 +377,9 @@ export default function Leads({ user, switchTab }) {
                     <td style={{ whiteSpace: 'nowrap' }}><SourceTag site={item.site} /></td>
                     <td><b>{item.name || '（名前なし）'}</b></td>
                     <td style={{ whiteSpace: 'nowrap' }}><a href={`tel:${item.phone}`} onClick={e => e.stopPropagation()} style={{ color: '#1E5FA8', textDecoration: 'none', fontWeight: 700 }}>{item.phone}</a></td>
-                    <td>
-                      <div style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        title={`${item.from || ''} → ${item.to || ''}`}>
-                        {(item.from || '').replace('福岡県福岡市', '')} → {(item.to || '').replace('福岡県福岡市', '')}
-                      </div>
+                    <td style={{ whiteSpace: 'nowrap' }}
+                      title={`${item.from || ''} → ${item.to || ''}`}>
+                      {shortArea(item.from)} → {shortArea(item.to)}
                     </td>
                     <td>{item.count}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{item.moveDate}</td>

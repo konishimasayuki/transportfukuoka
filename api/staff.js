@@ -4,7 +4,7 @@ const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
 const KEY = 'transportfukuoka:staff'
 
-const DEFAULT_STAFF = ['古賀', '浦田', '春木', '河村', '鷹野', '田中', '現場']
+const DEFAULT_STAFF = ['古賀', '浦田', '春木', '河村', '鷹野', '田中', 'バイト', '現場']
 
 async function redis(command) {
   if (!REDIS_URL || !REDIS_TOKEN) {

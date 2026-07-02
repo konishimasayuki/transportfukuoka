@@ -141,6 +141,14 @@ export default function Contracts({ user }) {
     } catch (e) { console.error(e) }
   }
 
+  const updateContractStatus = async (item, status) => {
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, status } : i))
+    if (isDemo) return
+    try {
+      await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...item, status }) })
+    } catch (e) { console.error(e) }
+  }
+
   // CSVエクスポート（現在の一覧をすべて）
   const handleExport = () => {
     const csv = toCSV(items, CSV_COLUMNS)
@@ -246,7 +254,14 @@ export default function Contracts({ user }) {
                     <td>{item.date}</td>
                     <td>{item.route}</td>
                     <td>¥{(item.amount||0).toLocaleString()}</td>
-                    <td><span className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}>{item.status}</span></td>
+                    <td>
+                      <select value={item.status || ''} onChange={e => updateContractStatus(item, e.target.value)}
+                        className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}
+                        style={{ border: 'none', fontFamily: 'inherit', cursor: 'pointer', fontWeight: 700 }}>
+                        {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                        {item.status && !STATUS_LIST.includes(item.status) && <option value={item.status}>{item.status}</option>}
+                      </select>
+                    </td>
                     <td>
                       <select
                         value={item.staff || ''}

@@ -42,7 +42,16 @@ export default async function handler(req, res) {
 
     if (req.method === 'PUT') {
       const items = await getItems()
-      const updated = items.map(i => i.id === req.body.id ? { ...req.body, updatedAt: new Date().toISOString() } : i)
+      const b = req.body || {}
+      let updated
+      if (b.id) {
+        updated = items.map(i => i.id === b.id ? { ...i, ...b, updatedAt: new Date().toISOString() } : i)
+      } else if (b.leadKey) {
+        // リード側からの同期（金額変更等）。leadKeyで紐づく成約をマージ更新する。
+        updated = items.map(i => (i.leadKey && i.leadKey === b.leadKey) ? { ...i, ...b, updatedAt: new Date().toISOString() } : i)
+      } else {
+        return res.status(400).json({ error: 'id or leadKey required' })
+      }
       await setItems(updated)
       return res.json({ ok: true })
     }
