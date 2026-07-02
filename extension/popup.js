@@ -416,7 +416,7 @@ function hhmm(ts) {
 async function renderZbaStatus() {
   const el = document.getElementById('zbaStatus')
   if (!el) return
-  const s = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword', 'zbaAuthOk', 'zbaAuthAt', 'zbaReloginResult', 'zbaReloginAt'])
+  const s = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword', 'zbaAuthOk', 'zbaAuthAt', 'zbaReloginResult', 'zbaReloginAt', 'zbaReloginReason'])
   const lines = []
   lines.push('自動再ログイン: ' + (s.zbaLoginId && s.zbaPassword ? '設定済み ✓' : '未設定（ID/PWを保存してください）'))
   if (s.zbaAuthAt != null) {
@@ -424,6 +424,7 @@ async function renderZbaStatus() {
   }
   if (s.zbaReloginAt) {
     lines.push('最終 自動再ログイン: ' + (s.zbaReloginResult === 'success' ? '成功' : '失敗') + `（${hhmm(s.zbaReloginAt)}）`)
+    if (s.zbaReloginResult !== 'success' && s.zbaReloginReason) lines.push('　失敗理由: ' + s.zbaReloginReason)
   }
   el.textContent = lines.join('\n')
   el.style.whiteSpace = 'pre-line'

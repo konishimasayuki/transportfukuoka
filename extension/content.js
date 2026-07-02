@@ -293,20 +293,21 @@ async function csrfForLogin() {
 
 async function relogin() {
   let creds = {}
-  try { creds = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword']) } catch { return false }
-  if (!creds.zbaLoginId || !creds.zbaPassword) return false
+  try { creds = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword']) } catch { safeStorageSet({ zbaReloginReason: 'storage-error' }); return false }
+  if (!creds.zbaLoginId || !creds.zbaPassword) { safeStorageSet({ zbaReloginReason: 'no-creds（ID/PW未保存）' }); return false }
   const token = await csrfForLogin()
-  if (!token) return false
+  if (!token) { safeStorageSet({ zbaReloginReason: 'no-csrf（CSRF取得不可）' }); return false }
   try {
     const r = await fetch(`${ZBA_API}/supplier-kanri/login`, {
       method: 'POST', credentials: 'include',
       headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
       body: JSON.stringify({ loginId: creds.zbaLoginId, password: creds.zbaPassword }),
     })
-    if (!r.ok) return false
+    if (!r.ok) { safeStorageSet({ zbaReloginReason: 'login-http-' + r.status }); return false }
     invalidateCsrf() // ログイン後はトークンを取り直す
+    safeStorageSet({ zbaReloginReason: 'ok' })
     return true
-  } catch { return false }
+  } catch (e) { safeStorageSet({ zbaReloginReason: 'fetch-error' }); return false }
 }
 
 // authError 時の回復試行。成功したら true（呼び出し側はそのまま継続/次サイクルで再取得）。
@@ -642,6 +643,10 @@ function kickNow(reason) {
   lastKickAt = now
   console.log(`[リード監視:${SITE}] 復帰トリガー(${reason}) → 即時チェック`)
   invalidateCsrf()
+  // 復帰時は自動再ログインのゲートを解除して即再試行できるようにする。
+  // （再起動直後にネット未接続で失敗→5分ロック/5回で恒久停止、を防ぐ）
+  lastReloginAt = 0
+  reloginFails = 0
   if (watchTimer) clearTimeout(watchTimer)
   watchTick()
 }
