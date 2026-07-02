@@ -539,7 +539,9 @@ async function apiSync() {
         if (listFailStreak >= 2) {
           const ok = await tryRecoverAuth()
           if (ok) { listFailStreak = 0 }
-          else { setAuthState(false); postStatus(false, 'auth'); console.warn(`[リード監視:${SITE}] ⚠ 自動再ログインで回復できません。ID/PWの確認、または手動再ログインをしてください`) }
+          // 500等は「確定的なログイン切れ」ではないため error 表記（ログイン切れバナーを誤表示しない）。
+          // 本当の失効なら次サイクルの 401/403 で 'auth' 経路が正しく扱う。
+          else { postStatus(false, 'error'); console.warn(`[リード監視:${SITE}] ⚠ 一覧取得が連続失敗（サーバ側の可能性）。回復しなければ手動確認を`) }
         } else {
           postStatus(false, 'error')
         }
