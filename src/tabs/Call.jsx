@@ -65,16 +65,16 @@ function CallUI({ callOn, setCallOn, sites, logs, stats, detections, onOpenLog }
 
       <div className="two-col">
         <div className="card">
-          <div className="card-head"><h3>本日の架電ログ</h3><span className="c-sub">{logs.length}件</span></div>
+          <div className="card-head"><h3>本日の架電ログ</h3><span className="c-sub">最新5件 / 全{logs.length}件</span></div>
           <div className="card-body" style={{ padding:'4px 16px' }}>
             {logs.length === 0 ? (
               <div style={{ textAlign:'center', padding:'24px 0', color:'#94A3B8', fontSize:12 }}>架電ログがありません</div>
-            ) : logs.map((l, i) => (
+            ) : logs.slice(0, 5).map((l, i, arr) => (
               <div
                 key={i}
                 onDoubleClick={() => l.lead && onOpenLog && onOpenLog(l.lead)}
                 title={l.lead ? 'ダブルクリックで詳細' : undefined}
-                style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom: i < logs.length-1 ? '1px solid #E2E8F0' : 'none', cursor: l.lead ? 'pointer' : 'default' }}
+                style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom: i < arr.length-1 ? '1px solid #E2E8F0' : 'none', cursor: l.lead ? 'pointer' : 'default' }}
               >
                 <div style={{ width:30, height:30, borderRadius:8, background:l.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>{l.icon}</div>
                 <div style={{ flex:1, minWidth:0 }}>

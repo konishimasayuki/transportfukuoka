@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
+import { SourceTag } from '../lib/source'
 
 const DEMO_DATA = [
   { id: '1', name: '田中 誠一', src: 'bb', srcLabel: '引越し侍', date: '2025-06-15', route: '東区→博多区', amount: 68000, badge: 'bg', status: '成約済み' },
@@ -241,7 +242,7 @@ export default function Contracts({ user }) {
                 ) : filtered.map(item => (
                   <tr key={item.id}>
                     <td><b>{item.name}</b></td>
-                    <td><span className={`badge ${SRC_BADGE[item.srcLabel] || 'bk'}`}>{item.srcLabel}</span></td>
+                    <td><SourceTag label={item.srcLabel} /></td>
                     <td>{item.date}</td>
                     <td>{item.route}</td>
                     <td>¥{(item.amount||0).toLocaleString()}</td>

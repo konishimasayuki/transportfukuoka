@@ -3,13 +3,10 @@ import LeadDetailModal, { ConvertToContractModal } from '../components/LeadDetai
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { receivedAtMs } from '../lib/sortLeads'
+import { SourceTag } from '../lib/source'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
-
-// 監視サイト名 → 流入元の統一ラベル
-const SITE_TO_SRC = { 'ズバット': 'ズバッと', 'ズバッと': 'ズバッと', '引越し侍': 'サムライ', 'サムライ': 'サムライ', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
-const srcLabel = (site) => SITE_TO_SRC[site] || site || '—'
 
 // CSV入出力の列定義
 const CSV_COLUMNS = [
@@ -357,10 +354,15 @@ export default function Leads({ user, switchTab }) {
                   return (
                   <tr key={item.id} onClick={() => setDetailItem(item)} style={{ cursor: 'pointer' }}>
                     <td style={{ whiteSpace: 'nowrap' }}>{item.receivedAt || ''}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}><span className="badge bk">{srcLabel(item.site)}</span></td>
+                    <td style={{ whiteSpace: 'nowrap' }}><SourceTag site={item.site} /></td>
                     <td><b>{item.name || '（名前なし）'}</b></td>
                     <td style={{ whiteSpace: 'nowrap' }}><a href={`tel:${item.phone}`} onClick={e => e.stopPropagation()} style={{ color: '#1E5FA8', textDecoration: 'none', fontWeight: 700 }}>{item.phone}</a></td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{(item.from || '').replace('福岡県福岡市', '')} → {(item.to || '').replace('福岡県福岡市', '')}</td>
+                    <td>
+                      <div style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={`${item.from || ''} → ${item.to || ''}`}>
+                        {(item.from || '').replace('福岡県福岡市', '')} → {(item.to || '').replace('福岡県福岡市', '')}
+                      </div>
+                    </td>
                     <td>{item.count}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{item.moveDate}</td>
                     <td style={{ whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 700 }}>{item.amount ? `¥${Number(item.amount).toLocaleString('ja-JP')}` : '—'}</td>
