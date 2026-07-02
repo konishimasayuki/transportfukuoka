@@ -153,6 +153,94 @@ function CallTest() {
   )
 }
 
+// 通知メッセージ送信：受信者はCRMを見られない前提なので、Windows通知の見た目を
+// ライブプレビューで確認してから送信できる。/api/broadcast に保存され、子拡張・
+// CRM(LeadNotifier)が ?recent 経由で拾って通知する。
+function BroadcastSender({ isDemo }) {
+  const ip = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }
+  const lb = { fontSize: 11, fontWeight: 700, color: '#64748B', margin: '10px 0 4px', display: 'block' }
+  const [title, setTitle] = useState('')
+  const [body, setBody]   = useState('')
+  const [sending, setSending] = useState(false)
+  const [msg, setMsg]     = useState('')
+  const [items, setItems] = useState([])
+  const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 2500) }
+
+  const load = async () => {
+    if (isDemo) return
+    try { const d = await fetch('/api/broadcast').then(r => r.json()); setItems(d.items || []) } catch { /* 無視 */ }
+  }
+  useEffect(() => { load() }, [isDemo])
+
+  const send = async () => {
+    const b = body.trim()
+    if (!b) { flash('メッセージを入力してください'); return }
+    if (isDemo) { flash('デモ：送信は無効です'); return }
+    setSending(true)
+    try {
+      const r = await fetch('/api/broadcast', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: title.trim(), body: b }) })
+      const d = await r.json()
+      if (d.ok) { setTitle(''); setBody(''); flash('✓ 送信しました（約12秒以内に通知）'); load() }
+      else flash('送信失敗: ' + (d.error || `HTTP ${r.status}`))
+    } catch (e) { flash('通信エラー: ' + (e && e.message ? e.message : String(e))) }
+    setSending(false)
+  }
+  const remove = async (id) => { if (isDemo) return; try { await fetch('/api/broadcast', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }) } catch {} ; load() }
+  const clearAll = async () => { if (!confirm('送信したメッセージを全消去しますか？（混ぜ込み分のみ・実リードは消えません）')) return; if (isDemo) return; try { await fetch('/api/broadcast', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true }) }) } catch {} ; load() }
+
+  // 実際の通知と同じ組み立て（子拡張・LeadNotifier と一致）
+  const prevTitle = `🆕 新規リード（${title.trim() || 'お知らせ'}）`
+  const prevBody  = '📢 ' + (body.trim() || '（ここに本文が入ります）')
+
+  return (
+    <div className="card">
+      <div className="card-head"><h3>📢 通知メッセージ送信</h3>{msg && <span className="c-sub" style={{ color: '#15803D' }}>{msg}</span>}</div>
+      <div className="card-body">
+        <div style={{ fontSize: 11, color: '#64748B', marginBottom: 4 }}>
+          受信者がCRMを見られなくても、<b>Windows通知でこの内容が届きます</b>。下のプレビューで見た目を確認してから送信してください。
+        </div>
+        <label style={lb}>見出し（任意）</label>
+        <input style={ip} value={title} onChange={e => setTitle(e.target.value)} placeholder="例：緊急 / 連絡" />
+        <label style={lb}>メッセージ *</label>
+        <textarea style={{ ...ip, resize: 'vertical', minHeight: 60 }} value={body} onChange={e => setBody(e.target.value)} placeholder="通知したい内容を入力" />
+
+        {/* ライブプレビュー（実際の通知の見え方） */}
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', margin: '12px 0 6px' }}>通知プレビュー（実際の見え方）</div>
+        <div style={{ display: 'flex', gap: 10, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, padding: '12px 14px', boxShadow: '0 4px 14px rgba(0,0,0,.06)' }}>
+          <div style={{ width: 34, height: 34, borderRadius: 8, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>🆕</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 3 }}>{prevTitle}</div>
+            <div style={{ fontSize: 12, color: '#334155', whiteSpace: 'pre-line', lineHeight: 1.5, wordBreak: 'break-word' }}>{prevBody}</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 6 }}>
+          ※タイトルの「🆕 新規リード」は通知拡張(子)を更新できないため固定です。見出しはカッコ内、本文は📢付きで届きます。
+        </div>
+
+        <button className="btn btn-primary" style={{ width: '100%', marginTop: 12, opacity: (!body.trim() || isDemo) ? .5 : 1 }} onClick={send} disabled={sending || !body.trim() || isDemo}>
+          {sending ? '送信中…' : 'この内容で送信'}
+        </button>
+
+        {items.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>送信済みメッセージ（混ぜ込み分）</span>
+              <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={clearAll}>全消去</button>
+            </div>
+            {items.map(m => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #EEF2F7', fontSize: 12 }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(m.title ? `[${m.title}] ` : '') + m.body}>{(m.title ? `[${m.title}] ` : '') + m.body}</span>
+                <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={() => remove(m.id)}>削除</button>
+              </div>
+            ))}
+            <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 6 }}>※ 消せるのは送信メッセージ（混ぜ込み分）だけ。実リードには影響しません。</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function Toggle({ defaultChecked }) {
   const [on, setOn] = useState(defaultChecked ?? false)
   return (
@@ -181,6 +269,8 @@ export default function Settings({ user }) {
 
       <div className="two-col">
         <div>
+          <BroadcastSender isDemo={isDemo} />
+
           <StaffSettings isDemo={isDemo} />
 
           <div className="card">

@@ -79,9 +79,14 @@ export default async function handler(req, res) {
             broadcast: true,
           }))
         } catch (e) { /* broadcast取得失敗は無視 */ }
-        const merged = [...items, ...bcItems]
+        // 実リードの直近N件は必ず確保（broadcastに枠を奪われて新着通知が消えるのを防ぐ）。
+        // broadcastは“追加で”載せ、合算後に再sliceしない（実リードを絶対に押し出さない）。
+        const recentLeads = [...items]
           .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
-        return res.json({ count: items.length, items: merged.slice(0, recent) })
+          .slice(0, recent)
+        const merged = [...recentLeads, ...bcItems]
+          .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
+        return res.json({ count: items.length, items: merged })
       }
       return res.json({ items })
     }
