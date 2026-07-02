@@ -2,6 +2,8 @@
 // 本アカウントは 1通話ごとの Call.price が null のままのため、請求の元データである
 // Usage Records（Today / ThisMonth）から実額(JPY)を集計して返す。
 // GET /api/usage → { ready, today:{price,count,usage,unit}, month:{...} }
+import { getJpVoicePricing, rateForNumber } from './_twilio.js'
+
 const SID   = process.env.TWILIO_ACCOUNT_SID
 const TOKEN = process.env.TWILIO_AUTH_TOKEN
 
@@ -31,6 +33,18 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (!ready()) return res.json({ ready: false })
+  // 診断: ?pricing=1 → 取得した料率(prefix/price)と、サンプル番号の照合結果を返す
+  if (req.query && req.query.pricing) {
+    try {
+      const p = await getJpVoicePricing()
+      const test = ['818052490115', '81944875662', '819012345678']
+      return res.json({
+        ready: true, unit: p.unit, count: p.list.length,
+        list: p.list.slice(0, 30),
+        match: test.map(n => ({ n, rate: rateForNumber(p, n) })),
+      })
+    } catch (e) { return res.status(500).json({ ready: true, error: e.message }) }
+  }
   try {
     const cat = (req.query && req.query.category) || 'calls'
     const [today, month] = await Promise.all([usage('Today', cat), usage('ThisMonth', cat)])
