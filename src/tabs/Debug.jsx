@@ -310,6 +310,48 @@ export default function Debug({ user }) {
         </div>
       )}
 
+      {/* 料金目安（通話時間別）：このアカウントの実レート×通話分＋AMD */}
+      {!isDemo && usage && usage.rates && (() => {
+        const r = usage.rates
+        const ru = r.unit || 'JPY'
+        const toYen = (v) => v == null ? 0 : (ru === 'JPY' ? v : v * JPY_PER_USD)
+        const mob = toYen(r.mobile)      // 携帯 分単価(円)
+        const land = toYen(r.landline)   // 固定 分単価(円)
+        const perMinBridge = mob + land  // ブリッジ＝両レッグ同時課金
+        const amd = AMD_FEE_JPY
+        const mins = [1, 2, 3, 5]
+        return (
+          <div className="card">
+            <div className="card-head"><h3>📊 料金目安（通話時間別）</h3>
+              <span className="c-sub">携帯¥{mob.toFixed(1)}/分 ＋ 固定¥{land.toFixed(1)}/分</span>
+            </div>
+            <div className="card-body">
+              <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>
+                ブリッジ方式（顧客＝携帯／事務所＝固定 の両方が同時課金）＋ 留守電判定 約¥{amd.toFixed(1)}/通話 での目安です。
+              </div>
+              <table>
+                <thead><tr><th>通話時間</th><th style={{ textAlign: 'right' }}>目安料金</th><th style={{ textAlign: 'right' }}>内訳（携帯＋固定＋AMD）</th></tr></thead>
+                <tbody>
+                  {mins.map(n => {
+                    const total = n * perMinBridge + amd
+                    return (
+                      <tr key={n}>
+                        <td style={{ whiteSpace: 'nowrap', fontWeight: 700 }}>{n}分</td>
+                        <td style={{ textAlign: 'right', fontWeight: 800, color: '#B45309' }}>約¥{Math.round(total)}</td>
+                        <td style={{ textAlign: 'right', color: '#94A3B8', fontSize: 11, whiteSpace: 'nowrap' }}>¥{(n * mob).toFixed(1)}＋¥{(n * land).toFixed(1)}＋¥{amd.toFixed(1)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 8 }}>
+                ※ 1分あたり合計 約¥{(perMinBridge).toFixed(1)}（携帯¥{mob.toFixed(1)}＋固定¥{land.toFixed(1)}）。会話時間ぶんの目安で、自動音声・呼出待ちの秒数は別途少し加算されます。
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* デバッグリード一覧 */}
       <div className="card">
         <div className="card-head"><h3>デバッグリード一覧</h3>

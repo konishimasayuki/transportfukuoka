@@ -48,7 +48,19 @@ export default async function handler(req, res) {
   try {
     const cat = (req.query && req.query.category) || 'calls'
     const [today, month] = await Promise.all([usage('Today', cat), usage('ThisMonth', cat)])
-    return res.json({ ready: true, category: cat, today, month })
+    // 料金目安用の分単価（このアカウントの実レート）
+    let rates = null
+    try {
+      const p = await getJpVoicePricing()
+      rates = {
+        unit: p.unit,
+        mobile: rateForNumber(p, '819012345678'),   // 携帯 090/080/070
+        landline: rateForNumber(p, '81944000000'),  // 固定 0ABJ（例:0944）
+        n050: rateForNumber(p, '815012345678'),      // 050
+        amdUsd: 0.0075,                              // 留守電判定/通話（Twilio回答値）
+      }
+    } catch (e) { /* 料率取得失敗時は rates なし */ }
+    return res.json({ ready: true, category: cat, today, month, rates })
   } catch (e) {
     return res.status(500).json({ ready: true, error: e.message })
   }
