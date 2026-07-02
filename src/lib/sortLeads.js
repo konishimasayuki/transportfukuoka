@@ -6,7 +6,8 @@
 //   日本語   : "2026年7月1日 19:37"
 // 解釈できない場合は保存日時(savedAt, ISO) をフォールバックに使う。
 export function receivedAtMs(lead) {
-  const s = String((lead && lead.receivedAt) || '').trim()
+  // 基本キャプチャの receivedAt、無ければ詳細の requestedAt を使う
+  const s = String((lead && (lead.receivedAt || lead.requestedAt)) || '').trim()
   if (s) {
     // YYYY/MM/DD or YYYY-MM-DD [HH:MM[:SS]]
     let m = s.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/)

@@ -373,16 +373,16 @@ export default function Leads({ user, switchTab }) {
                 ) : filtered.map(item => {
                   return (
                   <tr key={item.id} onClick={() => setDetailItem(item)} style={{ cursor: 'pointer' }}>
-                    <td style={{ whiteSpace: 'nowrap' }}>{item.receivedAt || ''}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{item.receivedAt || item.requestedAt || ''}</td>
                     <td style={{ whiteSpace: 'nowrap' }}><SourceTag site={item.site} /></td>
                     <td><b>{item.name || '（名前なし）'}</b></td>
                     <td style={{ whiteSpace: 'nowrap' }}><a href={`tel:${item.phone}`} onClick={e => e.stopPropagation()} style={{ color: '#1E5FA8', textDecoration: 'none', fontWeight: 700 }}>{item.phone}</a></td>
                     <td style={{ whiteSpace: 'nowrap' }}
-                      title={`${item.from || ''} → ${item.to || ''}`}>
-                      {shortArea(item.from)} → {shortArea(item.to)}
+                      title={`${item.from || item.fromAddress || ''} → ${item.to || item.toAddress || ''}`}>
+                      {shortArea(item.from || item.fromAddress)} → {shortArea(item.to || item.toAddress)}
                     </td>
                     <td>{item.count}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{item.moveDate}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{item.moveDate || item.moveDateDetail || ''}</td>
                     <td style={{ whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 700 }}>{item.amount ? `¥${Number(item.amount).toLocaleString('ja-JP')}` : '—'}</td>
                     <td>
                       <select
