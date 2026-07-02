@@ -347,6 +347,7 @@ document.getElementById('bcSend').addEventListener('click', async () => {
       result.style.color = '#16a34a'; result.textContent = '✓ 送信しました（約12秒以内に通知）'
       document.getElementById('bcTitle').value = ''
       document.getElementById('bcBody').value = ''
+      renderBroadcasts()
     } else {
       result.style.color = '#dc2626'; result.textContent = '送信失敗: ' + (d.error || `HTTP ${r.status}`)
     }
@@ -356,6 +357,47 @@ document.getElementById('bcSend').addEventListener('click', async () => {
     btn.disabled = false
   }
 })
+
+// 送信済みメッセージ（混ぜ込み分）の一覧・個別削除・全消去
+async function renderBroadcasts() {
+  const list = document.getElementById('bcList')
+  if (!list) return
+  list.textContent = '読み込み中…'
+  try {
+    const d = await fetch(BROADCAST_URL, { cache: 'no-store' }).then(r => r.json())
+    const items = d.items || []
+    if (!items.length) { list.textContent = '送信済みメッセージはありません'; return }
+    list.innerHTML = ''
+    items.forEach(m => {
+      const row = document.createElement('div')
+      row.style.cssText = 'display:flex; align-items:center; gap:6px; padding:5px 0; border-bottom:1px solid #eef2f7;'
+      const txt = document.createElement('div')
+      txt.style.cssText = 'flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;'
+      txt.textContent = (m.title ? `[${m.title}] ` : '') + (m.body || '')
+      txt.title = txt.textContent
+      const del = document.createElement('button')
+      del.textContent = '削除'
+      del.style.cssText = 'margin:0; padding:3px 8px; width:auto; background:#fef2f2; color:#dc2626; border:1px solid #fecaca; border-radius:6px; font-size:11px; cursor:pointer;'
+      del.addEventListener('click', async () => {
+        del.disabled = true
+        try { await fetch(BROADCAST_URL, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id }) }) } catch {}
+        renderBroadcasts()
+      })
+      row.appendChild(txt); row.appendChild(del)
+      list.appendChild(row)
+    })
+  } catch (e) { list.textContent = '取得エラー: ' + (e && e.message ? e.message : String(e)) }
+}
+document.getElementById('bcRefresh').addEventListener('click', renderBroadcasts)
+document.getElementById('bcClearAll').addEventListener('click', async () => {
+  if (!confirm('送信したメッセージを全消去しますか？（混ぜ込み分のみ・実リードは消えません）')) return
+  const btn = document.getElementById('bcClearAll')
+  btn.disabled = true
+  try { await fetch(BROADCAST_URL, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true }) }) } catch {}
+  btn.disabled = false
+  renderBroadcasts()
+})
+renderBroadcasts()
 
 // ===== ズバット 自動再ログインの資格情報 =====
 const ZBA_API = 'https://hikkoshi-kanri.zba.jp/hikkoshi-kanriengine-api'

@@ -61,6 +61,12 @@
     <button id="bcSend">送信する</button>
     <div class="result" id="bcResult"></div>
     <div class="hint">通知拡張（子）を入れている全員に通知が届きます（約12秒以内）。CRMを開いている人にも表示されます。</div>
+    <div style="display:flex; gap:6px; margin-top:8px;">
+      <button id="bcRefresh" class="outline" style="margin-top:0; flex:1;">送信済みを表示</button>
+      <button id="bcClearAll" style="margin-top:0; width:auto; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;">全消去</button>
+    </div>
+    <div id="bcList" style="margin-top:6px; font-size:11px; color:#334155;"></div>
+    <div class="hint">※ ここで消せるのは送信したメッセージ（混ぜ込み分）だけです。実リードには影響しません。</div>
   </div>
 
   <details>
