@@ -209,7 +209,8 @@ export default function Schedule({ user }) {
                   const isSel = ds === selDate
                   const evs = eventsOn(ds)
                   return (
-                    <div key={idx} onClick={() => setSelDate(ds)}
+                    // 日付クリックでその日の配車ボードを開く
+                    <div key={idx} onClick={() => { setSelDate(ds); setBoardDate(d); setView('board') }}
                       style={{
                         minHeight: 86, borderRight: '1px solid #EEF2F7', borderBottom: '1px solid #EEF2F7',
                         padding: 4, cursor: 'pointer', background: isSel ? '#EFF6FF' : inMonth ? '#fff' : '#FAFBFC',
