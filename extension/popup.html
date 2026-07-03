@@ -82,6 +82,30 @@
     <div class="muted" id="zbaStatus" style="margin-top:8px;"></div>
   </details>
 
+  <details>
+    <summary>🔑 引越し侍 自動再ログイン</summary>
+    <div class="hint">セッション切れ時に自動でログインし直します。ID/PWはこのPCのローカルにのみ保存され、引越し侍以外には送信しません。</div>
+    <label class="field">ログインID</label>
+    <input type="text" id="samuraiId" autocomplete="off" placeholder="引越し侍のログインID" />
+    <label class="field">パスワード</label>
+    <input type="password" id="samuraiPw" autocomplete="off" placeholder="引越し侍のパスワード" />
+    <button id="samuraiSave">保存する</button>
+    <div class="result" id="samuraiResult"></div>
+    <div class="muted" id="samuraiStatus" style="margin-top:8px;"></div>
+  </details>
+
+  <details>
+    <summary>🔑 価格.com 自動再ログイン</summary>
+    <div class="hint">セッション切れ時に自動でログインし直します。ID/PWはこのPCのローカルにのみ保存され、価格.com以外には送信しません。</div>
+    <label class="field">ログインID</label>
+    <input type="text" id="kakakuId" autocomplete="off" placeholder="価格.comのログインID" />
+    <label class="field">パスワード</label>
+    <input type="password" id="kakakuPw" autocomplete="off" placeholder="価格.comのパスワード" />
+    <button id="kakakuSave">保存する</button>
+    <div class="result" id="kakakuResult"></div>
+    <div class="muted" id="kakakuStatus" style="margin-top:8px;"></div>
+  </details>
+
   <div class="muted" id="status">—</div>
   <script src="popup.js"></script>
 </body>

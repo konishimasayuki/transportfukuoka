@@ -205,6 +205,52 @@ function kakakuLoop(gen, today) {
   const STATUS = 'https://transportfukuoka.vercel.app/api/status'
   const postStatus = (ok, reason, count) => { try { fetch(STATUS, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'kakaku', ok, reason: reason || '', count: count == null ? null : count }) }).catch(() => {}) } catch {} }
 
+  // ===== 自動再ログイン =====（引越し侍と同方式。フォーム解析→保存ID/PW(kakakuCreds)でPOST→検証）
+  window.__tfKakakuRelogin = window.__tfKakakuRelogin || { at: 0, fails: 0 }
+  async function relogin(loginDoc) {
+    const RS = window.__tfKakakuRelogin
+    const now = Date.now()
+    if (now - RS.at < 5 * 60 * 1000) return false
+    if (RS.fails >= 5) return false
+    RS.at = now
+    const setRR = (result, reason) => { try { chrome.storage.local.set({ kakakuReloginResult: result, kakakuReloginReason: reason || '', kakakuReloginAt: Date.now() }) } catch {} }
+    let creds = null
+    try { creds = (await chrome.storage.local.get(['kakakuCreds'])).kakakuCreds } catch {}
+    if (!creds || !creds.username || !creds.password) { postStatus(false, 'auth'); setRR('failed', 'no-creds'); return false }
+    const pw = loginDoc.querySelector('input[type="password"]')
+    const form = pw && pw.closest('form')
+    if (!form) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'no-form'); return false }
+    const action = new URL(form.getAttribute('action') || (location.pathname + location.search), location.href).href
+    const method = (form.getAttribute('method') || 'POST').toUpperCase()
+    const looksUser = el => {
+      const hay = ((el.getAttribute('name') || '') + ' ' + (el.getAttribute('id') || '') + ' ' + (el.getAttribute('autocomplete') || '') + ' ' + (el.getAttribute('placeholder') || '')).toLowerCase()
+      return el.type === 'email' || el.type === 'tel' || /mail|user|login|account|\bid\b|ログイン|メール|ユーザ|会員/.test(hay)
+    }
+    const inputs = [...form.querySelectorAll('input,select,textarea')]
+    const params = new URLSearchParams()
+    let userSet = false
+    for (const el of inputs) {
+      const name = el.getAttribute('name'); if (!name) continue
+      const type = (el.getAttribute('type') || 'text').toLowerCase()
+      if (['submit', 'button', 'image', 'reset'].includes(type)) continue
+      if (type === 'password') { params.set(name, creds.password); continue }
+      if (type === 'checkbox' || type === 'radio') { if (el.hasAttribute('checked')) params.set(name, el.getAttribute('value') || 'on'); continue }
+      if (!userSet && ['text', 'email', 'tel'].includes(type) && (creds.userField ? name === creds.userField : looksUser(el))) { params.set(name, creds.username); userSet = true; continue }
+      params.set(name, el.getAttribute('value') || '')
+    }
+    if (!userSet) {
+      const t = inputs.find(el => { const ty = (el.getAttribute('type') || 'text').toLowerCase(); return el.getAttribute('name') && ['text', 'email', 'tel'].includes(ty) })
+      if (t) { params.set(t.getAttribute('name'), creds.username); userSet = true }
+    }
+    if (!userSet) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'no-userfield'); return false }
+    try {
+      await fetch(action, { method, credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() })
+      const check = await fetchDoc(LIST, 'no-cache')
+      if (!check.querySelector('input[type="password"]')) { RS.fails = 0; setRR('success', ''); return true }
+      RS.fails++; postStatus(false, 'auth'); setRR('failed', 'invalid-creds'); return false
+    } catch (e) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'fetch-error'); return false }
+  }
+
   const norm = s => (s == null ? '' : String(s)).replace(/　/g, ' ').replace(/\s+/g, ' ').trim()
   const textOf = el => norm(el ? el.textContent : '')
   const PHONE_RE = /0\d{9,10}|0\d{1,4}-\d{1,4}-\d{3,4}/
@@ -253,12 +299,15 @@ function kakakuLoop(gen, today) {
   async function tick() {
     if (window.__tfKakakuGen !== gen) return // 新しい注入が来たら旧ループは終了
     try {
-      const ldoc = await fetchDoc(LIST, 'no-cache')
-      // ログイン画面が返る＝セッション切れ。CRMに未接続を通知して今回はスキップ。
+      let ldoc = await fetchDoc(LIST, 'no-cache')
+      // ログイン画面が返る＝セッション切れ。まず自動再ログインを試み、ダメなら未接続通知してスキップ。
       if (ldoc.querySelector('input[type="password"]')) {
-        postStatus(false, 'auth')
-        if (window.__tfKakakuGen === gen) setTimeout(tick, nextDelay())
-        return
+        const ok = await relogin(ldoc)
+        if (ok) { try { ldoc = await fetchDoc(LIST, 'no-cache') } catch {} }
+        if (!ldoc || ldoc.querySelector('input[type="password"]')) {
+          if (window.__tfKakakuGen === gen) setTimeout(tick, nextDelay())
+          return
+        }
       }
       const rows = [...ldoc.querySelectorAll('tr')].filter(tr => tr.querySelector('a[href*="userdetail"]'))
       postStatus(true, '', rows.length) // 生存ハートビート
@@ -363,7 +412,58 @@ function samuraiLoop(gen, todayMD) {
   const nextDelay = () => { const h = new Date().getHours(); const base = (h >= 7 && h < 24) ? FAST_MS : SLOW_MS; return base + Math.floor(Math.random() * 8000) }
   const INBOUND = 'https://transportfukuoka.vercel.app/api/inbound'
   const STATUS  = 'https://transportfukuoka.vercel.app/api/status'
+  const LIST    = '/admin/request/list'
   const postStatus = (ok, reason, count) => { try { fetch(STATUS, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'samurai', ok, reason: reason || '', count: count == null ? null : count }) }).catch(() => {}) } catch {} }
+
+  // ===== 自動再ログイン =====
+  // セッション切れ（ログインページが返る）を検知したら、そのログインフォームを解析し、
+  // 保存済みID/PW（chrome.storage.local:samuraiCreds）でPOSTしてセッションを再取得する。
+  // hidden項目（CSRFトークン等）はフォームの値をそのまま引き継ぐため、通信キャプチャ不要。
+  // 多重試行を防ぐため window に状態を保持（5分に1回・連続5回失敗で停止）。
+  window.__tfSamuraiRelogin = window.__tfSamuraiRelogin || { at: 0, fails: 0 }
+  async function relogin(loginDoc) {
+    const RS = window.__tfSamuraiRelogin
+    const now = Date.now()
+    if (now - RS.at < 5 * 60 * 1000) return false // 5分に1回まで
+    if (RS.fails >= 5) return false               // 連続失敗が続いたら停止（手動対応が必要）
+    RS.at = now
+    const setRR = (result, reason) => { try { chrome.storage.local.set({ samuraiReloginResult: result, samuraiReloginReason: reason || '', samuraiReloginAt: Date.now() }) } catch {} }
+    let creds = null
+    try { creds = (await chrome.storage.local.get(['samuraiCreds'])).samuraiCreds } catch {}
+    if (!creds || !creds.username || !creds.password) { postStatus(false, 'auth'); setRR('failed', 'no-creds'); return false }
+    const pw = loginDoc.querySelector('input[type="password"]')
+    const form = pw && pw.closest('form')
+    if (!form) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'no-form'); return false }
+    const action = new URL(form.getAttribute('action') || (location.pathname + location.search), location.href).href
+    const method = (form.getAttribute('method') || 'POST').toUpperCase()
+    const looksUser = el => {
+      const hay = ((el.getAttribute('name') || '') + ' ' + (el.getAttribute('id') || '') + ' ' + (el.getAttribute('autocomplete') || '') + ' ' + (el.getAttribute('placeholder') || '')).toLowerCase()
+      return el.type === 'email' || el.type === 'tel' || /mail|user|login|account|\bid\b|ログイン|メール|ユーザ|会員/.test(hay)
+    }
+    const inputs = [...form.querySelectorAll('input,select,textarea')]
+    const params = new URLSearchParams()
+    let userSet = false
+    for (const el of inputs) {
+      const name = el.getAttribute('name'); if (!name) continue
+      const type = (el.getAttribute('type') || 'text').toLowerCase()
+      if (['submit', 'button', 'image', 'reset'].includes(type)) continue
+      if (type === 'password') { params.set(name, creds.password); continue }
+      if (type === 'checkbox' || type === 'radio') { if (el.hasAttribute('checked')) params.set(name, el.getAttribute('value') || 'on'); continue }
+      if (!userSet && ['text', 'email', 'tel'].includes(type) && (creds.userField ? name === creds.userField : looksUser(el))) { params.set(name, creds.username); userSet = true; continue }
+      params.set(name, el.getAttribute('value') || '') // hidden(CSRF等)含む既存値をそのまま
+    }
+    if (!userSet) { // ユーザー名欄が推定できなければ最初のテキスト系inputに入れる
+      const t = inputs.find(el => { const ty = (el.getAttribute('type') || 'text').toLowerCase(); return el.getAttribute('name') && ['text', 'email', 'tel'].includes(ty) })
+      if (t) { params.set(t.getAttribute('name'), creds.username); userSet = true }
+    }
+    if (!userSet) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'no-userfield'); return false }
+    try {
+      await fetch(action, { method, credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() })
+      const check = await fetchDoc(LIST, 'no-cache') // 再ログイン後に一覧を取り直して成否判定
+      if (!check.querySelector('input[type="password"]')) { RS.fails = 0; setRR('success', ''); return true }
+      RS.fails++; postStatus(false, 'auth'); setRR('failed', 'invalid-creds'); return false
+    } catch (e) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'fetch-error'); return false }
+  }
 
   const norm = s => (s == null ? '' : String(s)).replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
   const textOf = el => norm(el ? el.textContent : '')
@@ -412,12 +512,15 @@ function samuraiLoop(gen, todayMD) {
   async function tick() {
     if (window.__tfSamuraiGen !== gen) return // 新しい注入が来たら旧ループは終了
     try {
-      const ldoc = await fetchDoc('/admin/request/list', 'no-cache')
-      // ログイン画面が返る＝セッション切れ。CRMに未接続を通知して今回はスキップ。
+      let ldoc = await fetchDoc(LIST, 'no-cache')
+      // ログイン画面が返る＝セッション切れ。まず自動再ログインを試み、ダメなら未接続通知してスキップ。
       if (ldoc.querySelector('input[type="password"]')) {
-        postStatus(false, 'auth')
-        if (window.__tfSamuraiGen === gen) setTimeout(tick, nextDelay())
-        return
+        const ok = await relogin(ldoc)
+        if (ok) { try { ldoc = await fetchDoc(LIST, 'no-cache') } catch {} }
+        if (!ldoc || ldoc.querySelector('input[type="password"]')) {
+          if (window.__tfSamuraiGen === gen) setTimeout(tick, nextDelay())
+          return
+        }
       }
       const links = [...ldoc.querySelectorAll('a[href*="/request/detail/id/"]')]
       postStatus(true, '', links.length) // 生存ハートビート

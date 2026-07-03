@@ -470,6 +470,54 @@ document.getElementById('zbaTest').addEventListener('click', async () => {
   } catch (e) { res.style.color = '#dc2626'; res.textContent = '通信エラー: ' + (e && e.message ? e.message : String(e)) }
 })
 
+// ===== 引越し侍／価格.com 自動再ログインの資格情報 =====
+// ズバットと違い専用ログインAPIが無いため、拡張のループがセッション切れ時に
+// ログインフォームを解析してPOSTする方式（background.js:relogin）。ここでは保存のみ。
+function makeSiteCreds(cfg) {
+  // cfg: { credsKey, idEl, pwEl, saveBtn, resultEl, statusEl, resultKey, reasonKey, atKey, siteLabel }
+  const REASONS = {
+    'no-creds': 'ID/PW未設定', 'no-form': 'ログインフォーム未検出',
+    'no-userfield': 'ID入力欄を特定できず', 'invalid-creds': 'ID/PWが違う可能性',
+    'fetch-error': '通信エラー',
+  }
+  async function load() {
+    const s = await chrome.storage.local.get([cfg.credsKey])
+    const c = s[cfg.credsKey]
+    if (c && c.username) document.getElementById(cfg.idEl).value = c.username
+  }
+  async function renderStatus() {
+    const el = document.getElementById(cfg.statusEl); if (!el) return
+    const s = await chrome.storage.local.get([cfg.credsKey, cfg.resultKey, cfg.reasonKey, cfg.atKey])
+    const c = s[cfg.credsKey]
+    const lines = []
+    lines.push('自動再ログイン: ' + (c && c.username && c.password ? '設定済み ✓' : '未設定（ID/PWを保存してください）'))
+    if (s[cfg.atKey]) {
+      const ok = s[cfg.resultKey] === 'success'
+      lines.push('最終 自動再ログイン: ' + (ok ? '成功' : '失敗') + `（${hhmm(s[cfg.atKey])}）`)
+      if (!ok && s[cfg.reasonKey]) lines.push('　理由: ' + (REASONS[s[cfg.reasonKey]] || s[cfg.reasonKey]))
+    }
+    el.textContent = lines.join('\n'); el.style.whiteSpace = 'pre-line'
+  }
+  document.getElementById(cfg.saveBtn).addEventListener('click', async () => {
+    const res = document.getElementById(cfg.resultEl)
+    const id = document.getElementById(cfg.idEl).value.trim()
+    const pw = document.getElementById(cfg.pwEl).value
+    if (!id) { res.style.color = '#dc2626'; res.textContent = 'IDを入力してください'; return }
+    const prev = (await chrome.storage.local.get([cfg.credsKey]))[cfg.credsKey] || {}
+    const creds = { username: id, password: pw || prev.password || '' } // PW空欄なら既存を保持
+    if (prev.userField) creds.userField = prev.userField
+    if (!creds.password) { res.style.color = '#dc2626'; res.textContent = 'パスワードを入力してください'; return }
+    await chrome.storage.local.set({ [cfg.credsKey]: creds })
+    document.getElementById(cfg.pwEl).value = ''
+    res.style.color = '#16a34a'; res.textContent = '保存しました（セッション切れ時に自動でログインし直します）'
+    renderStatus()
+  })
+  load(); renderStatus()
+}
+
+makeSiteCreds({ credsKey: 'samuraiCreds', idEl: 'samuraiId', pwEl: 'samuraiPw', saveBtn: 'samuraiSave', resultEl: 'samuraiResult', statusEl: 'samuraiStatus', resultKey: 'samuraiReloginResult', reasonKey: 'samuraiReloginReason', atKey: 'samuraiReloginAt', siteLabel: '引越し侍' })
+makeSiteCreds({ credsKey: 'kakakuCreds', idEl: 'kakakuId', pwEl: 'kakakuPw', saveBtn: 'kakakuSave', resultEl: 'kakakuResult', statusEl: 'kakakuStatus', resultKey: 'kakakuReloginResult', reasonKey: 'kakakuReloginReason', atKey: 'kakakuReloginAt', siteLabel: '価格.com' })
+
 loadCreds()
 renderZbaStatus()
 refresh()
