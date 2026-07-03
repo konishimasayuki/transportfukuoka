@@ -212,8 +212,8 @@ export default function Schedule({ user }) {
                     // 日付クリックでその日の配車ボードを開く
                     <div key={idx} onClick={() => { setSelDate(ds); setBoardDate(d); setView('board') }}
                       style={{
-                        minHeight: 86, borderRight: '1px solid #EEF2F7', borderBottom: '1px solid #EEF2F7',
-                        padding: 4, cursor: 'pointer', background: isSel ? '#EFF6FF' : inMonth ? '#fff' : '#FAFBFC',
+                        minHeight: 128, borderRight: '1px solid #EEF2F7', borderBottom: '1px solid #EEF2F7',
+                        padding: 5, cursor: 'pointer', background: isSel ? '#EFF6FF' : inMonth ? '#fff' : '#FAFBFC',
                         opacity: inMonth ? 1 : 0.55,
                       }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -223,14 +223,14 @@ export default function Schedule({ user }) {
                           background: isToday ? '#1E5FA8' : 'transparent', borderRadius: 10, padding: isToday ? '0 6px' : 0, minWidth: 18, textAlign: 'center',
                         }}>{d.getDate()}</span>
                       </div>
-                      <div style={{ marginTop: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {evs.slice(0, 3).map(e => (
+                      <div style={{ marginTop: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {evs.slice(0, 5).map(e => (
                           <div key={e.id} onClick={(ev) => { ev.stopPropagation(); openEdit(e) }}
-                            style={{ fontSize: 10, fontWeight: 700, color: '#fff', background: labelColor(e.label), borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            style={{ fontSize: 10, fontWeight: 700, color: '#fff', background: labelColor(e.label), borderRadius: 4, padding: '2px 5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {!e.allDay && e.startTime ? `${e.startTime} ` : ''}{e.title || '（無題）'}
                           </div>
                         ))}
-                        {evs.length > 3 && <div style={{ fontSize: 9, color: '#94A3B8', fontWeight: 700 }}>＋{evs.length - 3}件</div>}
+                        {evs.length > 5 && <div style={{ fontSize: 9, color: '#94A3B8', fontWeight: 700 }}>＋{evs.length - 5}件</div>}
                       </div>
                     </div>
                   )

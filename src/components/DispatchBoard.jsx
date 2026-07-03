@@ -170,6 +170,9 @@ export default function DispatchBoard({ filter, onToast }) {
         </div>
       </div>
 
+      {/* ===== 配車ルートマップ ===== */}
+      <DispatchMap vehicles={vehicles} jobs={jobs} show={show} />
+
       {/* ===== ボード ＋ 未手配 ===== */}
       <div className="db-layout">
         <div className="db-wrap">
@@ -289,6 +292,127 @@ export default function DispatchBoard({ filter, onToast }) {
       {showVeh && (
         <VehicleModal vehicles={vehicles} jobs={jobs} onClose={() => setShowVeh(false)} onApply={applyVehicles} />
       )}
+    </div>
+  )
+}
+
+// ===== 配車ルートマップ =====
+// Google Maps JS API（＋APIキー）が無くても配車ルートを俯瞰できるよう、福岡都市圏の
+// 区・市の相対座標をSVGに投影して各車両の from→to 経路を色分け表示する概略図。
+// 各車両の「Googleマップで開く」リンクは実際のGoogleマップ経路（キー不要）を新規タブで開く。
+const COORDS = {
+  '博多区': [130.420, 33.590], '中央区': [130.395, 33.585], '南区': [130.425, 33.555],
+  '城南区': [130.375, 33.560], '早良区': [130.340, 33.560], '西区': [130.290, 33.580],
+  '東区': [130.430, 33.650], '春日市': [130.470, 33.530], '春日': [130.470, 33.530],
+  '大野城市': [130.480, 33.535], '大野城': [130.478, 33.533], '筑紫野': [130.520, 33.495],
+  '糸島市': [130.195, 33.560], '糸島': [130.200, 33.558], '新宮町': [130.440, 33.720],
+  '粕屋町': [130.470, 33.610], '北九州': [130.870, 33.850], '福岡市': [130.400, 33.590],
+}
+const coordOf = (name) => {
+  if (!name || name === '—') return null
+  if (COORDS[name]) return COORDS[name]
+  const hit = Object.keys(COORDS).find(kk => name.includes(kk))
+  return hit ? COORDS[hit] : null
+}
+// 車両ごとのルート色（画像イメージ：オレンジ／青／緑…）
+const ROUTE_COLORS = ['#f97316', '#2563eb', '#16a34a', '#7c3aed', '#e11d48', '#0891b2', '#ca8a04', '#0d9488']
+const gmapUrl = (names) => {
+  const q = names.map(n => encodeURIComponent(n + ' 福岡'))
+  if (q.length === 1) return 'https://www.google.com/maps/search/?api=1&query=' + q[0]
+  const way = q.slice(1, -1).join('%7C')
+  let u = 'https://www.google.com/maps/dir/?api=1&origin=' + q[0] + '&destination=' + q[q.length - 1]
+  if (way) u += '&waypoints=' + way
+  return u
+}
+
+function DispatchMap({ vehicles, jobs, show }) {
+  const W = 900, H = 320, pad = 40
+  const data = useMemo(() => {
+    // 各車両の停車地列（from→to、時刻順）を作る
+    const routes = vehicles.map((v, idx) => {
+      const vj = jobs.filter(j => j.v === v.key && show(j.cat)).sort((a, b) => a.s - b.s)
+      const stopsRaw = []
+      vj.forEach(j => { stopsRaw.push(j.from); if (j.to && j.to !== '—') stopsRaw.push(j.to) })
+      const seq = stopsRaw.filter((s, i) => i === 0 || s !== stopsRaw[i - 1]) // 連続重複を除去
+      const stops = seq.map(n => ({ name: n, c: coordOf(n) })).filter(x => x.c)
+      return { v, color: ROUTE_COLORS[idx % ROUTE_COLORS.length], stops }
+    }).filter(r => r.stops.length > 0)
+    // 全停車地の境界からSVG投影関数を作成
+    const all = routes.flatMap(r => r.stops.map(s => s.c))
+    if (!all.length) return { routes: [], proj: null, labels: [] }
+    const xs = all.map(p => p[0]), ys = all.map(p => p[1])
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys)
+    const spanX = (maxX - minX) || 0.02, spanY = (maxY - minY) || 0.02
+    const proj = ([lng, lat]) => [pad + ((lng - minX) / spanX) * (W - 2 * pad), pad + ((maxY - lat) / spanY) * (H - 2 * pad)]
+    // ラベル（地名の重複排除）
+    const seen = {}, labels = []
+    routes.forEach(r => r.stops.forEach(s => { if (!seen[s.name]) { seen[s.name] = 1; labels.push({ name: s.name, p: proj(s.c) }) } }))
+    return { routes, proj, labels }
+  }, [vehicles, jobs, show])
+
+  const activeRoutes = data.routes
+
+  return (
+    <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card-head">
+        <h3>🗺 配車ルートマップ <span className="c-sub">· 各車両の巡回ルート（概略）</span></h3>
+        <span className="c-sub">区の相対位置に基づく概略図</span>
+      </div>
+      <div className="card-body" style={{ padding: 12 }}>
+        {activeRoutes.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 220px', gap: 12, alignItems: 'start' }}>
+            <div className="scroll-x" style={{ background: '#F1F5F9', borderRadius: 10, border: '1px solid var(--border)' }}>
+              <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', minWidth: 560, display: 'block' }}>
+                {/* 背景グリッド（道路のような雰囲気） */}
+                {Array.from({ length: 9 }, (_, i) => <line key={'gx' + i} x1={(W / 9) * (i + 1)} y1="0" x2={(W / 9) * (i + 1)} y2={H} stroke="#E2E8F0" strokeWidth="1" />)}
+                {Array.from({ length: 4 }, (_, i) => <line key={'gy' + i} x1="0" y1={(H / 4) * (i + 1)} x2={W} y2={(H / 4) * (i + 1)} stroke="#E2E8F0" strokeWidth="1" />)}
+                {/* 地名ラベル＋点 */}
+                {data.labels.map((l, i) => (
+                  <g key={'lb' + i}>
+                    <circle cx={l.p[0]} cy={l.p[1]} r="3" fill="#94A3B8" />
+                    <text x={l.p[0] + 5} y={l.p[1] - 5} fontSize="11" fill="#64748B" fontWeight="600">{l.name}</text>
+                  </g>
+                ))}
+                {/* ルート（車両ごとに色分け） */}
+                {activeRoutes.map((r, ri) => {
+                  const pts = r.stops.map(s => data.proj(s.c))
+                  const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ')
+                  const start = pts[0]
+                  return (
+                    <g key={'r' + ri}>
+                      {pts.length > 1 && <path d={d} fill="none" stroke={r.color} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />}
+                      {pts.map((p, pi) => <circle key={pi} cx={p[0]} cy={p[1]} r="4.5" fill={r.color} stroke="#fff" strokeWidth="1.5" />)}
+                      <text x={start[0]} y={start[1] + 5} fontSize="15" textAnchor="middle">🚚</text>
+                    </g>
+                  )
+                })}
+              </svg>
+            </div>
+            {/* 凡例（車両→色＋Googleマップリンク） */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {activeRoutes.map((r, ri) => (
+                <div key={'lg' + ri} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 14, height: 4, borderRadius: 2, background: r.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: 700 }}>{r.v.ext ? '外注' : '#' + r.v.id}</span>
+                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>{r.v.cls}</span>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: 'var(--sub)', margin: '5px 0 6px', lineHeight: 1.4 }}>
+                    {r.stops.map(s => s.name).join(' → ')}
+                  </div>
+                  <a href={gmapUrl(r.stops.map(s => s.name))} target="_blank" rel="noreferrer"
+                    style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', textDecoration: 'none' }}>🗺 Googleマップで開く ›</a>
+                </div>
+              ))}
+              <div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.5, marginTop: 2 }}>
+                ※ 概略図は区の相対位置ベース。実際の道路経路は「Googleマップで開く」で確認できます。
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
