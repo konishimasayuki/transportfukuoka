@@ -474,11 +474,11 @@ document.getElementById('zbaTest').addEventListener('click', async () => {
 // ズバットと違い専用ログインAPIが無いため、拡張のループがセッション切れ時に
 // ログインフォームを解析してPOSTする方式（background.js:relogin）。ここでは保存のみ。
 function makeSiteCreds(cfg) {
-  // cfg: { credsKey, idEl, pwEl, saveBtn, resultEl, statusEl, resultKey, reasonKey, atKey, siteLabel }
+  // cfg: { credsKey, idEl, pwEl, saveBtn, resultEl, statusEl, resultKey, reasonKey, atKey, blockedKey, triesKey, siteLabel }
   const REASONS = {
     'no-creds': 'ID/PW未設定', 'no-form': 'ログインフォーム未検出',
     'no-userfield': 'ID入力欄を特定できず', 'invalid-creds': 'ID/PWが違う可能性',
-    'fetch-error': '通信エラー',
+    'fetch-error': '通信エラー', 'max-tries': '試行上限に到達',
   }
   async function load() {
     const s = await chrome.storage.local.get([cfg.credsKey])
@@ -487,10 +487,11 @@ function makeSiteCreds(cfg) {
   }
   async function renderStatus() {
     const el = document.getElementById(cfg.statusEl); if (!el) return
-    const s = await chrome.storage.local.get([cfg.credsKey, cfg.resultKey, cfg.reasonKey, cfg.atKey])
+    const s = await chrome.storage.local.get([cfg.credsKey, cfg.resultKey, cfg.reasonKey, cfg.atKey, cfg.blockedKey])
     const c = s[cfg.credsKey]
     const lines = []
     lines.push('自動再ログイン: ' + (c && c.username && c.password ? '設定済み ✓' : '未設定（ID/PWを保存してください）'))
+    if (s[cfg.blockedKey]) lines.push('⛔ 停止中（ロック防止のため自動試行を止めています。ID/PWを保存し直すと再開します）')
     if (s[cfg.atKey]) {
       const ok = s[cfg.resultKey] === 'success'
       lines.push('最終 自動再ログイン: ' + (ok ? '成功' : '失敗') + `（${hhmm(s[cfg.atKey])}）`)
@@ -507,7 +508,8 @@ function makeSiteCreds(cfg) {
     const creds = { username: id, password: pw || prev.password || '' } // PW空欄なら既存を保持
     if (prev.userField) creds.userField = prev.userField
     if (!creds.password) { res.style.color = '#dc2626'; res.textContent = 'パスワードを入力してください'; return }
-    await chrome.storage.local.set({ [cfg.credsKey]: creds })
+    // 保存し直したら「停止中」を解除し、試行回数をリセット（再びロック配慮つきで試行可に）
+    await chrome.storage.local.set({ [cfg.credsKey]: creds, [cfg.blockedKey]: false, [cfg.triesKey]: 0 })
     document.getElementById(cfg.pwEl).value = ''
     res.style.color = '#16a34a'; res.textContent = '保存しました（セッション切れ時に自動でログインし直します）'
     renderStatus()
@@ -515,8 +517,8 @@ function makeSiteCreds(cfg) {
   load(); renderStatus()
 }
 
-makeSiteCreds({ credsKey: 'samuraiCreds', idEl: 'samuraiId', pwEl: 'samuraiPw', saveBtn: 'samuraiSave', resultEl: 'samuraiResult', statusEl: 'samuraiStatus', resultKey: 'samuraiReloginResult', reasonKey: 'samuraiReloginReason', atKey: 'samuraiReloginAt', siteLabel: '引越し侍' })
-makeSiteCreds({ credsKey: 'kakakuCreds', idEl: 'kakakuId', pwEl: 'kakakuPw', saveBtn: 'kakakuSave', resultEl: 'kakakuResult', statusEl: 'kakakuStatus', resultKey: 'kakakuReloginResult', reasonKey: 'kakakuReloginReason', atKey: 'kakakuReloginAt', siteLabel: '価格.com' })
+makeSiteCreds({ credsKey: 'samuraiCreds', idEl: 'samuraiId', pwEl: 'samuraiPw', saveBtn: 'samuraiSave', resultEl: 'samuraiResult', statusEl: 'samuraiStatus', resultKey: 'samuraiReloginResult', reasonKey: 'samuraiReloginReason', atKey: 'samuraiReloginAt', blockedKey: 'samuraiReloginBlocked', triesKey: 'samuraiReloginTries', siteLabel: '引越し侍' })
+makeSiteCreds({ credsKey: 'kakakuCreds', idEl: 'kakakuId', pwEl: 'kakakuPw', saveBtn: 'kakakuSave', resultEl: 'kakakuResult', statusEl: 'kakakuStatus', resultKey: 'kakakuReloginResult', reasonKey: 'kakakuReloginReason', atKey: 'kakakuReloginAt', blockedKey: 'kakakuReloginBlocked', triesKey: 'kakakuReloginTries', siteLabel: '価格.com' })
 
 loadCreds()
 renderZbaStatus()

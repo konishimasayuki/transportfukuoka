@@ -205,21 +205,22 @@ function kakakuLoop(gen, today) {
   const STATUS = 'https://transportfukuoka.vercel.app/api/status'
   const postStatus = (ok, reason, count) => { try { fetch(STATUS, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'kakaku', ok, reason: reason || '', count: count == null ? null : count }) }).catch(() => {}) } catch {} }
 
-  // ===== 自動再ログイン =====（引越し侍と同方式。フォーム解析→保存ID/PW(kakakuCreds)でPOST→検証）
-  window.__tfKakakuRelogin = window.__tfKakakuRelogin || { at: 0, fails: 0 }
+  // ===== 自動再ログイン（アカウントロック防止つき）=====（引越し侍と同方式・同ポリシー）
+  //  ①ID/PW拒否で即停止（再保存まで再試行しない＝誤PW時は実質1回のみ）②絶対上限3回 ③5分に1回・全タブ共有。
+  const MAX_TRIES = 3
   async function relogin(loginDoc) {
-    const RS = window.__tfKakakuRelogin
+    const set = p => { try { chrome.storage.local.set(p) } catch {} }
+    let st = {}
+    try { st = await chrome.storage.local.get(['kakakuCreds', 'kakakuReloginBlocked', 'kakakuReloginLastAt', 'kakakuReloginTries']) } catch {}
+    const creds = st.kakakuCreds
+    if (!creds || !creds.username || !creds.password) { postStatus(false, 'auth'); set({ kakakuReloginResult: 'failed', kakakuReloginReason: 'no-creds', kakakuReloginAt: Date.now() }); return false }
+    if (st.kakakuReloginBlocked) { postStatus(false, 'auth'); return false } // 停止中（ID/PWを保存し直すと解除）
     const now = Date.now()
-    if (now - RS.at < 5 * 60 * 1000) return false
-    if (RS.fails >= 5) return false
-    RS.at = now
-    const setRR = (result, reason) => { try { chrome.storage.local.set({ kakakuReloginResult: result, kakakuReloginReason: reason || '', kakakuReloginAt: Date.now() }) } catch {} }
-    let creds = null
-    try { creds = (await chrome.storage.local.get(['kakakuCreds'])).kakakuCreds } catch {}
-    if (!creds || !creds.username || !creds.password) { postStatus(false, 'auth'); setRR('failed', 'no-creds'); return false }
+    if (st.kakakuReloginLastAt && now - st.kakakuReloginLastAt < 5 * 60 * 1000) return false // 5分に1回まで（全タブ共有）
+    if ((st.kakakuReloginTries || 0) >= MAX_TRIES) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'max-tries', kakakuReloginAt: now }); postStatus(false, 'auth'); return false }
     const pw = loginDoc.querySelector('input[type="password"]')
     const form = pw && pw.closest('form')
-    if (!form) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'no-form'); return false }
+    if (!form) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'no-form', kakakuReloginAt: now }); postStatus(false, 'auth'); return false }
     const base = loginDoc.__srcUrl || location.href // リダイレクト後のログインページURLを基準にaction解決
     const action = new URL(form.getAttribute('action') || base, base).href
     const method = (form.getAttribute('method') || 'POST').toUpperCase()
@@ -243,13 +244,16 @@ function kakakuLoop(gen, today) {
       const t = inputs.find(el => { const ty = (el.getAttribute('type') || 'text').toLowerCase(); return el.getAttribute('name') && ['text', 'email', 'tel'].includes(ty) })
       if (t) { params.set(t.getAttribute('name'), creds.username); userSet = true }
     }
-    if (!userSet) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'no-userfield'); return false }
+    if (!userSet) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'no-userfield', kakakuReloginAt: now }); postStatus(false, 'auth'); return false }
+    set({ kakakuReloginLastAt: now, kakakuReloginTries: (st.kakakuReloginTries || 0) + 1 }) // 認証を投げる直前に回数記録
     try {
       await fetch(action, { method, credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() })
       const check = await fetchDoc(LIST, 'no-cache')
-      if (!check.querySelector('input[type="password"]')) { RS.fails = 0; setRR('success', ''); return true }
-      RS.fails++; postStatus(false, 'auth'); setRR('failed', 'invalid-creds'); return false
-    } catch (e) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'fetch-error'); return false }
+      if (!check.querySelector('input[type="password"]')) { set({ kakakuReloginBlocked: false, kakakuReloginTries: 0, kakakuReloginResult: 'success', kakakuReloginReason: '', kakakuReloginAt: Date.now() }); return true }
+      set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'invalid-creds', kakakuReloginAt: Date.now() }); postStatus(false, 'auth'); return false // ID/PW拒否→即停止
+    } catch (e) {
+      set({ kakakuReloginResult: 'failed', kakakuReloginReason: 'fetch-error', kakakuReloginAt: Date.now() }); postStatus(false, 'auth'); return false // 通信エラーは停止せず上限内で再試行
+    }
   }
 
   const norm = s => (s == null ? '' : String(s)).replace(/　/g, ' ').replace(/\s+/g, ' ').trim()
@@ -418,25 +422,27 @@ function samuraiLoop(gen, todayMD) {
   const LIST    = '/admin/request/list'
   const postStatus = (ok, reason, count) => { try { fetch(STATUS, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'samurai', ok, reason: reason || '', count: count == null ? null : count }) }).catch(() => {}) } catch {} }
 
-  // ===== 自動再ログイン =====
-  // セッション切れ（ログインページが返る）を検知したら、そのログインフォームを解析し、
-  // 保存済みID/PW（chrome.storage.local:samuraiCreds）でPOSTしてセッションを再取得する。
-  // hidden項目（CSRFトークン等）はフォームの値をそのまま引き継ぐため、通信キャプチャ不要。
-  // 多重試行を防ぐため window に状態を保持（5分に1回・連続5回失敗で停止）。
-  window.__tfSamuraiRelogin = window.__tfSamuraiRelogin || { at: 0, fails: 0 }
+  // ===== 自動再ログイン（アカウントロック防止つき）=====
+  // セッション切れ時、ログインフォームを解析し保存ID/PW(samuraiCreds)でPOSTしてセッション再取得。
+  // hidden項目(CSRFトークン等)はフォーム値を引き継ぐため通信キャプチャ不要。
+  // ★ロック回避の要：
+  //  ①サーバーがID/PWを弾いたら即「停止」＝再保存するまで二度と試行しない（＝誤PW時は実質1回のみ）
+  //  ②絶対上限3回（通信エラー等が絡む例外含む）。到達で停止。
+  //  ③5分に1回まで。停止/回数/時刻は chrome.storage で全タブ・再注入をまたいで共有（多重や連打を防ぐ）。
+  const MAX_TRIES = 3
   async function relogin(loginDoc) {
-    const RS = window.__tfSamuraiRelogin
+    const set = p => { try { chrome.storage.local.set(p) } catch {} }
+    let st = {}
+    try { st = await chrome.storage.local.get(['samuraiCreds', 'samuraiReloginBlocked', 'samuraiReloginLastAt', 'samuraiReloginTries']) } catch {}
+    const creds = st.samuraiCreds
+    if (!creds || !creds.username || !creds.password) { postStatus(false, 'auth'); set({ samuraiReloginResult: 'failed', samuraiReloginReason: 'no-creds', samuraiReloginAt: Date.now() }); return false }
+    if (st.samuraiReloginBlocked) { postStatus(false, 'auth'); return false } // 停止中（ID/PWを保存し直すと解除）
     const now = Date.now()
-    if (now - RS.at < 5 * 60 * 1000) return false // 5分に1回まで
-    if (RS.fails >= 5) return false               // 連続失敗が続いたら停止（手動対応が必要）
-    RS.at = now
-    const setRR = (result, reason) => { try { chrome.storage.local.set({ samuraiReloginResult: result, samuraiReloginReason: reason || '', samuraiReloginAt: Date.now() }) } catch {} }
-    let creds = null
-    try { creds = (await chrome.storage.local.get(['samuraiCreds'])).samuraiCreds } catch {}
-    if (!creds || !creds.username || !creds.password) { postStatus(false, 'auth'); setRR('failed', 'no-creds'); return false }
+    if (st.samuraiReloginLastAt && now - st.samuraiReloginLastAt < 5 * 60 * 1000) return false // 5分に1回まで（全タブ共有）
+    if ((st.samuraiReloginTries || 0) >= MAX_TRIES) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'max-tries', samuraiReloginAt: now }); postStatus(false, 'auth'); return false }
     const pw = loginDoc.querySelector('input[type="password"]')
     const form = pw && pw.closest('form')
-    if (!form) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'no-form'); return false }
+    if (!form) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'no-form', samuraiReloginAt: now }); postStatus(false, 'auth'); return false }
     const base = loginDoc.__srcUrl || location.href // リダイレクト後のログインページURLを基準にaction解決
     const action = new URL(form.getAttribute('action') || base, base).href
     const method = (form.getAttribute('method') || 'POST').toUpperCase()
@@ -460,13 +466,19 @@ function samuraiLoop(gen, todayMD) {
       const t = inputs.find(el => { const ty = (el.getAttribute('type') || 'text').toLowerCase(); return el.getAttribute('name') && ['text', 'email', 'tel'].includes(ty) })
       if (t) { params.set(t.getAttribute('name'), creds.username); userSet = true }
     }
-    if (!userSet) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'no-userfield'); return false }
+    if (!userSet) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'no-userfield', samuraiReloginAt: now }); postStatus(false, 'auth'); return false }
+    // 実際にサーバーへ認証を投げる直前に、回数と時刻を記録して多重・連打を封じる。
+    set({ samuraiReloginLastAt: now, samuraiReloginTries: (st.samuraiReloginTries || 0) + 1 })
     try {
       await fetch(action, { method, credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() })
       const check = await fetchDoc(LIST, 'no-cache') // 再ログイン後に一覧を取り直して成否判定
-      if (!check.querySelector('input[type="password"]')) { RS.fails = 0; setRR('success', ''); return true }
-      RS.fails++; postStatus(false, 'auth'); setRR('failed', 'invalid-creds'); return false
-    } catch (e) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'fetch-error'); return false }
+      if (!check.querySelector('input[type="password"]')) { set({ samuraiReloginBlocked: false, samuraiReloginTries: 0, samuraiReloginResult: 'success', samuraiReloginReason: '', samuraiReloginAt: Date.now() }); return true }
+      // サーバーがID/PWを拒否＝これ以上試すとロックの恐れ。即停止（再保存まで自動試行しない）。
+      set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'invalid-creds', samuraiReloginAt: Date.now() }); postStatus(false, 'auth'); return false
+    } catch (e) {
+      // 通信エラーはID/PW拒否ではない→停止はせず、5分後・上限内で再試行可
+      set({ samuraiReloginResult: 'failed', samuraiReloginReason: 'fetch-error', samuraiReloginAt: Date.now() }); postStatus(false, 'auth'); return false
+    }
   }
 
   const norm = s => (s == null ? '' : String(s)).replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
