@@ -202,6 +202,8 @@ function kakakuLoop(gen, today) {
   const INBOUND = 'https://transportfukuoka.vercel.app/api/inbound'
   const LIST = '/hikkoshi/vender/admin/Index'
   const DETAIL = id => '/hikkoshi/vender/admin/userdetail/?orderid=' + id
+  const STATUS = 'https://transportfukuoka.vercel.app/api/status'
+  const postStatus = (ok, reason, count) => { try { fetch(STATUS, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'kakaku', ok, reason: reason || '', count: count == null ? null : count }) }).catch(() => {}) } catch {} }
 
   const norm = s => (s == null ? '' : String(s)).replace(/　/g, ' ').replace(/\s+/g, ' ').trim()
   const textOf = el => norm(el ? el.textContent : '')
@@ -252,7 +254,14 @@ function kakakuLoop(gen, today) {
     if (window.__tfKakakuGen !== gen) return // 新しい注入が来たら旧ループは終了
     try {
       const ldoc = await fetchDoc(LIST, 'no-cache')
+      // ログイン画面が返る＝セッション切れ。CRMに未接続を通知して今回はスキップ。
+      if (ldoc.querySelector('input[type="password"]')) {
+        postStatus(false, 'auth')
+        if (window.__tfKakakuGen === gen) setTimeout(tick, nextDelay())
+        return
+      }
       const rows = [...ldoc.querySelectorAll('tr')].filter(tr => tr.querySelector('a[href*="userdetail"]'))
+      postStatus(true, '', rows.length) // 生存ハートビート
       if (rows.length) {
         // ヘッダ行から「列名→index」を作り、列順が変わっても正しく読めるようにする（フォールバック付き）
         let cm = null
@@ -353,6 +362,8 @@ function samuraiLoop(gen, todayMD) {
   // 巡回間隔：ほぼ終日(7-24時)は15秒＋0〜8秒ジッター、深夜(0-7時)は120秒に減速（負荷・BAN配慮）
   const nextDelay = () => { const h = new Date().getHours(); const base = (h >= 7 && h < 24) ? FAST_MS : SLOW_MS; return base + Math.floor(Math.random() * 8000) }
   const INBOUND = 'https://transportfukuoka.vercel.app/api/inbound'
+  const STATUS  = 'https://transportfukuoka.vercel.app/api/status'
+  const postStatus = (ok, reason, count) => { try { fetch(STATUS, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'samurai', ok, reason: reason || '', count: count == null ? null : count }) }).catch(() => {}) } catch {} }
 
   const norm = s => (s == null ? '' : String(s)).replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
   const textOf = el => norm(el ? el.textContent : '')
@@ -402,7 +413,14 @@ function samuraiLoop(gen, todayMD) {
     if (window.__tfSamuraiGen !== gen) return // 新しい注入が来たら旧ループは終了
     try {
       const ldoc = await fetchDoc('/admin/request/list', 'no-cache')
+      // ログイン画面が返る＝セッション切れ。CRMに未接続を通知して今回はスキップ。
+      if (ldoc.querySelector('input[type="password"]')) {
+        postStatus(false, 'auth')
+        if (window.__tfSamuraiGen === gen) setTimeout(tick, nextDelay())
+        return
+      }
       const links = [...ldoc.querySelectorAll('a[href*="/request/detail/id/"]')]
+      postStatus(true, '', links.length) // 生存ハートビート
       if (links.length) {
         const dd = new Set(); const rows = []
         for (const a of links) { const m = (a.getAttribute('href') || '').match(/id\/(\d+)/); if (m && !dd.has(m[1])) { dd.add(m[1]); rows.push(baseOf(m[1], a.closest('tr'))) } }

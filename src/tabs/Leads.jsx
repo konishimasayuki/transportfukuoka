@@ -376,7 +376,8 @@ export default function Leads({ user, switchTab }) {
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
             <select value={dateFilter.type === 'month' ? dateFilter.month : ''}
-              onChange={e => setDateFilter(e.target.value ? { type: 'month', month: e.target.value } : { type: 'all' })}>
+              onChange={e => setDateFilter(e.target.value ? { type: 'month', month: e.target.value } : { type: 'all' })}
+              style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--text)', outline: 'none' }}>
               <option value="">全期間（月）</option>
               {monthOpts.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>

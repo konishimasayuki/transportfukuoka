@@ -117,24 +117,26 @@ const fmtTime = (iso) => {
   return d.toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-// ズバット監視の生存状態 → 表示用の判定（null を返したらバナーを出さない）
-function monHealth(status) {
+const SITE_LABELS = { zba: 'ズバット', samurai: '引越し侍', kakaku: '価格.com' }
+
+// 各サイト監視の生存状態 → 表示用の判定（null を返したらバナーを出さない）
+function monHealth(label, status) {
   if (!status || !status.at) return null  // 「不明（通信なし）」は表示しない
   const ageMin = (Date.now() - new Date(status.at).getTime()) / 60000
   const last = new Date(status.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
   if (status.ok === false) {
-    if (status.reason === 'auth') return { label: '⚠ ズバット未接続', sub: `ログイン切れの可能性。ズバットに再ログインしてください（最終 ${last}）`, color: '#B91C1C', bg: '#FEF2F2' }
-    return { label: '⚠ 取得エラー', sub: `通信エラーが発生しています（最終 ${last}）`, color: '#C2410C', bg: '#FFF7ED' }
+    if (status.reason === 'auth') return { level: 'error', label: `⚠ ${label} 未接続`, sub: `ログイン切れの可能性。${label}に再ログインしてください（最終 ${last}）`, color: '#B91C1C', bg: '#FEF2F2' }
+    return { level: 'warn', label: `⚠ ${label} 取得エラー`, sub: `通信エラーが発生しています（最終 ${last}）`, color: '#C2410C', bg: '#FFF7ED' }
   }
-  if (ageMin > 2) return { label: '⚠ 監視停止の可能性', sub: `${Math.round(ageMin)}分間 更新がありません。監視端末のタブが開いているか確認してください（最終 ${last}）`, color: '#C2410C', bg: '#FFF7ED' }
-  return { label: '✓ 監視中（正常）', sub: `最終取得 ${last}${status.count != null ? ` ／ ${status.count}件` : ''}`, color: '#15803D', bg: '#F0FDF4' }
+  if (ageMin > 5) return { level: 'warn', label: `⚠ ${label} 監視停止の可能性`, sub: `${Math.round(ageMin)}分間 更新がありません。監視端末のタブが開いているか確認してください（最終 ${last}）`, color: '#C2410C', bg: '#FFF7ED' }
+  return { level: 'ok', label: `✓ ${label} 監視中`, sub: `最終取得 ${last}${status.count != null ? ` ／ ${status.count}件` : ''}`, color: '#15803D', bg: '#F0FDF4' }
 }
 
 export default function Call({ user, switchTab }) {
   const isDemo = user?.mode === 'demo'
   const [callOn, setCallOn] = useState(true)
   const [leads, setLeads]   = useState([])
-  const [monStatus, setMonStatus] = useState(null)
+  const [statuses, setStatuses] = useState({})
 
   // ライブモード：保存済みリードと監視ステータスを取得し、15秒ごとに最新化
   useEffect(() => {
@@ -149,7 +151,7 @@ export default function Call({ user, switchTab }) {
       try {
         const sres = await fetch('/api/status')
         const sdata = await sres.json()
-        if (alive) setMonStatus(sdata.status || null)
+        if (alive) setStatuses(sdata.statuses || (sdata.status ? { zba: sdata.status } : {}))
       } catch (e) { /* status取得失敗は無視 */ }
     }
     load()
@@ -302,20 +304,23 @@ export default function Call({ user, switchTab }) {
     val: `${detCounts[s] || 0}件`, pct: (detCounts[s] || 0) / maxDet * 100,
   }))
 
-  const mon = monHealth(monStatus)
+  // サイト別の監視状態バナー（未接続/エラーのみ表示。正常は非表示でスッキリ）
+  const monBanners = ['zba', 'samurai', 'kakaku']
+    .map(src => ({ src, h: monHealth(SITE_LABELS[src], statuses[src]) }))
+    .filter(x => x.h && x.h.level !== 'ok')
 
   return (
     <div>
       <div className="page-hdr"><h1>架電機能</h1><p>一括査定サイトを監視し、新規顧客に自動電話・通知します</p></div>
-      {!isDemo && mon && (
-        <div style={{ background: mon.bg, border: `1px solid ${mon.color}33`, borderRadius: 12, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: mon.color, flexShrink: 0 }} />
+      {!isDemo && monBanners.map(({ src, h }) => (
+        <div key={src} style={{ background: h.bg, border: `1px solid ${h.color}33`, borderRadius: 12, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: h.color, flexShrink: 0 }} />
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: mon.color }}>{mon.label}</div>
-            <div style={{ fontSize: 11, color: '#64748B' }}>{mon.sub}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: h.color }}>{h.label}</div>
+            <div style={{ fontSize: 11, color: '#64748B' }}>{h.sub}</div>
           </div>
         </div>
-      )}
+      ))}
       <CallUI
         callOn={callOn}
         setCallOn={setCallOn}
