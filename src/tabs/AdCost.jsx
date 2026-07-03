@@ -25,7 +25,7 @@ function daysInMonthOf(monthKey) {
 const DAILY_FIELDS = [
   { key: 'samurai_single', label: 'サムライ単身' },
   { key: 'samurai_family', label: 'サムライ家族' },
-  { key: 'kakaku',         label: '価格' },
+  { key: 'kakaku',         label: '価格.com' },
   { key: 'zubatto',        label: 'ズバッと' },
 ]
 const MONTHLY_FIELDS = [
@@ -184,6 +184,33 @@ export default function AdCost({ user }) {
             ))}
           </div>
 
+          {/* 今月の掲載費グラフ（日別合計の棒グラフ） */}
+          <div className="card">
+            <div className="card-head"><h3>今月の掲載費（日別合計）</h3><span className="c-sub">{monthLabel} 合計 {yen(sums.dailyGrand)}</span></div>
+            <div className="card-body">
+              {(() => {
+                const totals = dailyRows.map(day => ({ day, v: DAILY_FIELDS.reduce((s, f) => s + num((draftExp.daily[day] || {})[f.key]), 0) }))
+                const max = Math.max(1, ...totals.map(t => t.v))
+                return (
+                  <div style={{ display: 'flex', alignItems: 'stretch', gap: 2, overflowX: 'auto', paddingBottom: 4 }}>
+                    {totals.map(t => {
+                      const pct = Math.round(t.v / max * 100)
+                      const isToday = t.day === todayDD
+                      return (
+                        <div key={t.day} style={{ flex: '1 0 14px', minWidth: 14, display: 'flex', flexDirection: 'column', alignItems: 'center' }} title={`${Number(t.day)}日：${yen(t.v)}`}>
+                          <div style={{ width: '100%', height: 120, display: 'flex', alignItems: 'flex-end' }}>
+                            <div style={{ width: '72%', margin: '0 auto', height: `${pct}%`, minHeight: t.v > 0 ? 2 : 0, background: isToday ? '#1E5FA8' : '#93C5FD', borderRadius: '3px 3px 0 0' }} />
+                          </div>
+                          <div style={{ fontSize: 8, color: isToday ? '#1E5FA8' : '#94A3B8', fontWeight: isToday ? 800 : 400, marginTop: 3 }}>{Number(t.day)}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+
           {/* 掲載費（日別・全日表示） */}
           <div className="card">
             <div className="card-head"><h3>掲載費（日別）</h3><span className="c-sub">{monthLabel} 全{days}日</span></div>
@@ -235,7 +262,7 @@ export default function AdCost({ user }) {
 
               {/* 一括貼り付け */}
               <details style={{ marginTop: 14 }}>
-                <summary style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#1E5FA8' }}>📋 一括貼り付け（タブ区切り：日付 単身 家族 価格 ズバッと 合計）</summary>
+                <summary style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#1E5FA8' }}>📋 一括貼り付け（タブ区切り：日付 単身 家族 価格.com ズバッと 合計）</summary>
                 <div style={{ marginTop: 8 }}>
                   <textarea value={bulkPaste} onChange={e => setBulkPaste(e.target.value)} rows={6}
                     placeholder={'6/1\t17875\t18700\t3500\t3300\t43375\n6/2\t17875\t17600\t5500\t3960\t40975\n…'}

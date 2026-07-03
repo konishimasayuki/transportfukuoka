@@ -18,6 +18,24 @@ function shortArea(s) {
   return (s.split(/[\s\d]/)[0] || s)                // 都道府県のみ等はそのまま
 }
 
+const pad2 = n => String(n).padStart(2, '0')
+// 受付日時を「MM/DD HH:MM」に統一（価格.comの "2026/07/01 19:37:05" 等も他サイトに合わせる）
+function fmtReceived(s) {
+  s = String(s || '').trim()
+  let m = s.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})[ T]+(\d{1,2}):(\d{2})/)
+  if (m) return `${pad2(m[2])}/${pad2(m[3])} ${pad2(m[4])}:${m[5]}`
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/)
+  if (m) return `${pad2(m[1])}/${pad2(m[2])} ${pad2(m[3])}:${m[4]}`
+  return s
+}
+// リードの受付日を YYYY-MM-DD（ローカル）で返す（月/日フィルター用）
+function leadDateStr(item) {
+  const ms = receivedAtMs(item)
+  if (!ms) return ''
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
 
@@ -103,7 +121,7 @@ export default function Leads({ user, switchTab }) {
   const [items, setItems]       = useState(isDemo ? DEMO_DATA.map(norm) : [])
   const [loading, setLoading]   = useState(!isDemo)
   const [search, setSearch]     = useState('')
-  const [period, setPeriod]     = useState('all')      // all | today
+  const [dateFilter, setDateFilter] = useState({ type: 'all' }) // {type:'all'|'day'(date)|'month'(month)}
   const [filterStatus, setFilterStatus] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [detailItem, setDetailItem] = useState(null)
@@ -317,7 +335,11 @@ export default function Leads({ user, switchTab }) {
   }
 
   const filtered = items
-    .filter(i => period === 'today' ? isToday(i) : true)
+    .filter(i => {
+      if (dateFilter.type === 'day') return leadDateStr(i) === dateFilter.date
+      if (dateFilter.type === 'month') return leadDateStr(i).startsWith(dateFilter.month)
+      return true
+    })
     .filter(i => {
       const q = search.toLowerCase()
       return !q || (i.name || '').toLowerCase().includes(q) || (i.phone || '').includes(q) || (i.from || '').includes(q) || (i.to || '').includes(q)
@@ -339,16 +361,37 @@ export default function Leads({ user, switchTab }) {
 
       <div className="filter-row">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 名前・電話・エリアで検索..." />
-        <select value={period} onChange={e => setPeriod(e.target.value)}>
-          <option value="all">全期間</option>
-          <option value="today">本日のみ</option>
-        </select>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
           <option value="">全ステータス</option>
           {STATUS_LIST.map(s => <option key={s}>{s}</option>)}
         </select>
         <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={isDemo}>⟳ 更新</button>
       </div>
+
+      {/* 月選択 ＋ 日付フィルター（今日〜10日前） */}
+      {(() => {
+        const now = new Date()
+        const monthOpts = Array.from({ length: 12 }, (_, i) => { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); return { key: `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`, label: `${d.getFullYear()}年${d.getMonth() + 1}月` } })
+        const dayChips = Array.from({ length: 11 }, (_, i) => { const d = new Date(now); d.setDate(d.getDate() - i); const ds = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; return { i, ds, label: i === 0 ? '今日' : `${d.getMonth() + 1}/${d.getDate()}` } })
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+            <select value={dateFilter.type === 'month' ? dateFilter.month : ''}
+              onChange={e => setDateFilter(e.target.value ? { type: 'month', month: e.target.value } : { type: 'all' })}>
+              <option value="">全期間（月）</option>
+              {monthOpts.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {dayChips.map(c => (
+                <button key={c.i}
+                  className={`btn btn-sm ${dateFilter.type === 'day' && dateFilter.date === c.ds ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => setDateFilter(dateFilter.type === 'day' && dateFilter.date === c.ds ? { type: 'all' } : { type: 'day', date: c.ds })}
+                  style={{ padding: '4px 9px' }}>{c.label}</button>
+              ))}
+            </div>
+            {dateFilter.type !== 'all' && <button className="btn btn-outline btn-sm" onClick={() => setDateFilter({ type: 'all' })}>クリア</button>}
+          </div>
+        )
+      })()}
 
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginBottom: 10 }}>
         <button className="btn btn-outline btn-sm" onClick={handleExport}>⬇ CSV出力</button>
@@ -365,25 +408,35 @@ export default function Leads({ user, switchTab }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>受付日時</th><th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th style={{ textAlign: 'right' }}>金額</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
+                <tr><th>受付日時</th><th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th style={{ textAlign: 'right' }}>金額</th><th>メモ</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
+                  <tr><td colSpan={12} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
                 ) : filtered.map(item => {
                   return (
                   <tr key={item.id} onClick={() => setDetailItem(item)} style={{ cursor: 'pointer' }}>
-                    <td style={{ whiteSpace: 'nowrap' }}>{item.receivedAt || item.requestedAt || ''}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{fmtReceived(item.receivedAt || item.requestedAt || '')}</td>
                     <td style={{ whiteSpace: 'nowrap' }}><SourceTag site={item.site} /></td>
                     <td><b>{item.name || '（名前なし）'}</b></td>
                     <td style={{ whiteSpace: 'nowrap' }}><a href={`tel:${item.phone}`} onClick={e => e.stopPropagation()} style={{ color: '#1E5FA8', textDecoration: 'none', fontWeight: 700 }}>{item.phone}</a></td>
-                    <td style={{ whiteSpace: 'nowrap' }}
-                      title={`${item.from || item.fromAddress || ''} → ${item.to || item.toAddress || ''}`}>
-                      {shortArea(item.from || item.fromAddress)} → {shortArea(item.to || item.toAddress)}
+                    <td title={`${item.from || item.fromAddress || ''} → ${item.to || item.toAddress || ''}`}>
+                      <div style={{ maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {shortArea(item.from || item.fromAddress)} → {shortArea(item.to || item.toAddress)}
+                      </div>
                     </td>
                     <td>{item.count}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{item.moveDate || item.moveDateDetail || ''}</td>
+                    <td title={item.moveDate || item.moveDateDetail || ''}>
+                      <div style={{ maxWidth: 84, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.moveDate || item.moveDateDetail || ''}
+                      </div>
+                    </td>
                     <td style={{ whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 700 }}>{item.amount ? `¥${Number(item.amount).toLocaleString('ja-JP')}` : '—'}</td>
+                    <td title={item.memo || ''}>
+                      <div style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748B' }}>
+                        {item.memo || ''}
+                      </div>
+                    </td>
                     <td>
                       <select
                         value={item.status}
