@@ -260,47 +260,6 @@ export default function AdCost({ user }) {
                 </table>
               </div>
 
-              {/* 一括貼り付け */}
-              <details style={{ marginTop: 14 }}>
-                <summary style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#1E5FA8' }}>📋 一括貼り付け（タブ区切り：日付 単身 家族 価格.com ズバッと 合計）</summary>
-                <div style={{ marginTop: 8 }}>
-                  <textarea value={bulkPaste} onChange={e => setBulkPaste(e.target.value)} rows={6}
-                    placeholder={'6/1\t17875\t18700\t3500\t3300\t43375\n6/2\t17875\t17600\t5500\t3960\t40975\n…'}
-                    style={{ width: '100%', padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, fontFamily: 'monospace', outline: 'none', resize: 'vertical', minHeight: 100 }} />
-                  <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                    <button className="btn btn-outline btn-sm" onClick={applyBulk} disabled={!bulkPaste.trim()}>取り込み（未保存）</button>
-                    <button className="btn btn-outline btn-sm" style={{ color: '#B91C1C', borderColor: '#FECACA' }} onClick={clearAllDaily}>日別をクリア</button>
-                    <div style={{ flex: 1 }} />
-                    <span style={{ fontSize: 11, color: '#94A3B8' }}>※ 合計列は無視。1〜31日を自動判定。タブ/カンマ/スペース対応。</span>
-                  </div>
-                </div>
-              </details>
-
-              {/* 月別その他・メモ（見づらいので既定は非表示。クリックで開いて入力） */}
-              <details style={{ marginTop: 14 }}>
-                <summary style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#1E5FA8' }}>▸ 月別その他（SUUMO・チラシ・企業紹介）／メモ</summary>
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
-                    {MONTHLY_FIELDS.map(f => (
-                      <div key={f.key}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>{f.label}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 12, color: '#94A3B8' }}>¥</span>
-                          <input type="number" inputMode="numeric" min={0}
-                            value={draftExp.monthly?.[f.key] ?? ''} onChange={e => setMonthly(f.key, e.target.value)}
-                            style={{ width: '100%', padding: '7px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', textAlign: 'right' }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ marginTop: 14 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>メモ</div>
-                    <input value={draftExp.note || ''} onChange={e => setDraftExp(p => ({ ...p, note: e.target.value }))}
-                      placeholder="例：段ボール小97円/大138円 など" style={{ width: '100%', padding: '7px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
-                  </div>
-                </div>
-              </details>
-
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 13 }}>
                   <span style={{ color: '#64748B', marginRight: 6 }}>{monthLabel} 掲載費 合計（ドラフト）</span>
