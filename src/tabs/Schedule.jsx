@@ -4,9 +4,12 @@
 // - 予定の作成/編集：カレンダー選択・終日・開始/終了(日時)・ラベル色・場所・メモ・添付(プレビュー)
 // - 永続化：/api/schedule（ライブ）。デモはサンプルをローカル表示。
 import { useState, useEffect, useMemo, useRef } from 'react'
+import DispatchBoard from '../components/DispatchBoard'
 
 const GENRES = ['引っ越し', '見積り', '段ボール配達']
 const GENRE_COLOR = { '引っ越し': '#1E5FA8', '見積り': '#EAB308', '段ボール配達': '#22C55E' }
+// ジャンル（既存チップ）→ 配車ボードのカテゴリ。チップで両ビューを絞り込むための対応表。
+const GENRE_TO_CAT = { '引っ越し': 'move', '見積り': 'quote', '段ボール配達': 'box' }
 
 // ラベル（色）。値はキー、表示名と色を持つ。
 const LABELS = [
@@ -45,6 +48,8 @@ export default function Schedule({ user }) {
   const [loading, setLoading] = useState(!isDemo)
   const [viewY, setViewY] = useState(now.getFullYear())
   const [viewM, setViewM] = useState(now.getMonth()) // 0-indexed
+  const [view, setView] = useState('month')           // 'month'（月カレンダー）| 'board'（配車ボード）
+  const [boardDate, setBoardDate] = useState(new Date()) // 配車ボードの対象日
   const [genres, setGenres] = useState([...GENRES])   // 表示中のジャンル（複数可）
   const [selDate, setSelDate] = useState(todayStr())
   const [modal, setModal] = useState(null)            // { mode:'add'|'edit', event }
@@ -123,6 +128,13 @@ export default function Schedule({ user }) {
   const tStr = todayStr()
   const selList = eventsOn(selDate)
 
+  // 配車ボード用：チップ選択をカテゴリ絞り込みに変換
+  const catFilter = { move: genres.includes('引っ越し'), quote: genres.includes('見積り'), box: genres.includes('段ボール配達') }
+  // 配車ボードの日付ナビ（前日/今日/翌日）
+  const shiftBoardDay = (delta) => { const d = new Date(boardDate); d.setDate(d.getDate() + delta); setBoardDate(d) }
+  const boardDateLabel = `${boardDate.getMonth() + 1}月${boardDate.getDate()}日 (${WEEK[boardDate.getDay()]})`
+  const boardIsToday = ymd(boardDate) === tStr
+
   // スタイル
   const chip = (active, color) => ({
     display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 20,
@@ -138,8 +150,8 @@ export default function Schedule({ user }) {
         <button className="btn btn-primary btn-sm" onClick={() => openAdd()}>＋ 予定を作成</button>
       </div>
 
-      {/* ジャンル切替チップ（複数選択で重ね表示） */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      {/* ジャンル切替チップ（複数選択で重ね表示）＋ 表示トグル */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
         {GENRES.map(g => (
           <span key={g} style={chip(genres.includes(g), GENRE_COLOR[g])} onClick={() => toggleGenre(g)}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: GENRE_COLOR[g], display: 'inline-block' }} />
@@ -147,18 +159,36 @@ export default function Schedule({ user }) {
           </span>
         ))}
         <div style={{ flex: 1 }} />
-        {!isDemo && <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={loading}>⟳ 更新</button>}
+        <div className="db-seg">
+          <button className={view === 'month' ? 'on' : ''} onClick={() => setView('month')}>🗓 月カレンダー</button>
+          <button className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}>🚚 配車ボード</button>
+        </div>
+        {!isDemo && view === 'month' && <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={loading}>⟳ 更新</button>}
       </div>
 
-      {/* 月ナビ */}
-      <div className="filter-row" style={{ alignItems: 'center' }}>
-        <button className="btn btn-outline btn-sm" onClick={() => gotoMonth(-1)}>‹ 前月</button>
-        <button className="btn btn-outline btn-sm" onClick={gotoToday}>今日</button>
-        <button className="btn btn-outline btn-sm" onClick={() => gotoMonth(1)}>翌月 ›</button>
-        <div style={{ fontSize: 16, fontWeight: 900, marginLeft: 6 }}>{monthLabel}</div>
-      </div>
+      {/* 日付ナビ：月ビュー＝前月/今日/翌月、ボードビュー＝前日/今日/翌日 */}
+      {view === 'month' ? (
+        <div className="filter-row" style={{ alignItems: 'center' }}>
+          <button className="btn btn-outline btn-sm" onClick={() => gotoMonth(-1)}>‹ 前月</button>
+          <button className="btn btn-outline btn-sm" onClick={gotoToday}>今日</button>
+          <button className="btn btn-outline btn-sm" onClick={() => gotoMonth(1)}>翌月 ›</button>
+          <div style={{ fontSize: 16, fontWeight: 900, marginLeft: 6 }}>{monthLabel}</div>
+        </div>
+      ) : (
+        <div className="filter-row" style={{ alignItems: 'center' }}>
+          <button className="btn btn-outline btn-sm" onClick={() => shiftBoardDay(-1)}>‹ 前日</button>
+          <button className="btn btn-outline btn-sm" onClick={() => setBoardDate(new Date())}>今日</button>
+          <button className="btn btn-outline btn-sm" onClick={() => shiftBoardDay(1)}>翌日 ›</button>
+          <div style={{ fontSize: 16, fontWeight: 900, marginLeft: 6 }}>{boardDateLabel}</div>
+          {boardIsToday && <span className="badge bb" style={{ marginLeft: 2 }}>今日</span>}
+        </div>
+      )}
 
-      {loading ? (
+      {/* ============ 配車ボード ============ */}
+      {view === 'board' && <DispatchBoard filter={catFilter} onToast={showToast} />}
+
+      {/* ============ 月カレンダー（既存）============ */}
+      {view === 'month' && (loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#64748B' }}>読み込み中...</div>
       ) : (
         <div className="card" style={{ overflow: 'hidden' }}>
@@ -208,9 +238,10 @@ export default function Schedule({ user }) {
             </div>
           </div>
         </div>
-      )}
+      ))}
 
-      {/* 選択日の予定一覧 */}
+      {/* 選択日の予定一覧（月ビューのみ）*/}
+      {view === 'month' && (
       <div className="card">
         <div className="card-head">
           <h3>{selDate.replace(/-/g, '/')} の予定</h3>
@@ -237,6 +268,7 @@ export default function Schedule({ user }) {
           ))}
         </div>
       </div>
+      )}
 
       {modal && (
         <ScheduleModal
