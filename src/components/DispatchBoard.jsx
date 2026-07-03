@@ -378,14 +378,18 @@ function SchematicMap({ routes }) {
   }, [routes])
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 220px', gap: 12, alignItems: 'start' }}>
+    <div className="db-maprow">
       <div className="scroll-x" style={{ background: '#F1F5F9', borderRadius: 10, border: '1px solid var(--border)' }}>
         {g ? (
           <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', minWidth: 560, display: 'block' }}>
             {Array.from({ length: 9 }, (_, i) => <line key={'gx' + i} x1={(W / 9) * (i + 1)} y1="0" x2={(W / 9) * (i + 1)} y2={H} stroke="#E2E8F0" strokeWidth="1" />)}
             {Array.from({ length: 4 }, (_, i) => <line key={'gy' + i} x1="0" y1={(H / 4) * (i + 1)} x2={W} y2={(H / 4) * (i + 1)} stroke="#E2E8F0" strokeWidth="1" />)}
             {g.labels.map((l, i) => (
-              <g key={i}><circle cx={l.p[0]} cy={l.p[1]} r="3" fill="#94A3B8" /><text x={l.p[0] + 5} y={l.p[1] - 5} fontSize="11" fill="#64748B" fontWeight="600">{l.name}</text></g>
+              <g key={i}>
+                <circle cx={l.p[0]} cy={l.p[1]} r="3" fill="#94A3B8" />
+                {/* 白フチ（paint-order: stroke）でルート線や他ラベルと重なっても読めるように */}
+                <text x={l.p[0] + 5} y={l.p[1] - 5} fontSize="10" fontWeight="700" fill="#475569" stroke="#fff" strokeWidth="3" paintOrder="stroke" style={{ paintOrder: 'stroke' }}>{l.name}</text>
+              </g>
             ))}
             {g.withC.map((r, ri) => {
               const pts = r.pts.map(s => g.proj(s.c))
@@ -507,7 +511,7 @@ function GoogleRouteMap({ routes }) {
     )
   }
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 220px', gap: 12, alignItems: 'start' }}>
+    <div className="db-maprow">
       <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
         <div ref={mapRef} style={{ width: '100%', height: 340 }} />
         {status === 'loading' && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: '#F1F5F9', fontSize: 12, color: 'var(--muted)' }}>地図を読み込み中…</div>}

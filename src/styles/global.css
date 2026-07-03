@@ -367,6 +367,11 @@ tr:hover td { background: var(--bg); }
   .db-layout { grid-template-columns: 1fr; }
   .db-side { max-height: none; }
 }
+/* ルートマップ：地図＋凡例。狭い画面（iPhone/iPad縦）では縦積みにして地図を潰さない */
+.db-maprow { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 12px; align-items: start; }
+@media (max-width: 900px) {
+  .db-maprow { grid-template-columns: 1fr; }
+}
 @media (prefers-reduced-motion: reduce) {
   .db-job.conflict { animation: none; }
 }
