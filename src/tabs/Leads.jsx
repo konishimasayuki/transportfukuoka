@@ -390,17 +390,16 @@ export default function Leads({ user, switchTab }) {
               ))}
             </div>
             {dateFilter.type !== 'all' && <button className="btn btn-outline btn-sm" onClick={() => setDateFilter({ type: 'all' })}>クリア</button>}
+            {/* CSV出力・取込はフィルターと同じ行に（右寄せ） */}
+            <div style={{ flex: 1 }} />
+            <button className="btn btn-outline btn-sm" onClick={handleExport}>⬇ CSV出力</button>
+            <button className="btn btn-outline btn-sm" onClick={() => fileRef.current && fileRef.current.click()} disabled={importing}>
+              {importing ? '取込中…' : '⬆ CSV取込'}
+            </button>
+            <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} style={{ display: 'none' }} />
           </div>
         )
       })()}
-
-      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginBottom: 10 }}>
-        <button className="btn btn-outline btn-sm" onClick={handleExport}>⬇ CSV出力</button>
-        <button className="btn btn-outline btn-sm" onClick={() => fileRef.current && fileRef.current.click()} disabled={importing}>
-          {importing ? '取込中…' : '⬆ CSV取込'}
-        </button>
-        <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} style={{ display: 'none' }} />
-      </div>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#64748B' }}>読み込み中...</div>

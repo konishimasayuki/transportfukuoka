@@ -72,16 +72,17 @@ function CallUI({ callOn, setCallOn, sites, logs, stats, detections, onOpenLog }
             ) : logs.slice(0, 5).map((l, i, arr) => (
               <div
                 key={i}
-                onDoubleClick={() => l.lead && onOpenLog && onOpenLog(l.lead)}
-                title={l.lead ? 'ダブルクリックで詳細' : undefined}
-                style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom: i < arr.length-1 ? '1px solid #E2E8F0' : 'none', cursor: l.lead ? 'pointer' : 'default' }}
+                style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom: i < arr.length-1 ? '1px solid #E2E8F0' : 'none' }}
               >
                 <div style={{ width:30, height:30, borderRadius:8, background:l.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>{l.icon}</div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:12, fontWeight:700 }}>{l.name} 様</div>
                   <div style={{ fontSize:10, color:'#64748B', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{l.meta}</div>
                 </div>
-                <span className={`badge ${l.badge}`}>{l.status}</span>
+                {/* ステータス表示ではなく「詳細」ボタンで詳細モーダルを開く */}
+                {l.lead
+                  ? <button className="btn btn-outline btn-sm" onClick={() => onOpenLog && onOpenLog(l.lead)}>詳細</button>
+                  : <span className={`badge ${l.badge}`}>{l.status}</span>}
               </div>
             ))}
           </div>

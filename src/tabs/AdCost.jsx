@@ -276,29 +276,30 @@ export default function AdCost({ user }) {
                 </div>
               </details>
 
-              {/* 月別 その他 */}
-              <div style={{ marginTop: 18 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>月別その他（日別なし）</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
-                  {MONTHLY_FIELDS.map(f => (
-                    <div key={f.key}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>{f.label}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 12, color: '#94A3B8' }}>¥</span>
-                        <input type="number" inputMode="numeric" min={0}
-                          value={draftExp.monthly?.[f.key] ?? ''} onChange={e => setMonthly(f.key, e.target.value)}
-                          style={{ width: '100%', padding: '7px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', textAlign: 'right' }} />
+              {/* 月別その他・メモ（見づらいので既定は非表示。クリックで開いて入力） */}
+              <details style={{ marginTop: 14 }}>
+                <summary style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#1E5FA8' }}>▸ 月別その他（SUUMO・チラシ・企業紹介）／メモ</summary>
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+                    {MONTHLY_FIELDS.map(f => (
+                      <div key={f.key}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>{f.label}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 12, color: '#94A3B8' }}>¥</span>
+                          <input type="number" inputMode="numeric" min={0}
+                            value={draftExp.monthly?.[f.key] ?? ''} onChange={e => setMonthly(f.key, e.target.value)}
+                            style={{ width: '100%', padding: '7px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', textAlign: 'right' }} />
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 14 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>メモ</div>
+                    <input value={draftExp.note || ''} onChange={e => setDraftExp(p => ({ ...p, note: e.target.value }))}
+                      placeholder="例：段ボール小97円/大138円 など" style={{ width: '100%', padding: '7px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
+                  </div>
                 </div>
-              </div>
-
-              <div style={{ marginTop: 14 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>メモ</div>
-                <input value={draftExp.note || ''} onChange={e => setDraftExp(p => ({ ...p, note: e.target.value }))}
-                  placeholder="例：段ボール小97円/大138円 など" style={{ width: '100%', padding: '7px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
-              </div>
+              </details>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 13 }}>
