@@ -220,7 +220,8 @@ function kakakuLoop(gen, today) {
     const pw = loginDoc.querySelector('input[type="password"]')
     const form = pw && pw.closest('form')
     if (!form) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'no-form'); return false }
-    const action = new URL(form.getAttribute('action') || (location.pathname + location.search), location.href).href
+    const base = loginDoc.__srcUrl || location.href // リダイレクト後のログインページURLを基準にaction解決
+    const action = new URL(form.getAttribute('action') || base, base).href
     const method = (form.getAttribute('method') || 'POST').toUpperCase()
     const looksUser = el => {
       const hay = ((el.getAttribute('name') || '') + ' ' + (el.getAttribute('id') || '') + ' ' + (el.getAttribute('autocomplete') || '') + ' ' + (el.getAttribute('placeholder') || '')).toLowerCase()
@@ -269,7 +270,9 @@ function kakakuLoop(gen, today) {
     if (['sjis', 'x-sjis', 'ms932', 'windows-31j', 'shift-jis'].includes(enc)) enc = 'shift_jis'
     let text
     try { text = new TextDecoder(enc).decode(buf) } catch { text = new TextDecoder('shift_jis').decode(buf) }
-    return new DOMParser().parseFromString(text, 'text/html')
+    const doc = new DOMParser().parseFromString(text, 'text/html')
+    try { doc.__srcUrl = r.url } catch {} // リダイレクト後の最終URL（フォームaction解決の基準に使う）
+    return doc
   }
 
   // 詳細ページからラベル→値を取得（table/dl/div いずれの構造にも対応する総当り）
@@ -434,7 +437,8 @@ function samuraiLoop(gen, todayMD) {
     const pw = loginDoc.querySelector('input[type="password"]')
     const form = pw && pw.closest('form')
     if (!form) { RS.fails++; postStatus(false, 'auth'); setRR('failed', 'no-form'); return false }
-    const action = new URL(form.getAttribute('action') || (location.pathname + location.search), location.href).href
+    const base = loginDoc.__srcUrl || location.href // リダイレクト後のログインページURLを基準にaction解決
+    const action = new URL(form.getAttribute('action') || base, base).href
     const method = (form.getAttribute('method') || 'POST').toUpperCase()
     const looksUser = el => {
       const hay = ((el.getAttribute('name') || '') + ' ' + (el.getAttribute('id') || '') + ' ' + (el.getAttribute('autocomplete') || '') + ' ' + (el.getAttribute('placeholder') || '')).toLowerCase()
@@ -506,7 +510,9 @@ function samuraiLoop(gen, todayMD) {
     // 一覧は no-cache（条件付きGET：変化なしは304で軽量／古い内容は出さない）。詳細は no-store。
     const r = await fetch(url, { credentials: 'include', cache: mode || 'no-store', headers: HDR })
     if (!r.ok) throw new Error(String(r.status))
-    return new DOMParser().parseFromString(await r.text(), 'text/html')
+    const doc = new DOMParser().parseFromString(await r.text(), 'text/html')
+    try { doc.__srcUrl = r.url } catch {} // リダイレクト後の最終URL（フォームaction解決の基準に使う）
+    return doc
   }
 
   async function tick() {
