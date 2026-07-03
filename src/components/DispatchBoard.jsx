@@ -8,7 +8,7 @@
 // - 外注枠は初期非表示。「外注枠を追加」で必要なときだけ追加する。
 // データはダミー配列（後で /api/schedule 等の実データ・型に差し替え可能）。
 // 車両は内部キー(key)で参照し、号車番号(id)を変更してもジョブの紐付けが壊れない設計。
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 
 const START = 8, END = 19, COLS = END - START // 08:00–19:00 = 11列
 const CAT_NAME = { move: '引っ越し', quote: '見積り', box: '段ボール配達' }
@@ -297,9 +297,13 @@ export default function DispatchBoard({ filter, onToast }) {
 }
 
 // ===== 配車ルートマップ =====
-// Google Maps JS API（＋APIキー）が無くても配車ルートを俯瞰できるよう、福岡都市圏の
-// 区・市の相対座標をSVGに投影して各車両の from→to 経路を色分け表示する概略図。
-// 各車両の「Googleマップで開く」リンクは実際のGoogleマップ経路（キー不要）を新規タブで開く。
+// キー対応：Google Maps APIキーがあれば本物の地図＋実道路ルートを描画し、
+// 無ければ福岡都市圏の区・市の相対座標をSVGに投影した概略図に自動フォールバックする。
+// キーは VITE_GOOGLE_MAPS_KEY（ビルド時）または localStorage 'tf_gmaps_key'（動作確認用）から取得。
+// ※クライアント側Mapsキーは元々ブラウザに露出する前提。Google側でリファラー制限して保護すること。
+const GMAPS_KEY = ((import.meta && import.meta.env && import.meta.env.VITE_GOOGLE_MAPS_KEY) ||
+  (typeof localStorage !== 'undefined' && localStorage.getItem('tf_gmaps_key')) || '').trim()
+
 const COORDS = {
   '博多区': [130.420, 33.590], '中央区': [130.395, 33.585], '南区': [130.425, 33.555],
   '城南区': [130.375, 33.560], '早良区': [130.340, 33.560], '西区': [130.290, 33.580],
@@ -325,93 +329,207 @@ const gmapUrl = (names) => {
   return u
 }
 
-function DispatchMap({ vehicles, jobs, show }) {
+// 各車両の停車地列（from→to・時刻順、連続重複を除去）を作る。両モード共通。
+function computeVehicleRoutes(vehicles, jobs, show) {
+  return vehicles.map((v, idx) => {
+    const vj = jobs.filter(j => j.v === v.key && show(j.cat)).sort((a, b) => a.s - b.s)
+    const raw = []
+    vj.forEach(j => { raw.push(j.from); if (j.to && j.to !== '—') raw.push(j.to) })
+    const stops = raw.filter((s, i) => i === 0 || s !== raw[i - 1])
+    return { v, color: ROUTE_COLORS[idx % ROUTE_COLORS.length], stops }
+  }).filter(r => r.stops.length > 0)
+}
+
+// 凡例（車両→色＋経路＋Googleマップリンク）。両モード共通。
+function RouteLegend({ routes, note }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      {routes.map((r, ri) => (
+        <div key={ri} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 14, height: 4, borderRadius: 2, background: r.color, flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 700 }}>{r.v.ext ? '外注' : '#' + r.v.id}</span>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{r.v.cls}</span>
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--sub)', margin: '5px 0 6px', lineHeight: 1.4 }}>{r.stops.join(' → ')}</div>
+          <a href={gmapUrl(r.stops)} target="_blank" rel="noreferrer"
+            style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', textDecoration: 'none' }}>🗺 Googleマップで開く ›</a>
+        </div>
+      ))}
+      {note && <div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.5, marginTop: 2 }}>{note}</div>}
+    </div>
+  )
+}
+
+// 概略図モード（キー無し）：区の相対座標をSVGに投影して色分け表示
+function SchematicMap({ routes }) {
   const W = 900, H = 320, pad = 40
-  const data = useMemo(() => {
-    // 各車両の停車地列（from→to、時刻順）を作る
-    const routes = vehicles.map((v, idx) => {
-      const vj = jobs.filter(j => j.v === v.key && show(j.cat)).sort((a, b) => a.s - b.s)
-      const stopsRaw = []
-      vj.forEach(j => { stopsRaw.push(j.from); if (j.to && j.to !== '—') stopsRaw.push(j.to) })
-      const seq = stopsRaw.filter((s, i) => i === 0 || s !== stopsRaw[i - 1]) // 連続重複を除去
-      const stops = seq.map(n => ({ name: n, c: coordOf(n) })).filter(x => x.c)
-      return { v, color: ROUTE_COLORS[idx % ROUTE_COLORS.length], stops }
-    }).filter(r => r.stops.length > 0)
-    // 全停車地の境界からSVG投影関数を作成
-    const all = routes.flatMap(r => r.stops.map(s => s.c))
-    if (!all.length) return { routes: [], proj: null, labels: [] }
+  const g = useMemo(() => {
+    const withC = routes.map(r => ({ ...r, pts: r.stops.map(n => ({ name: n, c: coordOf(n) })).filter(x => x.c) })).filter(r => r.pts.length > 0)
+    const all = withC.flatMap(r => r.pts.map(p => p.c))
+    if (!all.length) return null
     const xs = all.map(p => p[0]), ys = all.map(p => p[1])
     const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys)
     const spanX = (maxX - minX) || 0.02, spanY = (maxY - minY) || 0.02
     const proj = ([lng, lat]) => [pad + ((lng - minX) / spanX) * (W - 2 * pad), pad + ((maxY - lat) / spanY) * (H - 2 * pad)]
-    // ラベル（地名の重複排除）
     const seen = {}, labels = []
-    routes.forEach(r => r.stops.forEach(s => { if (!seen[s.name]) { seen[s.name] = 1; labels.push({ name: s.name, p: proj(s.c) }) } }))
-    return { routes, proj, labels }
-  }, [vehicles, jobs, show])
+    withC.forEach(r => r.pts.forEach(s => { if (!seen[s.name]) { seen[s.name] = 1; labels.push({ name: s.name, p: proj(s.c) }) } }))
+    return { withC, proj, labels }
+  }, [routes])
 
-  const activeRoutes = data.routes
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 220px', gap: 12, alignItems: 'start' }}>
+      <div className="scroll-x" style={{ background: '#F1F5F9', borderRadius: 10, border: '1px solid var(--border)' }}>
+        {g ? (
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', minWidth: 560, display: 'block' }}>
+            {Array.from({ length: 9 }, (_, i) => <line key={'gx' + i} x1={(W / 9) * (i + 1)} y1="0" x2={(W / 9) * (i + 1)} y2={H} stroke="#E2E8F0" strokeWidth="1" />)}
+            {Array.from({ length: 4 }, (_, i) => <line key={'gy' + i} x1="0" y1={(H / 4) * (i + 1)} x2={W} y2={(H / 4) * (i + 1)} stroke="#E2E8F0" strokeWidth="1" />)}
+            {g.labels.map((l, i) => (
+              <g key={i}><circle cx={l.p[0]} cy={l.p[1]} r="3" fill="#94A3B8" /><text x={l.p[0] + 5} y={l.p[1] - 5} fontSize="11" fill="#64748B" fontWeight="600">{l.name}</text></g>
+            ))}
+            {g.withC.map((r, ri) => {
+              const pts = r.pts.map(s => g.proj(s.c))
+              const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ')
+              return (
+                <g key={ri}>
+                  {pts.length > 1 && <path d={d} fill="none" stroke={r.color} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />}
+                  {pts.map((p, pi) => <circle key={pi} cx={p[0]} cy={p[1]} r="4.5" fill={r.color} stroke="#fff" strokeWidth="1.5" />)}
+                  <text x={pts[0][0]} y={pts[0][1] + 5} fontSize="15" textAnchor="middle">🚚</text>
+                </g>
+              )
+            })}
+          </svg>
+        ) : <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>地図に表示できる地名がありません</div>}
+      </div>
+      <RouteLegend routes={routes} note={'※ 概略図は区の相対位置ベース。実際の道路経路は「Googleマップで開く」で確認できます。Google Mapsキーを設定すると実地図に切り替わります。'} />
+    </div>
+  )
+}
 
+// Google Maps JS の遅延ロード（1回だけ）。認証失敗は gm_authFailure で検知。
+let gmapsPromise = null
+function loadGmaps(key) {
+  if (typeof window === 'undefined') return Promise.reject(new Error('no window'))
+  if (window.google && window.google.maps) return Promise.resolve()
+  if (gmapsPromise) return gmapsPromise
+  gmapsPromise = new Promise((resolve, reject) => {
+    let done = false
+    const finish = (fn, arg) => { if (!done) { done = true; fn(arg) } }
+    window.__tfGmapsCb = () => finish(resolve)
+    window.gm_authFailure = () => finish(reject, new Error('auth'))
+    const s = document.createElement('script')
+    s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&v=weekly&callback=__tfGmapsCb'
+    s.async = true; s.defer = true
+    s.onerror = () => finish(reject, new Error('load'))
+    setTimeout(() => finish(reject, new Error('timeout')), 12000) // 応答が無ければ12秒で諦めて概略図へ
+    document.head.appendChild(s)
+  })
+  gmapsPromise.catch(() => { gmapsPromise = null }) // 失敗時は次回リトライできるよう解放
+  return gmapsPromise
+}
+const dirCache = new Map() // 同一停車列の経路計算を使い回す（API呼び出し削減）
+
+// 実地図モード（キーあり）：Directions API の実道路ルートを車両ごとに色分け描画
+function GoogleRouteMap({ routes }) {
+  const mapRef = useRef(null)
+  const mapObj = useRef(null)
+  const overlays = useRef([])
+  const [status, setStatus] = useState('loading') // loading | ready | error
+  const [err, setErr] = useState('')
+  const sig = routes.map(r => r.v.key + ':' + r.stops.join('>')).join('|')
+
+  useEffect(() => {
+    let alive = true
+    loadGmaps(GMAPS_KEY).then(() => {
+      if (!alive) return
+      if (!mapObj.current && mapRef.current) {
+        mapObj.current = new window.google.maps.Map(mapRef.current, {
+          center: { lat: 33.59, lng: 130.40 }, zoom: 11,
+          mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
+        })
+      }
+      setStatus('ready')
+    }).catch(e => { if (alive) { setErr(e.message || 'error'); setStatus('error') } })
+    return () => { alive = false }
+  }, [])
+
+  useEffect(() => {
+    if (status !== 'ready' || !mapObj.current || !window.google) return
+    const g = window.google, map = mapObj.current
+    overlays.current.forEach(o => { try { o.setMap(null) } catch {} }); overlays.current = []
+    const bounds = new g.maps.LatLngBounds()
+    const svc = new g.maps.DirectionsService()
+    let cancelled = false
+
+    const pin = (pos, color, scale) => { const m = new g.maps.Marker({ position: pos, map, icon: { path: g.maps.SymbolPath.CIRCLE, scale, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 1.8 } }); overlays.current.push(m); bounds.extend(pos) }
+
+    const draw = (r) => new Promise((resolve) => {
+      const names = r.stops
+      const place = (result) => {
+        if (cancelled || !result) return resolve()
+        const rend = new g.maps.DirectionsRenderer({ map, suppressMarkers: true, preserveViewport: true, polylineOptions: { strokeColor: r.color, strokeWeight: 5, strokeOpacity: 0.85 } })
+        rend.setDirections(result); overlays.current.push(rend)
+        const legs = result.routes[0].legs
+        legs.forEach((leg, i) => { if (i === 0) pin(leg.start_location, r.color, 9); pin(leg.end_location, r.color, 7) })
+        try { map.fitBounds(bounds) } catch {}
+        resolve()
+      }
+      const cacheKey = names.join('>')
+      if (dirCache.has(cacheKey)) { place(dirCache.get(cacheKey)); return }
+      if (names.length < 2) { // 単一地点：ジオコーディングして1ピン
+        new g.maps.Geocoder().geocode({ address: names[0] + ' 福岡' }, (res, st) => {
+          if (st === 'OK' && res[0]) { pin(res[0].geometry.location, r.color, 8); try { map.fitBounds(bounds) } catch {} }
+          resolve()
+        })
+        return
+      }
+      svc.route({
+        origin: names[0] + ' 福岡', destination: names[names.length - 1] + ' 福岡',
+        waypoints: names.slice(1, -1).map(n => ({ location: n + ' 福岡', stopover: true })),
+        optimizeWaypoints: true, travelMode: g.maps.TravelMode.DRIVING,
+      }, (result, st) => {
+        if (st === 'OK') { dirCache.set(cacheKey, result); place(result) }
+        else if (st === 'REQUEST_DENIED') { setErr('REQUEST_DENIED'); setStatus('error'); resolve() }
+        else resolve() // ZERO_RESULTS 等は無視して次へ
+      })
+    })
+
+    ;(async () => { for (const r of routes) { if (cancelled) break; await draw(r) } })() // 逐次実行でレート超過を回避
+    return () => { cancelled = true }
+  }, [status, sig])
+
+  if (status === 'error') { // 失敗時は概略図にフォールバック
+    return (
+      <>
+        <div style={{ fontSize: 11, color: 'var(--red)', marginBottom: 8 }}>Googleマップを表示できませんでした（{err}）。概略図を表示します。APIキー・請求先・リファラー制限をご確認ください。</div>
+        <SchematicMap routes={routes} />
+      </>
+    )
+  }
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 220px', gap: 12, alignItems: 'start' }}>
+      <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+        <div ref={mapRef} style={{ width: '100%', height: 340 }} />
+        {status === 'loading' && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: '#F1F5F9', fontSize: 12, color: 'var(--muted)' }}>地図を読み込み中…</div>}
+      </div>
+      <RouteLegend routes={routes} note={'※ 巡回順は自動最適化。線は実際の道路に沿った経路です。'} />
+    </div>
+  )
+}
+
+// ラッパー：APIキーがあれば実地図、無ければ概略図に自動フォールバック
+function DispatchMap({ vehicles, jobs, show }) {
+  const routes = useMemo(() => computeVehicleRoutes(vehicles, jobs, show), [vehicles, jobs, show])
   return (
     <div className="card" style={{ marginBottom: 14 }}>
       <div className="card-head">
-        <h3>🗺 配車ルートマップ <span className="c-sub">· 各車両の巡回ルート（概略）</span></h3>
-        <span className="c-sub">区の相対位置に基づく概略図</span>
+        <h3>🗺 配車ルートマップ <span className="c-sub">· 各車両の進行ルート</span></h3>
+        <span className="c-sub">{GMAPS_KEY ? 'Googleマップ' : '区の相対位置に基づく概略図'}</span>
       </div>
       <div className="card-body" style={{ padding: 12 }}>
-        {activeRoutes.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 220px', gap: 12, alignItems: 'start' }}>
-            <div className="scroll-x" style={{ background: '#F1F5F9', borderRadius: 10, border: '1px solid var(--border)' }}>
-              <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', minWidth: 560, display: 'block' }}>
-                {/* 背景グリッド（道路のような雰囲気） */}
-                {Array.from({ length: 9 }, (_, i) => <line key={'gx' + i} x1={(W / 9) * (i + 1)} y1="0" x2={(W / 9) * (i + 1)} y2={H} stroke="#E2E8F0" strokeWidth="1" />)}
-                {Array.from({ length: 4 }, (_, i) => <line key={'gy' + i} x1="0" y1={(H / 4) * (i + 1)} x2={W} y2={(H / 4) * (i + 1)} stroke="#E2E8F0" strokeWidth="1" />)}
-                {/* 地名ラベル＋点 */}
-                {data.labels.map((l, i) => (
-                  <g key={'lb' + i}>
-                    <circle cx={l.p[0]} cy={l.p[1]} r="3" fill="#94A3B8" />
-                    <text x={l.p[0] + 5} y={l.p[1] - 5} fontSize="11" fill="#64748B" fontWeight="600">{l.name}</text>
-                  </g>
-                ))}
-                {/* ルート（車両ごとに色分け） */}
-                {activeRoutes.map((r, ri) => {
-                  const pts = r.stops.map(s => data.proj(s.c))
-                  const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ')
-                  const start = pts[0]
-                  return (
-                    <g key={'r' + ri}>
-                      {pts.length > 1 && <path d={d} fill="none" stroke={r.color} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />}
-                      {pts.map((p, pi) => <circle key={pi} cx={p[0]} cy={p[1]} r="4.5" fill={r.color} stroke="#fff" strokeWidth="1.5" />)}
-                      <text x={start[0]} y={start[1] + 5} fontSize="15" textAnchor="middle">🚚</text>
-                    </g>
-                  )
-                })}
-              </svg>
-            </div>
-            {/* 凡例（車両→色＋Googleマップリンク） */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {activeRoutes.map((r, ri) => (
-                <div key={'lg' + ri} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 14, height: 4, borderRadius: 2, background: r.color, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, fontWeight: 700 }}>{r.v.ext ? '外注' : '#' + r.v.id}</span>
-                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>{r.v.cls}</span>
-                  </div>
-                  <div style={{ fontSize: 10.5, color: 'var(--sub)', margin: '5px 0 6px', lineHeight: 1.4 }}>
-                    {r.stops.map(s => s.name).join(' → ')}
-                  </div>
-                  <a href={gmapUrl(r.stops.map(s => s.name))} target="_blank" rel="noreferrer"
-                    style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', textDecoration: 'none' }}>🗺 Googleマップで開く ›</a>
-                </div>
-              ))}
-              <div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.5, marginTop: 2 }}>
-                ※ 概略図は区の相対位置ベース。実際の道路経路は「Googleマップで開く」で確認できます。
-              </div>
-            </div>
-          </div>
-        )}
+        {routes.length === 0
+          ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
+          : (GMAPS_KEY ? <GoogleRouteMap routes={routes} /> : <SchematicMap routes={routes} />)}
       </div>
     </div>
   )
