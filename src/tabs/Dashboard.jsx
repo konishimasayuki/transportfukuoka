@@ -3,12 +3,12 @@ import { useState, useEffect, useMemo } from 'react'
 const num = (v) => Number(v) || 0
 const yen = (n) => '¥' + Math.round(num(n)).toLocaleString('ja-JP')
 
-// "2026-06-15" / "06/15" / "6/15" などから YYYY-MM のキーを得る
+// "2026-06-15" / "2026/07/01 19:37" / "06/15" / "6/15" などから YYYY-MM のキーを得る
 function monthKeyOf(dateStr) {
   const s = String(dateStr || '')
-  let m = s.match(/^(\d{4})-(\d{1,2})/)
+  let m = s.match(/^(\d{4})[-/](\d{1,2})/)   // YYYY-MM / YYYY/MM（価格.com対応）
   if (m) return `${m[1]}-${String(parseInt(m[2], 10)).padStart(2, '0')}`
-  m = s.match(/^(\d{1,2})\/(\d{1,2})/)
+  m = s.match(/^(\d{1,2})\/(\d{1,2})/)        // MM/DD → 今年
   if (m) return `${new Date().getFullYear()}-${String(parseInt(m[1], 10)).padStart(2, '0')}`
   return null
 }
