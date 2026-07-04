@@ -277,6 +277,7 @@ async function getCsrfToken() {
 // ロック/BAN対策：最短5分に1回まで・連続失敗で停止。資格情報はこのPCのローカルのみ。
 let lastReloginAt = 0
 let reloginFails = 0
+let morningResetDate = '' // 朝5時に失敗回数をリセットして再開した日（YYYY-MM-DD）
 let listFailStreak = 0 // 一覧取得の連続失敗（500等のセッション不正を再ログインで回復するため）
 const RELOGIN_MIN_GAP = 5 * 60 * 1000
 const RELOGIN_MAX_FAILS = 5
@@ -314,7 +315,10 @@ async function relogin() {
 // authError 時の回復試行。成功したら true（呼び出し側はそのまま継続/次サイクルで再取得）。
 async function tryRecoverAuth() {
   const now = Date.now()
-  if (reloginFails >= RELOGIN_MAX_FAILS) return false   // 連続失敗で停止（手動対応へ）
+  // 朝5時以降の初回：前日までの失敗回数をリセットして毎朝再開（監視状態へ復帰）
+  const _md = new Date(); const _mkey = _md.getFullYear() + '-' + String(_md.getMonth() + 1).padStart(2, '0') + '-' + String(_md.getDate()).padStart(2, '0')
+  if (morningResetDate !== _mkey && _md.getHours() >= 5) { reloginFails = 0; lastReloginAt = 0; morningResetDate = _mkey }
+  if (reloginFails >= RELOGIN_MAX_FAILS) return false   // 連続失敗で停止（翌朝5時に自動リセット）
   if (now - lastReloginAt < RELOGIN_MIN_GAP) return false // 5分に1回まで
   lastReloginAt = now
   console.log(`[リード監視:${SITE}] 自動再ログインを試行`)

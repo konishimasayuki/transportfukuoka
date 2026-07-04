@@ -212,7 +212,13 @@ function kakakuLoop(gen, today) {
     if (new Date().getHours() < 5) return false // 深夜0〜5時は再ログインしない
     const set = p => { try { chrome.storage.local.set(p) } catch {} }
     let st = {}
-    try { st = await chrome.storage.local.get(['kakakuCreds', 'kakakuReloginBlocked', 'kakakuReloginLastAt', 'kakakuReloginTries']) } catch {}
+    try { st = await chrome.storage.local.get(['kakakuCreds', 'kakakuReloginBlocked', 'kakakuReloginLastAt', 'kakakuReloginTries', 'kakakuReloginMorning']) } catch {}
+    // 朝5時以降の初回：前日までの停止・試行回数をリセットして監視を再開（毎朝ログインし直す）
+    const _md = new Date(); const _mkey = _md.getFullYear() + '-' + String(_md.getMonth() + 1).padStart(2, '0') + '-' + String(_md.getDate()).padStart(2, '0')
+    if (st.kakakuReloginMorning !== _mkey) {
+      st.kakakuReloginBlocked = false; st.kakakuReloginTries = 0; st.kakakuReloginLastAt = 0
+      set({ kakakuReloginBlocked: false, kakakuReloginTries: 0, kakakuReloginLastAt: 0, kakakuReloginMorning: _mkey })
+    }
     const creds = st.kakakuCreds
     if (!creds || !creds.username || !creds.password) { postStatus(false, 'auth'); set({ kakakuReloginResult: 'failed', kakakuReloginReason: 'no-creds', kakakuReloginAt: Date.now() }); return false }
     if (st.kakakuReloginBlocked) { postStatus(false, 'auth'); return false } // 停止中（ID/PWを保存し直すと解除）
@@ -435,7 +441,13 @@ function samuraiLoop(gen, todayMD) {
     if (new Date().getHours() < 5) return false // 深夜0〜5時は再ログインしない
     const set = p => { try { chrome.storage.local.set(p) } catch {} }
     let st = {}
-    try { st = await chrome.storage.local.get(['samuraiCreds', 'samuraiReloginBlocked', 'samuraiReloginLastAt', 'samuraiReloginTries']) } catch {}
+    try { st = await chrome.storage.local.get(['samuraiCreds', 'samuraiReloginBlocked', 'samuraiReloginLastAt', 'samuraiReloginTries', 'samuraiReloginMorning']) } catch {}
+    // 朝5時以降の初回：前日までの停止・試行回数をリセットして監視を再開（毎朝ログインし直す）
+    const _md = new Date(); const _mkey = _md.getFullYear() + '-' + String(_md.getMonth() + 1).padStart(2, '0') + '-' + String(_md.getDate()).padStart(2, '0')
+    if (st.samuraiReloginMorning !== _mkey) {
+      st.samuraiReloginBlocked = false; st.samuraiReloginTries = 0; st.samuraiReloginLastAt = 0
+      set({ samuraiReloginBlocked: false, samuraiReloginTries: 0, samuraiReloginLastAt: 0, samuraiReloginMorning: _mkey })
+    }
     const creds = st.samuraiCreds
     if (!creds || !creds.username || !creds.password) { postStatus(false, 'auth'); set({ samuraiReloginResult: 'failed', samuraiReloginReason: 'no-creds', samuraiReloginAt: Date.now() }); return false }
     if (st.samuraiReloginBlocked) { postStatus(false, 'auth'); return false } // 停止中（ID/PWを保存し直すと解除）
