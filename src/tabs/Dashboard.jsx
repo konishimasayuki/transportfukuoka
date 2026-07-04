@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { autoAdCostForMonth } from '../lib/adcost'
 
 const num = (v) => Number(v) || 0
 const yen = (n) => '¥' + Math.round(num(n)).toLocaleString('ja-JP')
@@ -165,7 +166,8 @@ function LiveDashboard({ switchTab }) {
 
   // KPI集計
   const monthly = useMemo(() => {
-    const ofMonth = (rows) => rows.filter(r => monthKeyOf(r.date || r.receivedAt || r.savedAt) === thisMonthKey)
+    // 成約は「売り上げ登録日」優先で当月判定（無ければ引越し日）。売上管理タブと整合。
+    const ofMonth = (rows) => rows.filter(r => monthKeyOf(r.salesDate || r.date || r.receivedAt || r.savedAt) === thisMonthKey)
     const monthContracts = ofMonth(contracts)
     const ofMonthLeads = leads.filter(l => {
       const k = monthKeyOf(l.receivedAt) || monthKeyOf(l.savedAt)
@@ -176,7 +178,9 @@ function LiveDashboard({ switchTab }) {
       .reduce((s, c) => s + num(c.amount), 0)
     const closedCount = monthContracts.filter(c => c.status === '成約済み').length
     const inquiryCount = ofMonthLeads.length
-    const expAmt = totalOfExp(expenses[thisMonthKey])
+    // 広告費（経費）はリードから自動算出した当月の最新合計（保存待ちを避ける）。対象外月は保存済み合計。
+    const auto = autoAdCostForMonth(leads, thisMonthKey)
+    const expAmt = auto ? auto.total : totalOfExp(expenses[thisMonthKey])
     return { salesAmt, closedCount, inquiryCount, expAmt, monthContracts }
   }, [contracts, leads, expenses, thisMonthKey])
 
@@ -185,7 +189,7 @@ function LiveDashboard({ switchTab }) {
     const map = Object.fromEntries(last6.map(m => [m.key, 0]))
     contracts.forEach(c => {
       if (c.status !== '成約済み') return
-      const k = monthKeyOf(c.date)
+      const k = monthKeyOf(c.salesDate || c.date) // 売り上げ登録日で計上月を決める
       if (k && map[k] != null) map[k] += num(c.amount)
     })
     return { labels: last6.map(m => m.label), values: last6.map(m => map[m.key]) }
@@ -217,7 +221,7 @@ function LiveDashboard({ switchTab }) {
   // 最新案件（直近5件）
   const recent = useMemo(() => {
     return [...contracts]
-      .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .sort((a, b) => String(b.salesDate || b.date).localeCompare(String(a.salesDate || a.date)))
       .slice(0, 5)
   }, [contracts])
 
@@ -292,7 +296,7 @@ function LiveDashboard({ switchTab }) {
                 <div style={{ width: 34, height: 34, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0 }}>{initial}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700 }}>{r.name} 様</div>
-                  <div style={{ fontSize: 10, color: '#64748B', marginTop: 1 }}>{[r.route, r.date].filter(Boolean).join(' / ')}</div>
+                  <div style={{ fontSize: 10, color: '#64748B', marginTop: 1 }}>{[r.route, r.salesDate || r.date].filter(Boolean).join(' / ')}</div>
                 </div>
                 <span className={`badge ${statusBadge}`}>{r.status || '—'}</span>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
