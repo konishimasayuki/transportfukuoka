@@ -209,6 +209,7 @@ function kakakuLoop(gen, today) {
   //  ①ID/PW拒否で即停止（再保存まで再試行しない＝誤PW時は実質1回のみ）②絶対上限3回 ③5分に1回・全タブ共有。
   const MAX_TRIES = 3
   async function relogin(loginDoc) {
+    if (new Date().getHours() < 5) return false // 深夜0〜5時は再ログインしない
     const set = p => { try { chrome.storage.local.set(p) } catch {} }
     let st = {}
     try { st = await chrome.storage.local.get(['kakakuCreds', 'kakakuReloginBlocked', 'kakakuReloginLastAt', 'kakakuReloginTries']) } catch {}
@@ -431,6 +432,7 @@ function samuraiLoop(gen, todayMD) {
   //  ③5分に1回まで。停止/回数/時刻は chrome.storage で全タブ・再注入をまたいで共有（多重や連打を防ぐ）。
   const MAX_TRIES = 3
   async function relogin(loginDoc) {
+    if (new Date().getHours() < 5) return false // 深夜0〜5時は再ログインしない
     const set = p => { try { chrome.storage.local.set(p) } catch {} }
     let st = {}
     try { st = await chrome.storage.local.get(['samuraiCreds', 'samuraiReloginBlocked', 'samuraiReloginLastAt', 'samuraiReloginTries']) } catch {}

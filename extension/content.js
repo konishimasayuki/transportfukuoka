@@ -292,6 +292,7 @@ async function csrfForLogin() {
 }
 
 async function relogin() {
+  if (new Date().getHours() < 5) { safeStorageSet({ zbaReloginReason: '深夜（0〜5時）は再ログイン休止' }); return false } // 深夜0〜5時は再ログインしない
   let creds = {}
   try { creds = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword']) } catch { safeStorageSet({ zbaReloginReason: 'storage-error' }); return false }
   if (!creds.zbaLoginId || !creds.zbaPassword) { safeStorageSet({ zbaReloginReason: 'no-creds（ID/PW未保存）' }); return false }
