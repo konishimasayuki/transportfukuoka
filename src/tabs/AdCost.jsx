@@ -78,6 +78,7 @@ export default function AdCost({ user }) {
   const [saving, setSaving]     = useState(false)
   const [draftExp, setDraftExp] = useState({ daily: {}, monthly: {}, note: '' })
   const [bulkPaste, setBulkPaste] = useState('')
+  const [showAllDays, setShowAllDays] = useState(false) // 日別テーブル：当日のみ↔全日
   const [toast, setToast] = useState('')
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2200) }
 
@@ -224,6 +225,8 @@ export default function AdCost({ user }) {
   const todayDate = new Date()
   const isCurrentMonth = selMonth === `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}`
   const todayDD = isCurrentMonth ? String(todayDate.getDate()).padStart(2, '0') : null
+  // 当月は既定で当日のみ表示（折りたたみ）。過去月は全日表示。
+  const rowsToShow = (showAllDays || !isCurrentMonth) ? dailyRows : dailyRows.filter(d => d === todayDD)
 
   const inputCell = { width: 92, padding: '5px 6px', border: '1px solid #E2E8F0', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', outline: 'none', textAlign: 'right' }
   const cellTd = { padding: '4px 6px', borderBottom: '1px solid #F1F5F9' }
@@ -260,14 +263,16 @@ export default function AdCost({ user }) {
             ))}
           </div>
 
-          {/* 今月の掲載費グラフ（日別合計の棒グラフ） */}
-          <div className="card">
-            <div className="card-head"><h3>今月の掲載費（日別合計）</h3><span className="c-sub">{monthLabel} 合計 {yen(sums.dailyGrand)}</span></div>
-            <div className="card-body">
-              {(() => {
-                const totals = dailyRows.map(day => ({ day, v: DAILY_FIELDS.reduce((s, f) => s + num((draftExp.daily[day] || {})[f.key]), 0) }))
-                const max = Math.max(1, ...totals.map(t => t.v))
-                return (
+          {/* 今月の掲載費グラフ（掲載費のある日が2日以上のときのみ表示） */}
+          {(() => {
+            const totals = dailyRows.map(day => { const v = dayVals(day); return { day, v: DAILY_FIELDS.reduce((s, f) => s + v[f.key], 0) } })
+            const daysWithData = totals.filter(t => t.v > 0).length
+            if (daysWithData < 2) return null // 2日以上データが揃うまでグラフは非表示
+            const max = Math.max(1, ...totals.map(t => t.v))
+            return (
+              <div className="card">
+                <div className="card-head"><h3>今月の掲載費（日別合計）</h3><span className="c-sub">{monthLabel} 合計 {yen(sums.dailyGrand)}</span></div>
+                <div className="card-body">
                   <div style={{ display: 'flex', alignItems: 'stretch', gap: 2, overflowX: 'auto', paddingBottom: 4 }}>
                     {totals.map(t => {
                       const pct = Math.round(t.v / max * 100)
@@ -282,14 +287,19 @@ export default function AdCost({ user }) {
                       )
                     })}
                   </div>
-                )
-              })()}
-            </div>
-          </div>
+                </div>
+              </div>
+            )
+          })()}
 
-          {/* 掲載費（日別・全日表示） */}
+          {/* 掲載費（日別）：当日のみ表示、当日以外は折りたたみ */}
           <div className="card">
-            <div className="card-head"><h3>掲載費（日別）</h3><span className="c-sub">{monthLabel} 全{days}日</span></div>
+            <div className="card-head">
+              <h3>掲載費（日別）</h3>
+              {isCurrentMonth
+                ? <button className="btn btn-outline btn-sm" onClick={() => setShowAllDays(s => !s)}>{showAllDays ? '▴ 当日のみ表示' : `▾ 全${days}日を表示`}</button>
+                : <span className="c-sub">{monthLabel} 全{days}日</span>}
+            </div>
             <div className="card-body">
               {isAutoMonth && (
                 <div style={{ fontSize: 11, color: '#475569', background: '#F1F5FB', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.7 }}>
@@ -308,7 +318,7 @@ export default function AdCost({ user }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {dailyRows.map(day => {
+                    {rowsToShow.map(day => {
                       const row = draftExp.daily[day] || {}
                       const v = dayVals(day)
                       const rowTotal = DAILY_FIELDS.reduce((s, f) => s + v[f.key], 0)
@@ -356,6 +366,9 @@ export default function AdCost({ user }) {
                   </tfoot>
                 </table>
               </div>
+              {isCurrentMonth && !showAllDays && (
+                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>※ 当日のみ表示中。他の{days - 1}日は「▾ 全{days}日を表示」で開けます（合計は全日を集計）。</div>
+              )}
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 13 }}>
