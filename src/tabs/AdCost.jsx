@@ -4,20 +4,11 @@
 // - 月別項目：SUUMO / チラシ / 企業紹介・その他
 // - 掲載費(/api/expenses) に保存（売上管理とデータ共有）。一括貼り付け対応。
 import { useEffect, useMemo, useState } from 'react'
-import { receivedAtMs } from '../lib/sortLeads'
-
-// 広告費（反響課金）自動算出の単価。受付日の取得リード件数 × 単価。2026-07以降に適用。
-//   引越し侍：単身¥715・家族¥1100（単身/家族はリードの人数で判定。データに単身/家族の
-//             区分は無く、人数のみのため 1人=単身・2人以上=家族 とする。サムライ単身と
-//             サムライ家族は合算せず別列で保持する）
-//   価格.com：¥500 × 件数 ／ ズバット：¥660 × 件数（単身/家族の区別なし）
-const SAMURAI_SINGLE_UNIT = 715
-const SAMURAI_FAMILY_UNIT = 1100
-const KAKAKU_UNIT = 500
-const ZUBATTO_UNIT = 660
-const AUTO_KEYS = ['samurai_single', 'samurai_family', 'kakaku', 'zubatto']
-const AUTO_UNIT = { samurai_single: SAMURAI_SINGLE_UNIT, samurai_family: SAMURAI_FAMILY_UNIT, kakaku: KAKAKU_UNIT, zubatto: ZUBATTO_UNIT }
-const AUTO_FROM = '2026-07'
+// 広告費（反響課金）自動算出の単価・集計ロジックは src/lib/adcost.js に集約（売上管理と共有）
+import { SAMURAI_SINGLE_UNIT, SAMURAI_FAMILY_UNIT, KAKAKU_UNIT, ZUBATTO_UNIT, AD_AUTO_FROM, AD_KEYS, AD_UNIT, adCountsByMonthDay } from '../lib/adcost'
+const AUTO_KEYS = AD_KEYS
+const AUTO_UNIT = AD_UNIT
+const AUTO_FROM = AD_AUTO_FROM
 
 function monthOptions() {
   const opts = []
@@ -107,30 +98,8 @@ export default function AdCost({ user }) {
     setLoading(false)
   }
 
-  // リードを「受付日(YYYY-MM → DD)」でサイト別に集計。
-  // 引越し侍は単身(1人)/家族(2人以上)を別々に数える（合算しない）。価格.com・ズバットは総件数。
-  const autoByMonthDay = useMemo(() => {
-    const map = {}
-    const bucket = (ym, day) => { map[ym] = map[ym] || {}; map[ym][day] = map[ym][day] || { single: 0, family: 0, kakaku: 0, zubatto: 0 }; return map[ym][day] }
-    for (const l of leads) {
-      if (!l || !l.site) continue
-      const t = receivedAtMs(l); if (!t) continue
-      const d = new Date(t)
-      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      const day = String(d.getDate()).padStart(2, '0')
-      const site = String(l.site)
-      if (site.includes('侍')) {
-        const n = parseInt(String(l.count || '').replace(/[^\d]/g, ''), 10)
-        if (!n) continue // 人数不明は対象外
-        const b = bucket(ym, day); if (n === 1) b.single++; else b.family++
-      } else if (site.includes('価格')) {
-        bucket(ym, day).kakaku++
-      } else if (site.includes('ズバ')) {
-        bucket(ym, day).zubatto++
-      }
-    }
-    return map
-  }, [leads])
+  // リードを「受付日(YYYY-MM → DD)」でサイト別に集計（共通ロジック）
+  const autoByMonthDay = useMemo(() => adCountsByMonthDay(leads), [leads])
 
   // この月は自動算出するか（デモ以外・2026-07以降）
   const isAutoMonth = !isDemo && selMonth >= AUTO_FROM

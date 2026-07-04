@@ -1,7 +1,8 @@
 // 売上管理タブ
 // - 月選択 → 成約管理(/api/contracts)から自動集計（担当者別・サイト別・客単価・反響売上）
-// - 広告費(掲載費)は「広告費」タブで入力。ここでは集計のみ参照（/api/expenses 読み取り）。
+// - 広告費(掲載費)は「広告費」タブと同じ自動算出ロジック(src/lib/adcost)で最新合計を表示。
 import { useEffect, useMemo, useState } from 'react'
+import { autoAdCostForMonth } from '../lib/adcost'
 
 // 月選択（直近12ヶ月）
 function monthOptions() {
@@ -72,6 +73,7 @@ export default function Sales({ user, switchTab }) {
   const [selMonth, setSelMonth] = useState(months[0].key)
   const [contracts, setContracts] = useState([])
   const [expenses, setExpenses] = useState({})
+  const [leads, setLeads] = useState([]) // 広告費を最新のリード件数から自動算出するため
   const [loading, setLoading] = useState(!isDemo)
 
   useEffect(() => { if (!isDemo) fetchAll() }, [isDemo])
@@ -79,12 +81,14 @@ export default function Sales({ user, switchTab }) {
   const fetchAll = async () => {
     setLoading(true)
     try {
-      const [cRes, eRes] = await Promise.all([
+      const [cRes, eRes, lRes] = await Promise.all([
         fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
         fetch('/api/expenses').then(r => r.json()).catch(() => ({ data: {} })),
+        fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
       ])
       setContracts(cRes.items || [])
       setExpenses(eRes.data || {})
+      setLeads(lRes.items || [])
     } catch (e) { console.error(e) }
     setLoading(false)
   }
@@ -120,8 +124,16 @@ export default function Sales({ user, switchTab }) {
     return { total, count, avg, cancelAmt, cancelCnt, byStaff, bySite, reverbAmount, reverbCount }
   }, [monthly])
 
-  // KPIに使う「保存済みの」当月広告費合計（編集は広告費タブ）
-  const adTotal = totalOfExp(expenses[selMonth])
+  // 当月の広告費合計：自動算出対象月(2026-07以降)は「リードから算出した最新の合計」を表示
+  // （広告費タブでの保存を待たずに常に最新）。保存済みの月別手動分があれば加算。それ以外の月は保存済み合計。
+  const adInfo = useMemo(() => {
+    const auto = autoAdCostForMonth(leads, selMonth)
+    if (!auto) return { total: totalOfExp(expenses[selMonth]), auto: false }
+    const ex = expenses[selMonth]
+    const monthlyExtra = (ex && ex.monthly) ? MONTHLY_FIELDS.reduce((s, k) => s + num(ex.monthly[k]), 0) : 0
+    return { total: auto.total + monthlyExtra, auto: true }
+  }, [leads, expenses, selMonth])
+  const adTotal = adInfo.total
   const profit = totals.total - adTotal
 
   const monthLabel = months.find(m => m.key === selMonth)?.label || ''
@@ -157,7 +169,7 @@ export default function Sales({ user, switchTab }) {
             <div className="kpi-card c-orange">
               <div className="kpi-label">広告費（掲載費合計）</div>
               <div className="kpi-val">{yen(adTotal)}</div>
-              <div className="kpi-change">{adTotal > 0 && totals.reverbAmount > 0 ? `反響ROI ${(totals.reverbAmount / adTotal).toFixed(2)}倍` : '—'}</div>
+              <div className="kpi-change">{adInfo.auto ? '📣 リードから自動集計（最新）' : (adTotal > 0 && totals.reverbAmount > 0 ? `反響ROI ${(totals.reverbAmount / adTotal).toFixed(2)}倍` : '—')}</div>
             </div>
             <div className="kpi-card c-green">
               <div className="kpi-label">粗利（売上 − 広告費）</div>
