@@ -6,11 +6,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { receivedAtMs } from '../lib/sortLeads'
 
-// 引越し侍の広告費（反響課金）自動算出：単身¥715 × 件数 ＋ 家族¥1100 × 件数。
-// 単身/家族はリードの人数で判定（1人=単身、2人以上=家族）。2026-07 以降に適用。
+// 広告費（反響課金）自動算出の単価。受付日の取得リード件数 × 単価。2026-07以降に適用。
+//   引越し侍：単身¥715・家族¥1100（単身/家族はリードの人数で判定。データに単身/家族の
+//             区分は無く、人数のみのため 1人=単身・2人以上=家族 とする。サムライ単身と
+//             サムライ家族は合算せず別列で保持する）
+//   価格.com：¥500 × 件数 ／ ズバット：¥660 × 件数（単身/家族の区別なし）
 const SAMURAI_SINGLE_UNIT = 715
 const SAMURAI_FAMILY_UNIT = 1100
-const AUTO_KEYS = ['samurai_single', 'samurai_family']
+const KAKAKU_UNIT = 500
+const ZUBATTO_UNIT = 660
+const AUTO_KEYS = ['samurai_single', 'samurai_family', 'kakaku', 'zubatto']
+const AUTO_UNIT = { samurai_single: SAMURAI_SINGLE_UNIT, samurai_family: SAMURAI_FAMILY_UNIT, kakaku: KAKAKU_UNIT, zubatto: ZUBATTO_UNIT }
 const AUTO_FROM = '2026-07'
 
 function monthOptions() {
@@ -100,41 +106,54 @@ export default function AdCost({ user }) {
     setLoading(false)
   }
 
-  // 引越し侍リードを「受付日(YYYY-MM → DD)」で集計し、単身/家族の件数を数える
+  // リードを「受付日(YYYY-MM → DD)」でサイト別に集計。
+  // 引越し侍は単身(1人)/家族(2人以上)を別々に数える（合算しない）。価格.com・ズバットは総件数。
   const autoByMonthDay = useMemo(() => {
     const map = {}
+    const bucket = (ym, day) => { map[ym] = map[ym] || {}; map[ym][day] = map[ym][day] || { single: 0, family: 0, kakaku: 0, zubatto: 0 }; return map[ym][day] }
     for (const l of leads) {
-      if (!l || !l.site || !String(l.site).includes('侍')) continue
+      if (!l || !l.site) continue
       const t = receivedAtMs(l); if (!t) continue
       const d = new Date(t)
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
       const day = String(d.getDate()).padStart(2, '0')
-      const n = parseInt(String(l.count || '').replace(/[^\d]/g, ''), 10)
-      if (!n) continue // 人数不明は集計対象外
-      map[ym] = map[ym] || {}
-      map[ym][day] = map[ym][day] || { single: 0, family: 0 }
-      if (n === 1) map[ym][day].single++; else map[ym][day].family++
+      const site = String(l.site)
+      if (site.includes('侍')) {
+        const n = parseInt(String(l.count || '').replace(/[^\d]/g, ''), 10)
+        if (!n) continue // 人数不明は対象外
+        const b = bucket(ym, day); if (n === 1) b.single++; else b.family++
+      } else if (site.includes('価格')) {
+        bucket(ym, day).kakaku++
+      } else if (site.includes('ズバ')) {
+        bucket(ym, day).zubatto++
+      }
     }
     return map
   }, [leads])
 
-  // この月は引越し侍を自動算出するか（デモ以外・2026-07以降）
+  // この月は自動算出するか（デモ以外・2026-07以降）
   const isAutoMonth = !isDemo && selMonth >= AUTO_FROM
-  // 指定日の自動算出額（引越し侍）。自動対象外なら null。
+  // 指定日の自動算出額と件数。自動対象外なら null。単身/家族は別々に保持。
   const autoDaily = (day) => {
     if (!isAutoMonth) return null
-    const c = (autoByMonthDay[selMonth] || {})[day] || { single: 0, family: 0 }
-    return { single: c.single, family: c.family, samurai_single: c.single * SAMURAI_SINGLE_UNIT, samurai_family: c.family * SAMURAI_FAMILY_UNIT }
+    const c = (autoByMonthDay[selMonth] || {})[day] || { single: 0, family: 0, kakaku: 0, zubatto: 0 }
+    return {
+      counts: { samurai_single: c.single, samurai_family: c.family, kakaku: c.kakaku, zubatto: c.zubatto },
+      samurai_single: c.single * SAMURAI_SINGLE_UNIT,
+      samurai_family: c.family * SAMURAI_FAMILY_UNIT,
+      kakaku: c.kakaku * KAKAKU_UNIT,
+      zubatto: c.zubatto * ZUBATTO_UNIT,
+    }
   }
-  // 指定日の各項目の実値（引越し侍は自動、価格.com/ズバットは手動入力）
+  // 指定日の各項目の実値（自動月は全列自動、それ以外は手動入力）
   const dayVals = (day) => {
     const row = (draftExp.daily || {})[day] || {}
     const auto = autoDaily(day)
     return {
       samurai_single: auto ? auto.samurai_single : num(row.samurai_single),
       samurai_family: auto ? auto.samurai_family : num(row.samurai_family),
-      kakaku: num(row.kakaku),
-      zubatto: num(row.zubatto),
+      kakaku: auto ? auto.kakaku : num(row.kakaku),
+      zubatto: auto ? auto.zubatto : num(row.zubatto),
       auto,
     }
   }
@@ -273,8 +292,10 @@ export default function AdCost({ user }) {
             <div className="card-head"><h3>掲載費（日別）</h3><span className="c-sub">{monthLabel} 全{days}日</span></div>
             <div className="card-body">
               {isAutoMonth && (
-                <div style={{ fontSize: 11, color: '#475569', background: '#F1F5FB', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.6 }}>
-                  🚚 <b>引越し侍は自動算出</b>：単身 <b>¥{SAMURAI_SINGLE_UNIT}</b> × 件数 ＋ 家族 <b>¥{SAMURAI_FAMILY_UNIT}</b> × 件数（受付日の取得リード数から自動集計・{AUTO_FROM.replace('-', '/')}以降）。単身＝1人／家族＝2人以上で判定。価格.com・ズバットは手動入力。
+                <div style={{ fontSize: 11, color: '#475569', background: '#F1F5FB', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.7 }}>
+                  🚚 <b>広告費は自動算出</b>（受付日の取得リード件数 × 単価・{AUTO_FROM.replace('-', '/')}以降）：<br />
+                  ・引越し侍 … <b>サムライ単身 ¥{SAMURAI_SINGLE_UNIT}×件数</b> と <b>サムライ家族 ¥{SAMURAI_FAMILY_UNIT}×件数</b>（合算せず別々に算出。単身＝1人／家族＝2人以上）<br />
+                  ・価格.com … <b>¥{KAKAKU_UNIT}×件数</b>　／　ズバット … <b>¥{ZUBATTO_UNIT}×件数</b>
                 </div>
               )}
               <div className="scroll-x">
@@ -298,10 +319,10 @@ export default function AdCost({ user }) {
                             {Number(day)}日{isToday ? ' （今日）' : ''}
                           </td>
                           {DAILY_FIELDS.map(f => {
-                            // 引越し侍（単身/家族）は自動算出＝読み取り専用で件数も表示
+                            // 自動算出列は読み取り専用で件数も表示（各サイト・単価で別々に算出）
                             if (v.auto && AUTO_KEYS.includes(f.key)) {
-                              const cnt = f.key === 'samurai_single' ? v.auto.single : v.auto.family
-                              const unit = f.key === 'samurai_single' ? SAMURAI_SINGLE_UNIT : SAMURAI_FAMILY_UNIT
+                              const cnt = v.auto.counts[f.key] || 0
+                              const unit = AUTO_UNIT[f.key]
                               return (
                                 <td key={f.key} style={{ ...cellTd, textAlign: 'right' }} title={`${cnt}件 × ¥${unit}`}>
                                   <div style={{ color: v[f.key] > 0 ? '#334155' : '#CBD5E1', fontWeight: 600 }}>{v[f.key] > 0 ? yen(v[f.key]) : '—'}</div>
