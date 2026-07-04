@@ -4,6 +4,14 @@
 // - 月別項目：SUUMO / チラシ / 企業紹介・その他
 // - 掲載費(/api/expenses) に保存（売上管理とデータ共有）。一括貼り付け対応。
 import { useEffect, useMemo, useState } from 'react'
+import { receivedAtMs } from '../lib/sortLeads'
+
+// 引越し侍の広告費（反響課金）自動算出：単身¥715 × 件数 ＋ 家族¥1100 × 件数。
+// 単身/家族はリードの人数で判定（1人=単身、2人以上=家族）。2026-07 以降に適用。
+const SAMURAI_SINGLE_UNIT = 715
+const SAMURAI_FAMILY_UNIT = 1100
+const AUTO_KEYS = ['samurai_single', 'samurai_family']
+const AUTO_FROM = '2026-07'
 
 function monthOptions() {
   const opts = []
@@ -59,6 +67,7 @@ export default function AdCost({ user }) {
   const months = useMemo(monthOptions, [])
   const [selMonth, setSelMonth] = useState(months[0].key)
   const [expenses, setExpenses] = useState({})
+  const [leads, setLeads]       = useState([]) // 引越し侍の広告費 自動算出用
   const [loading, setLoading]   = useState(!isDemo)
   const [saving, setSaving]     = useState(false)
   const [draftExp, setDraftExp] = useState({ daily: {}, monthly: {}, note: '' })
@@ -81,22 +90,67 @@ export default function AdCost({ user }) {
   const fetchAll = async () => {
     setLoading(true)
     try {
-      const eRes = await fetch('/api/expenses').then(r => r.json()).catch(() => ({ data: {} }))
+      const [eRes, lRes] = await Promise.all([
+        fetch('/api/expenses').then(r => r.json()).catch(() => ({ data: {} })),
+        fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
+      ])
       setExpenses(eRes.data || {})
+      setLeads(lRes.items || [])
     } catch (e) { console.error(e) }
     setLoading(false)
   }
 
+  // 引越し侍リードを「受付日(YYYY-MM → DD)」で集計し、単身/家族の件数を数える
+  const autoByMonthDay = useMemo(() => {
+    const map = {}
+    for (const l of leads) {
+      if (!l || !l.site || !String(l.site).includes('侍')) continue
+      const t = receivedAtMs(l); if (!t) continue
+      const d = new Date(t)
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const day = String(d.getDate()).padStart(2, '0')
+      const n = parseInt(String(l.count || '').replace(/[^\d]/g, ''), 10)
+      if (!n) continue // 人数不明は集計対象外
+      map[ym] = map[ym] || {}
+      map[ym][day] = map[ym][day] || { single: 0, family: 0 }
+      if (n === 1) map[ym][day].single++; else map[ym][day].family++
+    }
+    return map
+  }, [leads])
+
+  // この月は引越し侍を自動算出するか（デモ以外・2026-07以降）
+  const isAutoMonth = !isDemo && selMonth >= AUTO_FROM
+  // 指定日の自動算出額（引越し侍）。自動対象外なら null。
+  const autoDaily = (day) => {
+    if (!isAutoMonth) return null
+    const c = (autoByMonthDay[selMonth] || {})[day] || { single: 0, family: 0 }
+    return { single: c.single, family: c.family, samurai_single: c.single * SAMURAI_SINGLE_UNIT, samurai_family: c.family * SAMURAI_FAMILY_UNIT }
+  }
+  // 指定日の各項目の実値（引越し侍は自動、価格.com/ズバットは手動入力）
+  const dayVals = (day) => {
+    const row = (draftExp.daily || {})[day] || {}
+    const auto = autoDaily(day)
+    return {
+      samurai_single: auto ? auto.samurai_single : num(row.samurai_single),
+      samurai_family: auto ? auto.samurai_family : num(row.samurai_family),
+      kakaku: num(row.kakaku),
+      zubatto: num(row.zubatto),
+      auto,
+    }
+  }
+
   const sums = useMemo(() => {
+    const days = daysInMonthOf(selMonth)
     const byKey = { samurai_single: 0, samurai_family: 0, kakaku: 0, zubatto: 0 }
     let dailyGrand = 0
-    Object.values(draftExp.daily || {}).forEach(row => {
-      DAILY_FIELDS.forEach(f => { const v = num(row[f.key]); byKey[f.key] += v; dailyGrand += v })
-    })
+    for (let i = 1; i <= days; i++) {
+      const v = dayVals(String(i).padStart(2, '0'))
+      DAILY_FIELDS.forEach(f => { byKey[f.key] += v[f.key]; dailyGrand += v[f.key] })
+    }
     let monthlyTotal = 0
     MONTHLY_FIELDS.forEach(f => { monthlyTotal += num(draftExp.monthly?.[f.key]) })
     return { byKey, dailyGrand, monthlyTotal, grand: dailyGrand + monthlyTotal }
-  }, [draftExp])
+  }, [draftExp, selMonth, autoByMonthDay, isDemo])
 
   const setDaily = (day, key, value) => {
     setDraftExp(p => ({ ...p, daily: { ...p.daily, [day]: { ...(p.daily[day] || {}), [key]: value } } }))
@@ -121,14 +175,17 @@ export default function AdCost({ user }) {
     setSaving(true)
     try {
       const dailyClean = {}
-      Object.entries(draftExp.daily || {}).forEach(([day, row]) => {
-        const has = DAILY_FIELDS.some(f => num(row[f.key]) > 0)
+      const dcount = daysInMonthOf(selMonth)
+      for (let i = 1; i <= dcount; i++) {
+        const day = String(i).padStart(2, '0')
+        const v = dayVals(day) // 引越し侍は自動算出値を保存（他タブの広告費に反映）
+        const has = DAILY_FIELDS.some(f => v[f.key] > 0)
         if (has) {
           const r = {}
-          DAILY_FIELDS.forEach(f => { r[f.key] = num(row[f.key]) })
+          DAILY_FIELDS.forEach(f => { r[f.key] = v[f.key] })
           dailyClean[day] = r
         }
-      })
+      }
       const monthlyClean = {}
       MONTHLY_FIELDS.forEach(f => { monthlyClean[f.key] = num(draftExp.monthly?.[f.key]) })
       await fetch('/api/expenses', {
@@ -215,6 +272,11 @@ export default function AdCost({ user }) {
           <div className="card">
             <div className="card-head"><h3>掲載費（日別）</h3><span className="c-sub">{monthLabel} 全{days}日</span></div>
             <div className="card-body">
+              {isAutoMonth && (
+                <div style={{ fontSize: 11, color: '#475569', background: '#F1F5FB', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.6 }}>
+                  🚚 <b>引越し侍は自動算出</b>：単身 <b>¥{SAMURAI_SINGLE_UNIT}</b> × 件数 ＋ 家族 <b>¥{SAMURAI_FAMILY_UNIT}</b> × 件数（受付日の取得リード数から自動集計・{AUTO_FROM.replace('-', '/')}以降）。単身＝1人／家族＝2人以上で判定。価格.com・ズバットは手動入力。
+                </div>
+              )}
               <div className="scroll-x">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 580 }}>
                   <thead>
@@ -227,20 +289,34 @@ export default function AdCost({ user }) {
                   <tbody>
                     {dailyRows.map(day => {
                       const row = draftExp.daily[day] || {}
-                      const rowTotal = DAILY_FIELDS.reduce((s, f) => s + num(row[f.key]), 0)
+                      const v = dayVals(day)
+                      const rowTotal = DAILY_FIELDS.reduce((s, f) => s + v[f.key], 0)
                       const isToday = day === todayDD
                       return (
                         <tr key={day} style={isToday ? { background: '#EFF6FF' } : undefined}>
                           <td style={{ ...cellTd, fontWeight: isToday ? 800 : 400, color: isToday ? '#1E5FA8' : '#1E293B', whiteSpace: 'nowrap' }}>
                             {Number(day)}日{isToday ? ' （今日）' : ''}
                           </td>
-                          {DAILY_FIELDS.map(f => (
-                            <td key={f.key} style={{ ...cellTd, textAlign: 'right' }}>
-                              <input type="number" min={0} inputMode="numeric"
-                                value={row[f.key] ?? ''} onChange={e => setDaily(day, f.key, e.target.value)}
-                                style={inputCell} />
-                            </td>
-                          ))}
+                          {DAILY_FIELDS.map(f => {
+                            // 引越し侍（単身/家族）は自動算出＝読み取り専用で件数も表示
+                            if (v.auto && AUTO_KEYS.includes(f.key)) {
+                              const cnt = f.key === 'samurai_single' ? v.auto.single : v.auto.family
+                              const unit = f.key === 'samurai_single' ? SAMURAI_SINGLE_UNIT : SAMURAI_FAMILY_UNIT
+                              return (
+                                <td key={f.key} style={{ ...cellTd, textAlign: 'right' }} title={`${cnt}件 × ¥${unit}`}>
+                                  <div style={{ color: v[f.key] > 0 ? '#334155' : '#CBD5E1', fontWeight: 600 }}>{v[f.key] > 0 ? yen(v[f.key]) : '—'}</div>
+                                  {cnt > 0 && <div style={{ fontSize: 9, color: '#94A3B8' }}>{cnt}件</div>}
+                                </td>
+                              )
+                            }
+                            return (
+                              <td key={f.key} style={{ ...cellTd, textAlign: 'right' }}>
+                                <input type="number" min={0} inputMode="numeric"
+                                  value={row[f.key] ?? ''} onChange={e => setDaily(day, f.key, e.target.value)}
+                                  style={inputCell} />
+                              </td>
+                            )
+                          })}
                           <td style={{ ...cellTd, textAlign: 'right', fontWeight: 700, color: rowTotal > 0 ? '#1E5FA8' : '#CBD5E1' }}>
                             {rowTotal > 0 ? yen(rowTotal) : '—'}
                           </td>
