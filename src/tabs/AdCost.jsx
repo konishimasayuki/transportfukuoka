@@ -294,9 +294,9 @@ export default function AdCost({ user }) {
                             const isToday = t.day === todayDD
                             return (
                               <div key={t.day} style={{ flex: '1 0 18px', minWidth: 18, height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} title={`${Number(t.day)}日：${yen(t.v)}`}>
-                                <div style={{ width: '78%', height: barH, minHeight: t.v > 0 ? 4 : 0, background: isToday ? '#1E5FA8' : '#93C5FD', borderRadius: '3px 3px 0 0', position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'flex-end' }}>
+                                <div style={{ width: '78%', height: barH, minHeight: t.v > 0 ? 4 : 0, background: isToday ? '#1E5FA8' : '#93C5FD', borderRadius: '3px 3px 0 0', position: 'relative' }}>
                                   {t.v > 0 && (
-                                    <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: 8, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', letterSpacing: '-0.5px', textShadow: '0 1px 2px rgba(15,23,42,.6)', marginBottom: 3 }}>{yen(t.v)}</span>
+                                    <span style={{ position: 'absolute', top: 2, left: '50%', transform: 'translateX(-50%)', fontSize: 7, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(15,23,42,.7)' }}>{t.v.toLocaleString('ja-JP')}</span>
                                   )}
                                 </div>
                               </div>
