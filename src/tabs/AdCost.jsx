@@ -269,23 +269,48 @@ export default function AdCost({ user }) {
             const daysWithData = totals.filter(t => t.v > 0).length
             if (daysWithData < 2) return null // 2日以上データが揃うまでグラフは非表示
             const max = Math.max(1, ...totals.map(t => t.v))
+            const H = 160 // グラフ高さ(px)
+            const STEP = 10000 // 1万円ごとの横線
+            const roundedMax = Math.max(STEP, Math.ceil(max / STEP) * STEP) // 上端は1万円単位に切り上げ
+            const levels = Array.from({ length: roundedMax / STEP }, (_, i) => (i + 1) * STEP) // 1万,2万,…
             return (
               <div className="card">
                 <div className="card-head"><h3>今月の掲載費（日別合計）</h3><span className="c-sub">{monthLabel} 合計 {yen(sums.dailyGrand)}</span></div>
                 <div className="card-body">
-                  <div style={{ display: 'flex', alignItems: 'stretch', gap: 2, overflowX: 'auto', paddingBottom: 4 }}>
-                    {totals.map(t => {
-                      const pct = Math.round(t.v / max * 100)
-                      const isToday = t.day === todayDD
-                      return (
-                        <div key={t.day} style={{ flex: '1 0 14px', minWidth: 14, display: 'flex', flexDirection: 'column', alignItems: 'center' }} title={`${Number(t.day)}日：${yen(t.v)}`}>
-                          <div style={{ width: '100%', height: 120, display: 'flex', alignItems: 'flex-end' }}>
-                            <div style={{ width: '72%', margin: '0 auto', height: `${pct}%`, minHeight: t.v > 0 ? 2 : 0, background: isToday ? '#1E5FA8' : '#93C5FD', borderRadius: '3px 3px 0 0' }} />
+                  <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+                    <div style={{ minWidth: totals.length * 20, position: 'relative' }}>
+                      {/* 棒＋横線エリア */}
+                      <div style={{ position: 'relative', height: H }}>
+                        {/* 1万円ごとの横線 */}
+                        {levels.map(level => (
+                          <div key={level} style={{ position: 'absolute', left: 0, right: 0, bottom: (level / roundedMax) * H, borderTop: '1px dashed #E2E8F0' }}>
+                            <span style={{ position: 'absolute', left: 0, top: -9, fontSize: 8, color: '#94A3B8', background: '#fff', padding: '0 3px', fontWeight: 700 }}>{level / STEP}万</span>
                           </div>
-                          <div style={{ fontSize: 8, color: isToday ? '#1E5FA8' : '#94A3B8', fontWeight: isToday ? 800 : 400, marginTop: 3 }}>{Number(t.day)}</div>
+                        ))}
+                        {/* 棒（棒内に料金を縦書き表示） */}
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', gap: 2 }}>
+                          {totals.map(t => {
+                            const barH = (t.v / roundedMax) * H
+                            const isToday = t.day === todayDD
+                            return (
+                              <div key={t.day} style={{ flex: '1 0 18px', minWidth: 18, height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} title={`${Number(t.day)}日：${yen(t.v)}`}>
+                                <div style={{ width: '78%', height: barH, minHeight: t.v > 0 ? 4 : 0, background: isToday ? '#1E5FA8' : '#93C5FD', borderRadius: '3px 3px 0 0', position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'flex-end' }}>
+                                  {t.v > 0 && (
+                                    <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: 8, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', letterSpacing: '-0.5px', textShadow: '0 1px 2px rgba(15,23,42,.6)', marginBottom: 3 }}>{yen(t.v)}</span>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
-                      )
-                    })}
+                      </div>
+                      {/* 日ラベル */}
+                      <div style={{ display: 'flex', gap: 2, marginTop: 3 }}>
+                        {totals.map(t => (
+                          <div key={t.day} style={{ flex: '1 0 18px', minWidth: 18, textAlign: 'center', fontSize: 8, color: t.day === todayDD ? '#1E5FA8' : '#94A3B8', fontWeight: t.day === todayDD ? 800 : 400 }}>{Number(t.day)}</div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
