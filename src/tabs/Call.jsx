@@ -206,7 +206,7 @@ export default function Call({ user, switchTab }) {
     const contract = {
       id: Date.now().toString(),
       name: lead.name || '', kana: lead.kana || '', phone: lead.phone || '', email: lead.email || '',
-      srcLabel: payload.srcLabel, date: payload.date || today, route: payload.route || '',
+      srcLabel: payload.srcLabel, date: payload.date || today, salesDate: payload.salesDate || today, route: payload.route || '',
       fromAddress: lead.fromAddress || lead.from || '',
       toAddress: lead.toAddress || lead.to || '',
       persons: lead.count ? String(lead.count).replace(/[^0-9]/g, '') : '',

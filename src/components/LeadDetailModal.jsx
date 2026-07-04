@@ -379,6 +379,7 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
   const [amount, setAmount]   = useState('')
   const [srcLabel, setSrcLabel] = useState('その他')
   const [date, setDate]       = useState(today)
+  const [salesDate, setSalesDate] = useState(today) // 売り上げ登録日（成約/売上/スケジュール/見積の基準日）
   const [staff, setStaff]     = useState('')
   const [memo, setMemo]       = useState('')
   const [saving, setSaving]   = useState(false)
@@ -391,6 +392,7 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
     setAmount(lead.amount != null ? String(lead.amount) : '')
     setSrcLabel(SITE_TO_SRC[lead.site] || 'その他')
     setDate(today)
+    setSalesDate(today)
     setStaff('')
     setMemo([lead.memo, lead.option, lead.request].filter(Boolean).join(' / '))
     setSaving(false)
@@ -409,7 +411,7 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
     try {
       await onConfirm(lead, {
         amount: Number(amount) || 0,
-        srcLabel, date, staff, memo, route,
+        srcLabel, date, salesDate, staff, memo, route,
       })
       onClose()
     } catch (e) { console.error(e) }
@@ -432,10 +434,16 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
           <button className="btn btn-sm btn-outline" onClick={onClose}>キャンセル</button>
         </div>
         <div style={{ padding: 18, display: 'grid', gap: 12 }}>
-          <div>
-            <label style={lb}>成約金額（円） *</label>
-            <input type="number" inputMode="numeric" min={0} autoFocus
-              value={amount} onChange={e => setAmount(e.target.value)} placeholder="例：68000" style={ip} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={lb}>成約金額（円） *</label>
+              <input type="number" inputMode="numeric" min={0} autoFocus
+                value={amount} onChange={e => setAmount(e.target.value)} placeholder="例：68000" style={ip} />
+            </div>
+            <div>
+              <label style={lb}>売り上げ登録日 *</label>
+              <input type="date" value={salesDate} onChange={e => setSalesDate(e.target.value)} style={ip} />
+            </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
@@ -471,7 +479,7 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
               {saving ? '登録中…' : '成約管理に登録'}
             </button>
           </div>
-          <div style={{ fontSize: 10, color: '#94A3B8' }}>※ 登録するとリードのステータスは「成約」、金額は他タブからも参照できます。</div>
+          <div style={{ fontSize: 10, color: '#94A3B8' }}>※ 登録するとリードのステータスは「成約」に。売り上げ登録日は成約管理・売上管理・スケジュール・見積書に反映されます。</div>
         </div>
       </div>
     </div>

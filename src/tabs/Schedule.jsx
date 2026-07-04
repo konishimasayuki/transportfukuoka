@@ -45,6 +45,7 @@ export default function Schedule({ user }) {
   const isDemo = user?.mode === 'demo'
   const now = new Date()
   const [items, setItems] = useState(isDemo ? SAMPLE : [])
+  const [contracts, setContracts] = useState([]) // 成約（売り上げ登録日でカレンダー表示）
   const [loading, setLoading] = useState(!isDemo)
   const [viewY, setViewY] = useState(now.getFullYear())
   const [viewM, setViewM] = useState(now.getMonth()) // 0-indexed
@@ -61,12 +62,18 @@ export default function Schedule({ user }) {
   const fetchItems = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/schedule')
-      const d = await res.json()
-      setItems(d.items || [])
+      const [sRes, cRes] = await Promise.all([
+        fetch('/api/schedule').then(r => r.json()).catch(() => ({ items: [] })),
+        fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
+      ])
+      setItems(sRes.items || [])
+      setContracts(cRes.items || [])
     } catch (e) { console.error(e) }
     setLoading(false)
   }
+
+  // 売り上げ登録日（無ければ引越し日）でその日の成約を返す
+  const contractsOn = (dateStr) => contracts.filter(c => (c.salesDate || c.date) === dateStr)
 
   const toggleGenre = (g) => {
     setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
@@ -224,6 +231,13 @@ export default function Schedule({ user }) {
                         }}>{d.getDate()}</span>
                       </div>
                       <div style={{ marginTop: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {/* 成約（売り上げ登録日）を金色チップで表示 */}
+                        {contractsOn(ds).map(c => (
+                          <div key={'c_' + c.id} title={`成約 ${c.name} ¥${(c.amount || 0).toLocaleString()}`}
+                            style={{ fontSize: 10, fontWeight: 700, color: '#7C4A03', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            💰 {c.name || '成約'} ¥{(c.amount || 0).toLocaleString()}
+                          </div>
+                        ))}
                         {evs.slice(0, 5).map(e => (
                           <div key={e.id} onClick={(ev) => { ev.stopPropagation(); openEdit(e) }}
                             style={{ fontSize: 10, fontWeight: 700, color: '#fff', background: labelColor(e.label), borderRadius: 4, padding: '2px 5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

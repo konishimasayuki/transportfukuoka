@@ -416,10 +416,11 @@ export default function Estimate({ user }) {
         estimateNo: '（成約由来）',
         name: c.name || '',
         moveDate: c.date || '',
+        salesDate: c.salesDate || '',
         total: num(c.amount),
         points: 0,
         status: c.status || '成約',
-        _sortDate: c.date || '',
+        _sortDate: c.salesDate || c.date || '', // 売り上げ登録日を優先して並べ替え
       }))
     const rows = [...fromEst, ...fromCon].sort((a, b) => String(b._sortDate).localeCompare(String(a._sortDate)))
     const estCount = items.length

@@ -184,6 +184,7 @@ export default function Leads({ user, switchTab }) {
       email: lead.email || '',
       srcLabel: payload.srcLabel,
       date: payload.date || today,
+      salesDate: payload.salesDate || today,
       route: payload.route || '',
       fromAddress: lead.fromAddress || lead.from || '',
       toAddress: lead.toAddress || lead.to || '',

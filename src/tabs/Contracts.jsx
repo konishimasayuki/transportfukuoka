@@ -25,6 +25,7 @@ const CSV_COLUMNS = [
   { key: 'phone', label: '電話' },
   { key: 'email', label: 'メール' },
   { key: 'srcLabel', label: '流入元' },
+  { key: 'salesDate', label: '売上登録日' },
   { key: 'date', label: '引越し日' },
   { key: 'moveDateText', label: '希望日' },
   { key: 'persons', label: '人数' },
@@ -39,7 +40,7 @@ const CSV_COLUMNS = [
 
 const EMPTY_FORM = {
   name: '', kana: '', phone: '', email: '',
-  srcLabel: 'サムライ', date: '', moveDateText: '', persons: '',
+  srcLabel: 'サムライ', salesDate: '', date: '', moveDateText: '', persons: '',
   fromAddress: '', toAddress: '', route: '',
   amount: '', status: '交渉中',
   staff: '', memo: '',
@@ -242,15 +243,16 @@ export default function Contracts({ user }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
+                <tr><th>顧客名</th><th>流入元</th><th>売上登録日</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id}>
                     <td><b>{item.name}</b></td>
                     <td><SourceTag label={item.srcLabel} /></td>
+                    <td>{item.salesDate || '—'}</td>
                     <td>{item.date}</td>
                     <td>{item.route}</td>
                     <td>¥{(item.amount||0).toLocaleString()}</td>
@@ -329,6 +331,10 @@ export default function Contracts({ user }) {
                 </div>
               </div>
               <div style={twoCol}>
+                <div>
+                  <label style={formLabel}>売上登録日</label>
+                  <input type="date" style={inputStyle} value={form.salesDate || ''} onChange={e => f('salesDate')(e.target.value)} />
+                </div>
                 <div>
                   <label style={formLabel}>希望日（自由記入）</label>
                   <input style={inputStyle} value={form.moveDateText || ''} onChange={e => f('moveDateText')(e.target.value)} placeholder="例：7月中旬 平日" />

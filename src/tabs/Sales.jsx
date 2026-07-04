@@ -55,7 +55,7 @@ function totalOfExp(ex) {
 }
 
 function isInMonth(c, monthKey) {
-  const d = String(c.date || '')
+  const d = String(c.salesDate || c.date || '') // 売り上げ登録日を優先（無ければ引越し日）
   if (d.startsWith(monthKey)) return true
   const m = d.match(/^(\d{1,2})\/(\d{1,2})/)
   if (m) {
@@ -231,13 +231,13 @@ export default function Sales({ user, switchTab }) {
             <div className="card-head"><h3>売上明細</h3><span className="c-sub">{monthLabel} {monthly.length}件</span></div>
             <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
               <table>
-                <thead><tr><th>日付</th><th>顧客名</th><th>区間</th><th>流入元</th><th>担当</th><th style={{ textAlign: 'right' }}>金額</th><th>状態</th></tr></thead>
+                <thead><tr><th>売上登録日</th><th>顧客名</th><th>区間</th><th>流入元</th><th>担当</th><th style={{ textAlign: 'right' }}>金額</th><th>状態</th></tr></thead>
                 <tbody>
                   {monthly.length === 0 ? (
                     <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94A3B8', padding: 24 }}>{monthLabel} の成約データがありません</td></tr>
-                  ) : monthly.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map(c => (
+                  ) : monthly.slice().sort((a, b) => String(b.salesDate || b.date).localeCompare(String(a.salesDate || a.date))).map(c => (
                     <tr key={c.id}>
-                      <td>{c.date}</td><td>{c.name}</td><td>{c.route}</td>
+                      <td>{c.salesDate || c.date}</td><td>{c.name}</td><td>{c.route}</td>
                       <td>{c.srcLabel}</td><td>{c.staff || '—'}</td>
                       <td style={{ textAlign: 'right' }}>{yen(c.amount)}</td><td>{c.status}</td>
                     </tr>
