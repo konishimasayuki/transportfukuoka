@@ -419,7 +419,7 @@ function kakakuLoop(gen, today) {
     }
     if (window.__tfKakakuGen === gen) {
       const f = window.__tfKakakuFail || 0
-      const delay = f > 0 ? Math.min(nextDelay() * Math.pow(2, Math.min(f, 5)), 5 * 60 * 1000) : nextDelay() // 連続エラーで最大5分まで指数バックオフ
+      const delay = f > 0 ? Math.min(nextDelay() * Math.pow(2, Math.min(f, 5)), 30 * 1000) : nextDelay() // 連続エラーで最大30秒まで指数バックオフ
       setTimeout(tick, delay)
     }
   }
@@ -433,8 +433,9 @@ function samuraiLoop(gen, todayMD) {
   window.__tfSamuraiSeen = window.__tfSamuraiSeen || [] // ページ存続中の取込済みid（リロードで自然リセット→当日分は再送・サーバ重複除外）
   const seen = new Set(window.__tfSamuraiSeen)
   const persist = () => { window.__tfSamuraiSeen = Array.from(seen).slice(-5000) }
-  // 巡回間隔：一覧が重く504になりやすいため日中45秒に緩和（負荷軽減・504対策）。深夜は120秒。
-  const PER = 8, GAP = 300, FAST_MS = 45000, SLOW_MS = 120000
+  // 巡回間隔：当日フィルターPOSTで軽く取れる時は日中15秒。空/失敗で重い全件GETを使った回だけ、
+  // 次回を60秒以上に空ける（tick末尾でheavy判定）。深夜は120秒。
+  const PER = 8, GAP = 300, FAST_MS = 15000, SLOW_MS = 120000
   // 巡回間隔：ほぼ終日(7-24時)は15秒＋0〜8秒ジッター、深夜(0-7時)は120秒に減速（負荷・BAN配慮）
   const nextDelay = () => { const h = new Date().getHours(); const base = (h >= 7 && h < 24) ? FAST_MS : SLOW_MS; return base + Math.floor(Math.random() * 8000) }
   const INBOUND = 'https://transportfukuoka.vercel.app/api/inbound'
@@ -557,35 +558,61 @@ function samuraiLoop(gen, todayMD) {
     return doc
   }
 
-  // 当日フィルターPOST：開始・終了とも「今日」を指定（時は空＝終日）。
-  // サーバ側で当日分だけ描画されるため軽く、全件描画による2分待ち/504を回避できる。値は非ゼロ埋め(value="7"形式)。
+  // form1 の全項目（hidden・CSRF・他フィルタ含む）を name→value で読む。
+  // 手動フィルターはフォーム全項目を送るため、日付だけ差し替えて“同じ全項目”を送ると成立率が高い。
+  function readForm1Fields(doc) {
+    const form = doc.querySelector('#form1') || doc.querySelector('form[action*="/admin/request/list"]')
+    if (!form) return null
+    const f = {}
+    for (const el of form.querySelectorAll('input, select, textarea')) {
+      const name = el.getAttribute('name'); if (!name) continue
+      if (el.tagName === 'SELECT') {
+        const sel = el.querySelector('option[selected]') || el.querySelector('option')
+        f[name] = sel ? (sel.getAttribute('value') || '') : ''
+      } else if (el.type === 'checkbox' || el.type === 'radio') {
+        if (el.hasAttribute('checked')) f[name] = el.getAttribute('value') || 'on'
+      } else {
+        f[name] = el.getAttribute('value') || ''
+      }
+    }
+    return f
+  }
+
+  // 当日フィルターPOST：直近の全件GETで取得した form1 全項目を土台に、日付だけ「今日」に差し替えて送る。
+  // フォーム未取得のうちは null を返し、fetchList側で全件GETに回す。値は非ゼロ埋め(value="7"形式)。
   async function fetchTodayDoc() {
+    const fields = window.__tfSamuraiForm
+    if (!fields) return null
+    const p = new URLSearchParams()
+    for (const k in fields) p.set(k, fields[k])
     const d = new Date()
     const y = String(d.getFullYear()), mo = String(d.getMonth() + 1), da = String(d.getDate())
-    const p = new URLSearchParams()
     p.set('request[date_at][year]', y); p.set('request[date_at][month]', mo); p.set('request[date_at][day]', da); p.set('request[date_at][hour]', '')
     p.set('request[date_to][year]', y); p.set('request[date_to][month]', mo); p.set('request[date_to][day]', da); p.set('request[date_to][hour]', '')
-    p.set('request[_csrf_token]', window.__tfSamuraiToken || ''); p.set('type', '')
+    if (window.__tfSamuraiToken) p.set('request[_csrf_token]', window.__tfSamuraiToken)
     const r = await fetch(LIST, { method: 'POST', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/x-www-form-urlencoded', accept: 'text/html', 'cache-control': 'no-cache', pragma: 'no-cache' }, body: p.toString() })
     if (!r.ok) throw new Error('POST ' + r.status)
     const doc = new DOMParser().parseFromString(await r.text(), 'text/html')
     try { doc.__srcUrl = r.url } catch {}
     try { const t = doc.querySelector('input[name="request[_csrf_token]"]'); if (t) window.__tfSamuraiToken = t.getAttribute('value') || '' } catch {} // 応答のトークンを次回に引き継ぐ
+    const nf = readForm1Fields(doc); if (nf) window.__tfSamuraiForm = nf // 最新フォームで更新
     return doc
   }
 
   // 当日フィルター(POST)で軽い一覧を取得。ただし「当日リードが実際に返った時（詳細リンクあり）」だけ採用する。
-  // 空の一覧や失敗時は、確実に取得できる従来の全件GETへ必ずフォールバック（取りこぼしゼロを最優先）。
-  // 全件GETの応答からCSRFトークンを確保し、次回のフィルターPOSTが成立する余地を残す（自己回復）。
+  // 空/失敗/フォーム未取得なら全件GETへフォールバック（確実に取得＋form1全項目とトークンをキャッシュ）。
+  // __tfSamuraiHeavy=重いGETを使ったか。tick側で重いGET後は次回巡回を60秒以上に空け、15秒連打の504再発を防ぐ。
   async function fetchList() {
     try {
       const doc = await fetchTodayDoc()
-      if (doc && doc.querySelector('input[type="password"]')) return doc // ログイン画面→呼び出し側で再ログイン
-      if (doc && doc.querySelector('a[href*="/request/detail/id/"]')) return doc // 当日リードあり→軽い応答を採用
-      // ここに来る＝フィルターが空を返した（form1はあるが結果0）。採用せず全件GETへ落とす。
+      if (doc && doc.querySelector('input[type="password"]')) { window.__tfSamuraiHeavy = false; return doc } // ログイン画面→再ログインへ
+      if (doc && doc.querySelector('a[href*="/request/detail/id/"]')) { window.__tfSamuraiHeavy = false; return doc } // 当日リードあり→軽い応答を採用
+      // ここに来る＝フィルターが空/未取得。全件GETへ。
     } catch (e) { /* POST失敗→GETへ */ }
     const full = await fetchDoc(LIST, 'no-cache') // フィルター空/失敗→従来の全件GET（確実に取得）
+    window.__tfSamuraiHeavy = true // 重いGETを使った→次回巡回は60秒以上空ける
     try { const t = full.querySelector('input[name="request[_csrf_token]"]'); if (t) window.__tfSamuraiToken = t.getAttribute('value') || '' } catch {} // 次回POST用にトークン確保
+    const nf = readForm1Fields(full); if (nf) window.__tfSamuraiForm = nf // form1全項目をキャッシュ（次回フィルターPOSTの土台）
     return full
   }
 
@@ -637,7 +664,9 @@ function samuraiLoop(gen, todayMD) {
     }
     if (window.__tfSamuraiGen === gen) {
       const f = window.__tfSamuraiFail || 0
-      const delay = f > 0 ? Math.min(nextDelay() * Math.pow(2, Math.min(f, 5)), 5 * 60 * 1000) : nextDelay() // 連続エラーで最大5分まで指数バックオフ
+      let delay
+      if (f > 0) delay = Math.min(nextDelay() * Math.pow(2, Math.min(f, 5)), 30 * 1000) // 連続エラーで最大30秒まで指数バックオフ
+      else delay = window.__tfSamuraiHeavy ? Math.max(nextDelay(), 60000) : nextDelay() // 重いGET後は60秒以上、軽いフィルターは15秒
       setTimeout(tick, delay)
     }
   }
