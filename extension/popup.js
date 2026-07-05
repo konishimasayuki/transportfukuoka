@@ -413,15 +413,33 @@ function hhmm(ts) {
   const d = new Date(ts)
   return `${String(d.getMonth() + 1)}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
+// 相対時間「◯分前」。稼働しているのに取り込みが古い＝実際は取れていない、を見分けるため。
+function ago(ts) {
+  if (!ts) return ''
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000))
+  if (s < 60) return `${s}秒前`
+  if (s < 3600) return `${Math.floor(s / 60)}分前`
+  if (s < 86400) return `${Math.floor(s / 3600)}時間${Math.floor((s % 3600) / 60)}分前`
+  return `${Math.floor(s / 86400)}日前`
+}
+// 「最終巡回（稼働）」「最終取り込み（新規）」の2行を組み立てる（全サイト共通）
+function activityLines(pollAt, pollCount, leadAt) {
+  const out = []
+  if (pollAt) out.push(`最終巡回（稼働）: ${hhmm(pollAt)}（${ago(pollAt)}${pollCount != null ? ` / 一覧${pollCount}件` : ''}）`)
+  out.push('最終取り込み（新規）: ' + (leadAt ? `${hhmm(leadAt)}（${ago(leadAt)}）` : '—（まだ新規取得なし）'))
+  return out
+}
+const statusRefreshers = [] // ポップアップを開いている間、定期的に再描画するための登録先
 async function renderZbaStatus() {
   const el = document.getElementById('zbaStatus')
   if (!el) return
-  const s = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword', 'zbaAuthOk', 'zbaAuthAt', 'zbaReloginResult', 'zbaReloginAt', 'zbaReloginReason'])
+  const s = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword', 'zbaAuthOk', 'zbaAuthAt', 'zbaReloginResult', 'zbaReloginAt', 'zbaReloginReason', 'lastBeatAt', 'zbaLastLeadAt'])
   const lines = []
   lines.push('自動再ログイン: ' + (s.zbaLoginId && s.zbaPassword ? '設定済み ✓' : '未設定（ID/PWを保存してください）'))
   if (s.zbaAuthAt != null) {
     lines.push('監視状態: ' + (s.zbaAuthOk === false ? 'ログイン切れ' : '正常') + `（最終確認 ${hhmm(s.zbaAuthAt)}）`)
   }
+  activityLines(s.lastBeatAt, null, s.zbaLastLeadAt).forEach(l => lines.push(l))
   if (s.zbaReloginAt) {
     lines.push('最終 自動再ログイン: ' + (s.zbaReloginResult === 'success' ? '成功' : '失敗') + `（${hhmm(s.zbaReloginAt)}）`)
     if (s.zbaReloginResult !== 'success' && s.zbaReloginReason) lines.push('　失敗理由: ' + s.zbaReloginReason)
@@ -487,10 +505,11 @@ function makeSiteCreds(cfg) {
   }
   async function renderStatus() {
     const el = document.getElementById(cfg.statusEl); if (!el) return
-    const s = await chrome.storage.local.get([cfg.credsKey, cfg.resultKey, cfg.reasonKey, cfg.atKey, cfg.blockedKey])
+    const s = await chrome.storage.local.get([cfg.credsKey, cfg.resultKey, cfg.reasonKey, cfg.atKey, cfg.blockedKey, cfg.pollKey, cfg.pollCountKey, cfg.leadKey])
     const c = s[cfg.credsKey]
     const lines = []
     lines.push('自動再ログイン: ' + (c && c.username && c.password ? '設定済み ✓' : '未設定（ID/PWを保存してください）'))
+    activityLines(s[cfg.pollKey], s[cfg.pollCountKey], s[cfg.leadKey]).forEach(l => lines.push(l))
     if (s[cfg.blockedKey]) lines.push('⛔ 停止中（ロック防止のため自動試行を停止中。翌朝6時に自動再開、またはID/PWを保存し直すと再開）')
     if (s[cfg.atKey]) {
       const ok = s[cfg.resultKey] === 'success'
@@ -499,6 +518,7 @@ function makeSiteCreds(cfg) {
     }
     el.textContent = lines.join('\n'); el.style.whiteSpace = 'pre-line'
   }
+  statusRefreshers.push(renderStatus)
   document.getElementById(cfg.saveBtn).addEventListener('click', async () => {
     const res = document.getElementById(cfg.resultEl)
     const id = document.getElementById(cfg.idEl).value.trim()
@@ -517,8 +537,12 @@ function makeSiteCreds(cfg) {
   load(); renderStatus()
 }
 
-makeSiteCreds({ credsKey: 'samuraiCreds', idEl: 'samuraiId', pwEl: 'samuraiPw', saveBtn: 'samuraiSave', resultEl: 'samuraiResult', statusEl: 'samuraiStatus', resultKey: 'samuraiReloginResult', reasonKey: 'samuraiReloginReason', atKey: 'samuraiReloginAt', blockedKey: 'samuraiReloginBlocked', triesKey: 'samuraiReloginTries', siteLabel: '引越し侍' })
-makeSiteCreds({ credsKey: 'kakakuCreds', idEl: 'kakakuId', pwEl: 'kakakuPw', saveBtn: 'kakakuSave', resultEl: 'kakakuResult', statusEl: 'kakakuStatus', resultKey: 'kakakuReloginResult', reasonKey: 'kakakuReloginReason', atKey: 'kakakuReloginAt', blockedKey: 'kakakuReloginBlocked', triesKey: 'kakakuReloginTries', siteLabel: '価格.com' })
+makeSiteCreds({ credsKey: 'samuraiCreds', idEl: 'samuraiId', pwEl: 'samuraiPw', saveBtn: 'samuraiSave', resultEl: 'samuraiResult', statusEl: 'samuraiStatus', resultKey: 'samuraiReloginResult', reasonKey: 'samuraiReloginReason', atKey: 'samuraiReloginAt', blockedKey: 'samuraiReloginBlocked', triesKey: 'samuraiReloginTries', pollKey: 'samuraiLastPollAt', pollCountKey: 'samuraiLastPollCount', leadKey: 'samuraiLastLeadAt', siteLabel: '引越し侍' })
+makeSiteCreds({ credsKey: 'kakakuCreds', idEl: 'kakakuId', pwEl: 'kakakuPw', saveBtn: 'kakakuSave', resultEl: 'kakakuResult', statusEl: 'kakakuStatus', resultKey: 'kakakuReloginResult', reasonKey: 'kakakuReloginReason', atKey: 'kakakuReloginAt', blockedKey: 'kakakuReloginBlocked', triesKey: 'kakakuReloginTries', pollKey: 'kakakuLastPollAt', pollCountKey: 'kakakuLastPollCount', leadKey: 'kakakuLastLeadAt', siteLabel: '価格.com' })
+
+// ズバットのステータスも定期更新に登録し、開いている間は数秒ごとに「◯分前」を更新する。
+statusRefreshers.push(renderZbaStatus)
+setInterval(() => { statusRefreshers.forEach(fn => { try { fn() } catch {} }) }, 3000)
 
 loadCreds()
 renderZbaStatus()

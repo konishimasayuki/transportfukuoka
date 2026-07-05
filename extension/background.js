@@ -329,6 +329,7 @@ function kakakuLoop(gen, today) {
       const rows = [...ldoc.querySelectorAll('tr')].filter(tr => tr.querySelector('a[href*="userdetail"]'))
       window.__tfKakakuFail = 0 // 取得成功＝連続エラーをリセット
       postStatus(true, '', rows.length) // 生存ハートビート
+      try { chrome.storage.local.set({ kakakuLastPollAt: Date.now(), kakakuLastPollCount: rows.length }) } catch {} // 最終巡回（稼働）時刻
       if (rows.length) {
         // ヘッダ行から「列名→index」を作り、列順が変わっても正しく読めるようにする（フォールバック付き）
         let cm = null
@@ -410,7 +411,7 @@ function kakakuLoop(gen, today) {
           await new Promise(res => setTimeout(res, GAP))
         }
         if (changed) persist()
-        if (cnt) console.log('[リード監視:価格.com] 送信', cnt, '件')
+        if (cnt) { console.log('[リード監視:価格.com] 送信', cnt, '件'); try { chrome.storage.local.set({ kakakuLastLeadAt: Date.now(), kakakuLastLeadCount: cnt }) } catch {} } // 最終取り込み（新規）時刻
       }
     } catch (e) {
       // 一覧取得失敗（504等）。連続エラー時はバックオフして負荷・検知を抑える。CRMには取得エラーを通知。
@@ -632,6 +633,7 @@ function samuraiLoop(gen, todayMD) {
       const links = [...ldoc.querySelectorAll('a[href*="/request/detail/id/"]')]
       window.__tfSamuraiFail = 0 // 取得成功＝連続エラーをリセット
       postStatus(true, '', links.length) // 生存ハートビート
+      try { chrome.storage.local.set({ samuraiLastPollAt: Date.now(), samuraiLastPollCount: links.length }) } catch {} // 最終巡回（稼働）時刻
       if (links.length) {
         const dd = new Set(); const rows = []
         for (const a of links) { const m = (a.getAttribute('href') || '').match(/id\/(\d+)/); if (m && !dd.has(m[1])) { dd.add(m[1]); rows.push(baseOf(m[1], a.closest('tr'))) } }
@@ -655,7 +657,7 @@ function samuraiLoop(gen, todayMD) {
           await new Promise(res => setTimeout(res, GAP))
         }
         if (changed) persist()
-        if (cnt) console.log('[リード監視:引越し侍] 送信', cnt, '件')
+        if (cnt) { console.log('[リード監視:引越し侍] 送信', cnt, '件'); try { chrome.storage.local.set({ samuraiLastLeadAt: Date.now(), samuraiLastLeadCount: cnt }) } catch {} } // 最終取り込み（新規）時刻
       }
     } catch (e) {
       // 一覧取得失敗（504等）。連続エラー時はバックオフして負荷・検知を抑える。CRMには取得エラーを通知。

@@ -93,16 +93,17 @@ function directSend(lead) {
 function sendLead(l) {
   const lead = { site: SITE, key: l.phone, ...l, detectedAt: new Date().toISOString() }
   return new Promise(resolve => {
+    const done = (res) => { if (res) { try { safeStorageSet({ zbaLastLeadAt: Date.now() }) } catch {} } resolve(res) } // 最終取り込み（新規）時刻
     if (chrome.runtime && chrome.runtime.id) {
       try {
         chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead }, (res) => {
-          if (chrome.runtime.lastError || !res) { directSend(lead).then(resolve); return }
-          resolve(res)
+          if (chrome.runtime.lastError || !res) { directSend(lead).then(done); return }
+          done(res)
         })
         return
       } catch (e) { /* fall through */ }
     }
-    directSend(lead).then(resolve)
+    directSend(lead).then(done)
   })
 }
 
