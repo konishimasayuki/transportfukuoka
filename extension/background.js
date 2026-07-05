@@ -557,14 +557,39 @@ function samuraiLoop(gen, todayMD) {
     return doc
   }
 
+  // 当日フィルターPOST：開始・終了とも「今日」を指定（時は空＝終日）。
+  // サーバ側で当日分だけ描画されるため軽く、全件描画による2分待ち/504を回避できる。値は非ゼロ埋め(value="7"形式)。
+  async function fetchTodayDoc() {
+    const d = new Date()
+    const y = String(d.getFullYear()), mo = String(d.getMonth() + 1), da = String(d.getDate())
+    const p = new URLSearchParams()
+    p.set('request[date_at][year]', y); p.set('request[date_at][month]', mo); p.set('request[date_at][day]', da); p.set('request[date_at][hour]', '')
+    p.set('request[date_to][year]', y); p.set('request[date_to][month]', mo); p.set('request[date_to][day]', da); p.set('request[date_to][hour]', '')
+    p.set('request[_csrf_token]', window.__tfSamuraiToken || ''); p.set('type', '')
+    const r = await fetch(LIST, { method: 'POST', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/x-www-form-urlencoded', accept: 'text/html', 'cache-control': 'no-cache', pragma: 'no-cache' }, body: p.toString() })
+    if (!r.ok) throw new Error('POST ' + r.status)
+    const doc = new DOMParser().parseFromString(await r.text(), 'text/html')
+    try { doc.__srcUrl = r.url } catch {}
+    try { const t = doc.querySelector('input[name="request[_csrf_token]"]'); if (t) window.__tfSamuraiToken = t.getAttribute('value') || '' } catch {} // 応答のトークンを次回に引き継ぐ
+    return doc
+  }
+
+  // list画面（フィルタフォーム or 詳細リンク or ログイン画面）が返ったかの判定
+  const isListDoc = doc => !!doc && (!!doc.querySelector('#form1') || !!doc.querySelector('select[name="request[date_at][month]"]') || !!doc.querySelector('a[href*="/request/detail/id/"]') || !!doc.querySelector('input[type="password"]'))
+  // 当日フィルター(POST)で軽い一覧を取得。フィルタ不成立/失敗時は従来の全件GETにフォールバック（安全側：最悪でも従来同等）。
+  async function fetchList() {
+    try { const doc = await fetchTodayDoc(); if (isListDoc(doc)) return doc } catch (e) { /* POST失敗→GETへ */ }
+    return await fetchDoc(LIST, 'no-cache')
+  }
+
   async function tick() {
     if (window.__tfSamuraiGen !== gen) return // 新しい注入が来たら旧ループは終了
     try {
-      let ldoc = await fetchDoc(LIST, 'no-cache')
+      let ldoc = await fetchList()
       // ログイン画面が返る＝セッション切れ。まず自動再ログインを試み、ダメなら未接続通知してスキップ。
-      if (ldoc.querySelector('input[type="password"]')) {
+      if (ldoc && ldoc.querySelector('input[type="password"]')) {
         const ok = await relogin(ldoc)
-        if (ok) { try { ldoc = await fetchDoc(LIST, 'no-cache') } catch {} }
+        if (ok) { try { ldoc = await fetchList() } catch {} }
         if (!ldoc || ldoc.querySelector('input[type="password"]')) {
           if (window.__tfSamuraiGen === gen) setTimeout(tick, nextDelay())
           return
