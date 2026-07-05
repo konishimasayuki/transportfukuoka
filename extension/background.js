@@ -307,8 +307,11 @@ function kakakuLoop(gen, today) {
     setTimeout(() => { if (!done) res(null) }, 4000)
   }).then(r => r || fetch(INBOUND, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) }).then(() => ({ ok: true })).catch(() => ({ ok: false })))
 
-  // 依頼日 "2026/07/01 19:37:05" の先頭10文字が今日か
-  const isToday = s => norm(s).slice(0, 10) === today
+  // 依頼日 "2026/07/01 19:37:05" の先頭10文字が今日か。
+  // 「今日」は毎回その場で算出する（注入時に凍結した today を使うと、0時をまたいだ瞬間に
+  // 新しい日のリードが「今日ではない」と判定されて未送信のまま seen 入り＝恒久ロストになるため）。
+  const curYMD = () => { const d = new Date(); return d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0') }
+  const isToday = s => norm(s).slice(0, 10) === curYMD()
 
   async function tick() {
     if (window.__tfKakakuGen !== gen) return // 新しい注入が来たら旧ループは終了
@@ -532,7 +535,10 @@ function samuraiLoop(gen, todayMD) {
     return s.replace(/〒?\d{3}-\d{4}/, '').trim()
   }
   const HDR = { accept: 'text/html', 'cache-control': 'no-cache', pragma: 'no-cache' }
-  const isToday = rs => /^\d{2}\/\d{2}/.test(rs || '') && String(rs).slice(0, 5) === todayMD
+  // 「今日」は毎回その場で算出する（注入時に凍結した todayMD を使うと、0時をまたいだ瞬間に
+  // 新しい日のリードが「今日ではない」と判定されて未送信のまま seen 入り＝恒久ロストになるため）。
+  const curMD = () => { const d = new Date(); return String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0') }
+  const isToday = rs => /^\d{2}\/\d{2}/.test(rs || '') && String(rs).slice(0, 5) === curMD()
 
   const send = (lead) => new Promise(res => {
     let done = false
