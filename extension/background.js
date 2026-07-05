@@ -324,6 +324,7 @@ function kakakuLoop(gen, today) {
         }
       }
       const rows = [...ldoc.querySelectorAll('tr')].filter(tr => tr.querySelector('a[href*="userdetail"]'))
+      window.__tfKakakuFail = 0 // 取得成功＝連続エラーをリセット
       postStatus(true, '', rows.length) // 生存ハートビート
       if (rows.length) {
         // ヘッダ行から「列名→index」を作り、列順が変わっても正しく読めるようにする（フォールバック付き）
@@ -408,8 +409,16 @@ function kakakuLoop(gen, today) {
         if (changed) persist()
         if (cnt) console.log('[リード監視:価格.com] 送信', cnt, '件')
       }
-    } catch (e) { /* 一覧取得失敗。次のtickで再試行 */ }
-    if (window.__tfKakakuGen === gen) setTimeout(tick, nextDelay())
+    } catch (e) {
+      // 一覧取得失敗（504等）。連続エラー時はバックオフして負荷・検知を抑える。CRMには取得エラーを通知。
+      window.__tfKakakuFail = (window.__tfKakakuFail || 0) + 1
+      postStatus(false, 'error')
+    }
+    if (window.__tfKakakuGen === gen) {
+      const f = window.__tfKakakuFail || 0
+      const delay = f > 0 ? Math.min(nextDelay() * Math.pow(2, Math.min(f, 5)), 5 * 60 * 1000) : nextDelay() // 連続エラーで最大5分まで指数バックオフ
+      setTimeout(tick, delay)
+    }
   }
   tick()
 }
@@ -555,6 +564,7 @@ function samuraiLoop(gen, todayMD) {
         }
       }
       const links = [...ldoc.querySelectorAll('a[href*="/request/detail/id/"]')]
+      window.__tfSamuraiFail = 0 // 取得成功＝連続エラーをリセット
       postStatus(true, '', links.length) // 生存ハートビート
       if (links.length) {
         const dd = new Set(); const rows = []
@@ -581,8 +591,16 @@ function samuraiLoop(gen, todayMD) {
         if (changed) persist()
         if (cnt) console.log('[リード監視:引越し侍] 送信', cnt, '件')
       }
-    } catch (e) { /* 一覧取得失敗。次のtickで再試行 */ }
-    if (window.__tfSamuraiGen === gen) setTimeout(tick, nextDelay())
+    } catch (e) {
+      // 一覧取得失敗（504等）。連続エラー時はバックオフして負荷・検知を抑える。CRMには取得エラーを通知。
+      window.__tfSamuraiFail = (window.__tfSamuraiFail || 0) + 1
+      postStatus(false, 'error')
+    }
+    if (window.__tfSamuraiGen === gen) {
+      const f = window.__tfSamuraiFail || 0
+      const delay = f > 0 ? Math.min(nextDelay() * Math.pow(2, Math.min(f, 5)), 5 * 60 * 1000) : nextDelay() // 連続エラーで最大5分まで指数バックオフ
+      setTimeout(tick, delay)
+    }
   }
   tick()
 }
