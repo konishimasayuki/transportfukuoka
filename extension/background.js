@@ -574,12 +574,19 @@ function samuraiLoop(gen, todayMD) {
     return doc
   }
 
-  // list画面（フィルタフォーム or 詳細リンク or ログイン画面）が返ったかの判定
-  const isListDoc = doc => !!doc && (!!doc.querySelector('#form1') || !!doc.querySelector('select[name="request[date_at][month]"]') || !!doc.querySelector('a[href*="/request/detail/id/"]') || !!doc.querySelector('input[type="password"]'))
-  // 当日フィルター(POST)で軽い一覧を取得。フィルタ不成立/失敗時は従来の全件GETにフォールバック（安全側：最悪でも従来同等）。
+  // 当日フィルター(POST)で軽い一覧を取得。ただし「当日リードが実際に返った時（詳細リンクあり）」だけ採用する。
+  // 空の一覧や失敗時は、確実に取得できる従来の全件GETへ必ずフォールバック（取りこぼしゼロを最優先）。
+  // 全件GETの応答からCSRFトークンを確保し、次回のフィルターPOSTが成立する余地を残す（自己回復）。
   async function fetchList() {
-    try { const doc = await fetchTodayDoc(); if (isListDoc(doc)) return doc } catch (e) { /* POST失敗→GETへ */ }
-    return await fetchDoc(LIST, 'no-cache')
+    try {
+      const doc = await fetchTodayDoc()
+      if (doc && doc.querySelector('input[type="password"]')) return doc // ログイン画面→呼び出し側で再ログイン
+      if (doc && doc.querySelector('a[href*="/request/detail/id/"]')) return doc // 当日リードあり→軽い応答を採用
+      // ここに来る＝フィルターが空を返した（form1はあるが結果0）。採用せず全件GETへ落とす。
+    } catch (e) { /* POST失敗→GETへ */ }
+    const full = await fetchDoc(LIST, 'no-cache') // フィルター空/失敗→従来の全件GET（確実に取得）
+    try { const t = full.querySelector('input[name="request[_csrf_token]"]'); if (t) window.__tfSamuraiToken = t.getAttribute('value') || '' } catch {} // 次回POST用にトークン確保
+    return full
   }
 
   async function tick() {
