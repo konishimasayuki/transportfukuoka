@@ -65,7 +65,9 @@ function parseSiteAt(s) {
 }
 function captureLagSec(item) {
   const a = parseSiteAt(item && (item.receivedAt || item.requestedAt))
-  const bRaw = item && (item.detectedAt || item.savedAt)
+  // CRM初回保存(savedAt)を基準にする。detectedAt(拡張検知)は再送で後の時刻に更新され、
+  // 実際の保存より後になって獲得スピードが過大表示されるため使わない（savedAt無い時のみ代替）。
+  const bRaw = item && (item.savedAt || item.detectedAt)
   const b = bRaw ? new Date(bRaw) : null
   if (!a || !b || isNaN(b.getTime())) return null
   const sec = Math.round((b.getTime() - a.getTime()) / 1000)
