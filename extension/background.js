@@ -579,24 +579,29 @@ function samuraiLoop(gen, todayMD) {
     return f
   }
 
-  // 当日フィルターPOST：直近の全件GETで取得した form1 全項目を土台に、日付だけ「今日」に差し替えて送る。
-  // フォーム未取得のうちは null を返し、fetchList側で全件GETに回す。値は非ゼロ埋め(value="7"形式)。
+  // 当日フィルターPOST：管理画面の検索フォーム(form.submit)が実際に送る全項目を再現し、日付だけ今日にする。
+  // ★実機キャプチャで確定した本文。date_at.hour="0" / date_to.hour="24"（終日）と reply_status_mode="2" が必須。
+  //   これらが欠けると結果0件になる（時刻を空で送っていたのが今までの原因）。
   async function fetchTodayDoc() {
-    const fields = window.__tfSamuraiForm
-    if (!fields) return null
-    const p = new URLSearchParams()
-    for (const k in fields) p.set(k, fields[k])
     const d = new Date()
     const y = String(d.getFullYear()), mo = String(d.getMonth() + 1), da = String(d.getDate())
-    p.set('request[date_at][year]', y); p.set('request[date_at][month]', mo); p.set('request[date_at][day]', da); p.set('request[date_at][hour]', '')
-    p.set('request[date_to][year]', y); p.set('request[date_to][month]', mo); p.set('request[date_to][day]', da); p.set('request[date_to][hour]', '')
-    if (window.__tfSamuraiToken) p.set('request[_csrf_token]', window.__tfSamuraiToken)
+    const p = new URLSearchParams()
+    p.set('request[key_word]', ''); p.set('request[current_address]', ''); p.set('request[new_address]', '')
+    p.set('request[date_at][year]', y); p.set('request[date_at][month]', mo); p.set('request[date_at][day]', da); p.set('request[date_at][hour]', '0')
+    p.set('request[date_to][year]', y); p.set('request[date_to][month]', mo); p.set('request[date_to][day]', da); p.set('request[date_to][hour]', '24')
+    p.set('request[move_scheduled_date][year]', y); p.set('request[move_scheduled_date][month]', ''); p.set('request[move_scheduled_date][day]', '')
+    p.set('request[move_scheduled_to][year]', ''); p.set('request[move_scheduled_to][month]', ''); p.set('request[move_scheduled_to][day]', '')
+    p.set('request[re_contact_sort]', '0')
+    p.set('request[re_contact_time][year]', ''); p.set('request[re_contact_time][month]', ''); p.set('request[re_contact_time][day]', ''); p.set('request[re_contact_time][hour]', '')
+    p.set('request[re_contact_to][year]', ''); p.set('request[re_contact_to][month]', ''); p.set('request[re_contact_to][day]', ''); p.set('request[re_contact_to][hour]', '')
+    p.set('request[reply_status_mode]', '2')
+    p.set('request[_csrf_token]', window.__tfSamuraiToken || '')
+    p.set('type', '')
     const r = await fetch(LIST, { method: 'POST', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/x-www-form-urlencoded', accept: 'text/html', 'cache-control': 'no-cache', pragma: 'no-cache' }, body: p.toString() })
     if (!r.ok) throw new Error('POST ' + r.status)
     const doc = new DOMParser().parseFromString(await r.text(), 'text/html')
     try { doc.__srcUrl = r.url } catch {}
     try { const t = doc.querySelector('input[name="request[_csrf_token]"]'); if (t) window.__tfSamuraiToken = t.getAttribute('value') || '' } catch {} // 応答のトークンを次回に引き継ぐ
-    const nf = readForm1Fields(doc); if (nf) window.__tfSamuraiForm = nf // 最新フォームで更新
     return doc
   }
 
