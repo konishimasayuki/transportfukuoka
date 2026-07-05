@@ -280,7 +280,7 @@ let reloginFails = 0
 let morningResetDate = '' // 朝5時に失敗回数をリセットして再開した日（YYYY-MM-DD）
 let listFailStreak = 0 // 一覧取得の連続失敗（500等のセッション不正を再ログインで回復するため）
 const RELOGIN_MIN_GAP = 5 * 60 * 1000
-const RELOGIN_MAX_FAILS = 5
+const RELOGIN_MAX_FAILS = 2 // 失敗ログインの上限（厳しめ・毎朝6時にリセット）
 
 // 未ログインでも /csrf は取得できる前提（ログインに必要なため）。authError を投げない版。
 async function csrfForLogin() {
@@ -293,7 +293,7 @@ async function csrfForLogin() {
 }
 
 async function relogin() {
-  if (new Date().getHours() < 5) { safeStorageSet({ zbaReloginReason: '深夜（0〜5時）は再ログイン休止' }); return false } // 深夜0〜5時は再ログインしない
+  if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) { safeStorageSet({ zbaReloginReason: '夜間（22〜6時）は再ログイン休止' }); return false } // 夜間22〜6時は再ログイン休止
   let creds = {}
   try { creds = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword']) } catch { safeStorageSet({ zbaReloginReason: 'storage-error' }); return false }
   if (!creds.zbaLoginId || !creds.zbaPassword) { safeStorageSet({ zbaReloginReason: 'no-creds（ID/PW未保存）' }); return false }
@@ -317,7 +317,7 @@ async function tryRecoverAuth() {
   const now = Date.now()
   // 朝5時以降の初回：前日までの失敗回数をリセットして毎朝再開（監視状態へ復帰）
   const _md = new Date(); const _mkey = _md.getFullYear() + '-' + String(_md.getMonth() + 1).padStart(2, '0') + '-' + String(_md.getDate()).padStart(2, '0')
-  if (morningResetDate !== _mkey && _md.getHours() >= 5) { reloginFails = 0; lastReloginAt = 0; morningResetDate = _mkey }
+  if (morningResetDate !== _mkey && _md.getHours() >= 6 && _md.getHours() < 22) { reloginFails = 0; lastReloginAt = 0; morningResetDate = _mkey }
   if (reloginFails >= RELOGIN_MAX_FAILS) return false   // 連続失敗で停止（翌朝5時に自動リセット）
   if (now - lastReloginAt < RELOGIN_MIN_GAP) return false // 5分に1回まで
   lastReloginAt = now

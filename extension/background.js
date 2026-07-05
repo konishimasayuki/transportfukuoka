@@ -207,9 +207,9 @@ function kakakuLoop(gen, today) {
 
   // ===== 自動再ログイン（アカウントロック防止つき）=====（引越し侍と同方式・同ポリシー）
   //  ①ID/PW拒否で即停止（再保存まで再試行しない＝誤PW時は実質1回のみ）②絶対上限3回 ③5分に1回・全タブ共有。
-  const MAX_TRIES = 3
+  const MAX_TRIES = 2 // 失敗ログインの上限（厳しめ・毎朝6時にリセット）
   async function relogin(loginDoc) {
-    if (new Date().getHours() < 5) return false // 深夜0〜5時は再ログインしない
+    if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) return false // 夜間22〜6時は再ログイン休止
     const set = p => { try { chrome.storage.local.set(p) } catch {} }
     let st = {}
     try { st = await chrome.storage.local.get(['kakakuCreds', 'kakakuReloginBlocked', 'kakakuReloginLastAt', 'kakakuReloginTries', 'kakakuReloginMorning']) } catch {}
@@ -436,9 +436,9 @@ function samuraiLoop(gen, todayMD) {
   //  ①サーバーがID/PWを弾いたら即「停止」＝再保存するまで二度と試行しない（＝誤PW時は実質1回のみ）
   //  ②絶対上限3回（通信エラー等が絡む例外含む）。到達で停止。
   //  ③5分に1回まで。停止/回数/時刻は chrome.storage で全タブ・再注入をまたいで共有（多重や連打を防ぐ）。
-  const MAX_TRIES = 3
+  const MAX_TRIES = 2 // 失敗ログインの上限（厳しめ・毎朝6時にリセット）
   async function relogin(loginDoc) {
-    if (new Date().getHours() < 5) return false // 深夜0〜5時は再ログインしない
+    if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) return false // 夜間22〜6時は再ログイン休止
     const set = p => { try { chrome.storage.local.set(p) } catch {} }
     let st = {}
     try { st = await chrome.storage.local.get(['samuraiCreds', 'samuraiReloginBlocked', 'samuraiReloginLastAt', 'samuraiReloginTries', 'samuraiReloginMorning']) } catch {}

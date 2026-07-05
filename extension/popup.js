@@ -491,7 +491,7 @@ function makeSiteCreds(cfg) {
     const c = s[cfg.credsKey]
     const lines = []
     lines.push('自動再ログイン: ' + (c && c.username && c.password ? '設定済み ✓' : '未設定（ID/PWを保存してください）'))
-    if (s[cfg.blockedKey]) lines.push('⛔ 停止中（ロック防止のため自動試行を停止中。翌朝5時に自動再開、またはID/PWを保存し直すと再開）')
+    if (s[cfg.blockedKey]) lines.push('⛔ 停止中（ロック防止のため自動試行を停止中。翌朝6時に自動再開、またはID/PWを保存し直すと再開）')
     if (s[cfg.atKey]) {
       const ok = s[cfg.resultKey] === 'success'
       lines.push('最終 自動再ログイン: ' + (ok ? '成功' : '失敗') + `（${hhmm(s[cfg.atKey])}）`)
