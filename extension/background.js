@@ -430,7 +430,8 @@ function samuraiLoop(gen, todayMD) {
   window.__tfSamuraiSeen = window.__tfSamuraiSeen || [] // ページ存続中の取込済みid（リロードで自然リセット→当日分は再送・サーバ重複除外）
   const seen = new Set(window.__tfSamuraiSeen)
   const persist = () => { window.__tfSamuraiSeen = Array.from(seen).slice(-5000) }
-  const PER = 8, GAP = 300, FAST_MS = 15000, SLOW_MS = 120000
+  // 巡回間隔：一覧が重く504になりやすいため日中45秒に緩和（負荷軽減・504対策）。深夜は120秒。
+  const PER = 8, GAP = 300, FAST_MS = 45000, SLOW_MS = 120000
   // 巡回間隔：ほぼ終日(7-24時)は15秒＋0〜8秒ジッター、深夜(0-7時)は120秒に減速（負荷・BAN配慮）
   const nextDelay = () => { const h = new Date().getHours(); const base = (h >= 7 && h < 24) ? FAST_MS : SLOW_MS; return base + Math.floor(Math.random() * 8000) }
   const INBOUND = 'https://transportfukuoka.vercel.app/api/inbound'
