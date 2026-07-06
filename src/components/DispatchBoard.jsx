@@ -341,21 +341,24 @@ function computeVehicleRoutes(vehicles, jobs, show) {
 }
 
 // 凡例（車両→色＋経路＋Googleマップリンク）。両モード共通。
+// カード群は固定高さ＋縦スクロール（地図と高さを揃え、下部の余白を作らない）。注記はスクロール外に常時表示。
 function RouteLegend({ routes, note }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-      {routes.map((r, ri) => (
-        <div key={ri} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 14, height: 4, borderRadius: 2, background: r.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 12, fontWeight: 700 }}>{r.v.ext ? '外注' : '#' + r.v.id}</span>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{r.v.cls}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+      <div className="db-legend-scroll">
+        {routes.map((r, ri) => (
+          <div key={ri} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 14, height: 4, borderRadius: 2, background: r.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{r.v.ext ? '外注' : '#' + r.v.id}</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>{r.v.cls}</span>
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--sub)', margin: '5px 0 6px', lineHeight: 1.4 }}>{r.stops.join(' → ')}</div>
+            <a href={gmapUrl(r.stops)} target="_blank" rel="noreferrer"
+              style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', textDecoration: 'none' }}>🗺 Googleマップで開く ›</a>
           </div>
-          <div style={{ fontSize: 10.5, color: 'var(--sub)', margin: '5px 0 6px', lineHeight: 1.4 }}>{r.stops.join(' → ')}</div>
-          <a href={gmapUrl(r.stops)} target="_blank" rel="noreferrer"
-            style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', textDecoration: 'none' }}>🗺 Googleマップで開く ›</a>
-        </div>
-      ))}
+        ))}
+      </div>
       {note && <div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.5, marginTop: 2 }}>{note}</div>}
     </div>
   )
@@ -363,7 +366,7 @@ function RouteLegend({ routes, note }) {
 
 // 概略図モード（キー無し）：区の相対座標をSVGに投影して色分け表示
 function SchematicMap({ routes }) {
-  const W = 900, H = 320, pad = 40
+  const W = 760, H = 360, pad = 46
   const g = useMemo(() => {
     const withC = routes.map(r => ({ ...r, pts: r.stops.map(n => ({ name: n, c: coordOf(n) })).filter(x => x.c) })).filter(r => r.pts.length > 0)
     const all = withC.flatMap(r => r.pts.map(p => p.c))
@@ -377,31 +380,48 @@ function SchematicMap({ routes }) {
     return { withC, proj, labels }
   }, [routes])
 
+  // Googleマップ風の装飾（陸地・水域・緑地・道路網）。地理的正確さではなく“地図らしさ”のための背景。
+  const LAND = '#EAEDE4'
+  const roads = [
+    `M0 ${H * 0.30} Q ${W * 0.45} ${H * 0.22} ${W} ${H * 0.40}`,
+    `M0 ${H * 0.66} Q ${W * 0.5} ${H * 0.74} ${W} ${H * 0.60}`,
+    `M${W * 0.22} 0 Q ${W * 0.30} ${H * 0.5} ${W * 0.18} ${H}`,
+    `M${W * 0.62} 0 Q ${W * 0.56} ${H * 0.5} ${W * 0.70} ${H}`,
+    `M0 ${H * 0.5} L ${W} ${H * 0.5}`,
+  ]
+
   return (
     <div className="db-maprow">
-      <div className="scroll-x" style={{ background: '#F1F5F9', borderRadius: 10, border: '1px solid var(--border)' }}>
+      <div className="db-mapbox">
         {g ? (
-          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', minWidth: 560, display: 'block' }}>
-            {Array.from({ length: 9 }, (_, i) => <line key={'gx' + i} x1={(W / 9) * (i + 1)} y1="0" x2={(W / 9) * (i + 1)} y2={H} stroke="#E2E8F0" strokeWidth="1" />)}
-            {Array.from({ length: 4 }, (_, i) => <line key={'gy' + i} x1="0" y1={(H / 4) * (i + 1)} x2={W} y2={(H / 4) * (i + 1)} stroke="#E2E8F0" strokeWidth="1" />)}
-            {g.labels.map((l, i) => (
-              <g key={i}>
-                <circle cx={l.p[0]} cy={l.p[1]} r="3" fill="#94A3B8" />
-                {/* 白フチ（paint-order: stroke）でルート線や他ラベルと重なっても読めるように */}
-                <text x={l.p[0] + 5} y={l.p[1] - 5} fontSize="10" fontWeight="700" fill="#475569" stroke="#fff" strokeWidth="3" paintOrder="stroke" style={{ paintOrder: 'stroke' }}>{l.name}</text>
-              </g>
-            ))}
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%', display: 'block' }}>
+            {/* 陸地 */}
+            <rect x="-2" y="-2" width={W + 4} height={H + 4} fill={LAND} />
+            {/* 水域・緑地（うっすら） */}
+            <ellipse cx={W * 0.86} cy={H * 0.14} rx={W * 0.26} ry={H * 0.32} fill="#C7DDF0" opacity="0.55" />
+            <ellipse cx={W * 0.13} cy={H * 0.86} rx={W * 0.20} ry={H * 0.22} fill="#D5E7C9" opacity="0.6" />
+            {/* 道路網：グレーの縁取り(下)→白(上)で“道路らしさ” */}
+            {roads.map((rd, i) => <path key={'rc' + i} d={rd} fill="none" stroke="#DADCE0" strokeWidth={i === 4 ? 8.5 : 6.5} strokeLinecap="round" opacity="0.5" />)}
+            {roads.map((rd, i) => <path key={'rw' + i} d={rd} fill="none" stroke="#FFFFFF" strokeWidth={i === 4 ? 6.5 : 4.5} strokeLinecap="round" opacity="0.9" />)}
+            {/* ルート（白casing → 車両色。Googleの経路ラインに近づける） */}
             {g.withC.map((r, ri) => {
               const pts = r.pts.map(s => g.proj(s.c))
               const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ')
               return (
                 <g key={ri}>
-                  {pts.length > 1 && <path d={d} fill="none" stroke={r.color} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />}
-                  {pts.map((p, pi) => <circle key={pi} cx={p[0]} cy={p[1]} r="4.5" fill={r.color} stroke="#fff" strokeWidth="1.5" />)}
-                  <text x={pts[0][0]} y={pts[0][1] + 5} fontSize="15" textAnchor="middle">🚚</text>
+                  {pts.length > 1 && <path d={d} fill="none" stroke="#fff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />}
+                  {pts.length > 1 && <path d={d} fill="none" stroke={r.color} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />}
+                  {pts.map((p, pi) => (
+                    <circle key={pi} cx={p[0]} cy={p[1]} r={pi === 0 ? 6 : 5}
+                      fill={pi === 0 ? r.color : '#fff'} stroke={r.color} strokeWidth="2.5" />
+                  ))}
                 </g>
               )
             })}
+            {/* 地名ラベル（マップ風タイポ＋白フチで可読性確保） */}
+            {g.labels.map((l, i) => (
+              <text key={i} x={l.p[0] + 8} y={l.p[1] - 6} fontSize="11.5" fontWeight="600" fill="#5F6368" stroke="#fff" strokeWidth="3.2" paintOrder="stroke" style={{ paintOrder: 'stroke' }}>{l.name}</text>
+            ))}
           </svg>
         ) : <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>地図に表示できる地名がありません</div>}
       </div>

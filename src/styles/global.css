@@ -369,8 +369,16 @@ tr:hover td { background: var(--bg); }
 }
 /* ルートマップ：地図＋凡例。狭い画面（iPhone/iPad縦）では縦積みにして地図を潰さない */
 .db-maprow { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 12px; align-items: start; }
+/* 地図は固定高さのパネル（余白を作らず、凡例スクロールと高さを揃える） */
+.db-mapbox { height: 340px; background: #EAEDE4; border-radius: 10px; border: 1px solid var(--border); overflow: hidden; }
+/* 凡例カードは固定高さ＋縦スクロール（#218の下は隠してスクロールで見せる） */
+.db-legend-scroll { display: flex; flex-direction: column; gap: 7px; max-height: 300px; overflow-y: auto; padding-right: 2px; }
+.db-legend-scroll::-webkit-scrollbar { width: 8px; }
+.db-legend-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
 @media (max-width: 900px) {
   .db-maprow { grid-template-columns: 1fr; }
+  .db-mapbox { height: 300px; }
+  .db-legend-scroll { max-height: 260px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .db-job.conflict { animation: none; }
