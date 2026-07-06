@@ -53,7 +53,7 @@ const splitRoute = (route) => { const p = String(route || '').split(/\s*(?:→|-
 const isActiveContract = (c) => c && !['失注', 'キャンセル', 'キャンセル済み'].includes(c.status)
 const contractToCard = (c) => {
   const [from, to] = splitRoute(c.route)
-  return { contractId: c.id, cat: 'move', name: (c.name || '') + ' 様', crew: (String(c.persons || '').replace(/[^\d]/g, '') || '2') + '名', need: '2t', from, to, whn: c.moveDateText || c.dispatchDate || '', src: String(c.srcLabel || 'hp'), amt: Number(c.amount) || 0 }
+  return { contractId: c.id, cat: 'move', name: (c.name || '') + ' 様', crew: (String(c.persons || '').replace(/[^\d]/g, '') || '2') + '名', need: '2t', from, to, whn: c.moveDateText || c.date || '', src: String(c.srcLabel || 'hp'), amt: Number(c.amount) || 0 }
 }
 
 export default function DispatchBoard({ filter, onToast, contracts = [], boardDate = new Date(), isDemo = false }) {
@@ -72,7 +72,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
   const vehOf = (key) => vehicles.find(v => v.key === key)
 
   // 未手配案件＝その日(配車日)の“進行中の成約”からderive（割当済みは除く）＋ 手動カード(manualUn)
-  const contractCards = useMemo(() => (contracts || []).filter(c => isActiveContract(c) && c.dispatchDate === boardKey).map(contractToCard), [contracts, boardKey])
+  const contractCards = useMemo(() => (contracts || []).filter(c => isActiveContract(c) && c.date === boardKey).map(contractToCard), [contracts, boardKey])
   const contractCardsAvail = useMemo(() => { const a = new Set(jobs.map(j => j.contractId).filter(Boolean)); return contractCards.filter(cd => !a.has(cd.contractId)) }, [contractCards, jobs])
   const unassigned = useMemo(() => [...contractCardsAvail, ...manualUn], [contractCardsAvail, manualUn])
 
