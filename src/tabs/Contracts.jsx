@@ -27,6 +27,7 @@ const CSV_COLUMNS = [
   { key: 'srcLabel', label: '流入元' },
   { key: 'salesDate', label: '売上登録日' },
   { key: 'date', label: '引越し日' },
+  { key: 'dispatchDate', label: '配車日' },
   { key: 'moveDateText', label: '希望日' },
   { key: 'persons', label: '人数' },
   { key: 'fromAddress', label: '引越し元' },
@@ -40,7 +41,7 @@ const CSV_COLUMNS = [
 
 const EMPTY_FORM = {
   name: '', kana: '', phone: '', email: '',
-  srcLabel: 'サムライ', salesDate: '', date: '', moveDateText: '', persons: '',
+  srcLabel: 'サムライ', salesDate: '', date: '', dispatchDate: '', moveDateText: '', persons: '',
   fromAddress: '', toAddress: '', route: '',
   amount: '', status: '交渉中',
   staff: '', memo: '',
@@ -334,6 +335,10 @@ export default function Contracts({ user }) {
                 <div>
                   <label style={formLabel}>売上登録日</label>
                   <input type="date" style={inputStyle} value={form.salesDate || ''} onChange={e => f('salesDate')(e.target.value)} />
+                </div>
+                <div>
+                  <label style={formLabel}>配車日（配車ボードに反映）</label>
+                  <input type="date" style={inputStyle} value={form.dispatchDate || ''} onChange={e => f('dispatchDate')(e.target.value)} />
                 </div>
                 <div>
                   <label style={formLabel}>希望日（自由記入）</label>

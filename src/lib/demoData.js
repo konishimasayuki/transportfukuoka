@@ -43,8 +43,10 @@ export const DEMO_CONTRACTS = [
   { id: 'dc31', name: '甲斐 陽菜',  src: 'bb', srcLabel: '引越し侍', route: '東区→宗像市',   amount: 124000, badge: 'bg', status: '成約済み', staff: '井上 悠' },
   { id: 'dc32', name: '芝田 康介',  src: 'bo', srcLabel: 'ズバット', route: '西区→中央区',   amount: 89000,  badge: 'bg', status: '成約済み', staff: '森 香織' },
 ].map((c, i) => {
-  const day = dd(2 + (i * 2) % 26) // 当月の2日〜に散らす
-  return { ...c, date: `${YM}-${day}`, salesDate: `${YM}-${day}` }
+  const day = dd(2 + (i * 2) % 26) // 当月の2日〜に散らす（売上/引越し日）
+  const td = _now.getDate()
+  const dispDay = dd(Math.min(28, Math.max(1, td + (i % 7) - 3))) // 配車日は当日±3日に散らす（デモ配車ボード用）
+  return { ...c, date: `${YM}-${day}`, salesDate: `${YM}-${day}`, dispatchDate: `${YM}-${dispDay}` }
 })
 
 // ===== 広告費(反響課金)算出用のリード（売上管理・広告費で使用） =====

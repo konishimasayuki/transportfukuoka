@@ -47,10 +47,19 @@ const INIT_UN = [
 const SRC_TXT = { suumo: 'SUUMO', zbt: 'ズバット', hp: '自社HP' }
 const jobClass = (j) => 'db-job ' + (j.st === 'conflict' ? 'conflict' : j.cat) + (j.st === 'tentative' ? ' tentative' : '')
 
-export default function DispatchBoard({ filter, onToast }) {
+// ---- 成約(成約管理)→ 未手配カード の変換ヘルパー ----
+const ymd = (d) => { const x = d instanceof Date ? d : new Date(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}` }
+const splitRoute = (route) => { const p = String(route || '').split(/\s*(?:→|->|〜|~|–|—)\s*/); return [(p[0] || '').trim() || '—', (p[1] || '').trim() || '—'] }
+const isActiveContract = (c) => c && !['失注', 'キャンセル', 'キャンセル済み'].includes(c.status)
+const contractToCard = (c) => {
+  const [from, to] = splitRoute(c.route)
+  return { contractId: c.id, cat: 'move', name: (c.name || '') + ' 様', crew: (String(c.persons || '').replace(/[^\d]/g, '') || '2') + '名', need: '2t', from, to, whn: c.moveDateText || c.dispatchDate || '', src: String(c.srcLabel || 'hp'), amt: Number(c.amount) || 0 }
+}
+
+export default function DispatchBoard({ filter, onToast, contracts = [], boardDate = new Date(), isDemo = false }) {
   const [vehicles, setVehicles] = useState(INIT_VEHICLES)
-  const [jobs, setJobs] = useState(INIT_JOBS)
-  const [unassigned, setUnassigned] = useState(INIT_UN)
+  const [jobs, setJobs] = useState([])          // その日の割当（/api/dispatch で日付別に保存）
+  const [manualUn, setManualUn] = useState([])  // 成約以外の未手配カード（手動追加・非成約の戻し）。成約由来は下でderive
   const [armed, setArmed] = useState(null)   // 選択中の未手配カードindex
   const [tip, setTip] = useState(null)       // ツールチップ { job, x, y }
   const [showCreate, setShowCreate] = useState(false)
@@ -58,8 +67,42 @@ export default function DispatchBoard({ filter, onToast }) {
   const idRef = useRef(1000)                 // 新規ジョブのid採番
   const extRef = useRef(0)                   // 外注枠の連番
   const toast = onToast || (() => {})
+  const boardKey = ymd(boardDate)
   const show = (c) => !filter || filter[c] !== false // カテゴリチップの絞り込み
   const vehOf = (key) => vehicles.find(v => v.key === key)
+
+  // 未手配案件＝その日(配車日)の“進行中の成約”からderive（割当済みは除く）＋ 手動カード(manualUn)
+  const contractCards = useMemo(() => (contracts || []).filter(c => isActiveContract(c) && c.dispatchDate === boardKey).map(contractToCard), [contracts, boardKey])
+  const contractCardsAvail = useMemo(() => { const a = new Set(jobs.map(j => j.contractId).filter(Boolean)); return contractCards.filter(cd => !a.has(cd.contractId)) }, [contractCards, jobs])
+  const unassigned = useMemo(() => [...contractCardsAvail, ...manualUn], [contractCardsAvail, manualUn])
+
+  // 日付別に保存済みの割当を読み込み（デモは日付ごとに空から）。読み込み完了前は保存しない（readyKeyで制御）。
+  const readyKey = useRef('')
+  useEffect(() => {
+    setArmed(null)
+    if (isDemo) { setJobs([]); setManualUn([]); readyKey.current = boardKey; return }
+    let cancelled = false; readyKey.current = ''
+    fetch('/api/dispatch').then(r => r.json()).then(d => {
+      if (cancelled) return
+      const data = d.data || {}; const st = data[boardKey] || {}
+      setJobs(Array.isArray(st.jobs) ? st.jobs : [])
+      setManualUn(Array.isArray(st.manualUn) ? st.manualUn : [])
+      if (Array.isArray(data._fleet) && data._fleet.length) setVehicles(data._fleet)
+      readyKey.current = boardKey
+    }).catch(() => { if (!cancelled) { setJobs([]); setManualUn([]); readyKey.current = boardKey } })
+    return () => { cancelled = true }
+  }, [boardKey, isDemo])
+
+  // 割当・車両の変更を日付別に自動保存（デモは保存しない・読み込み前は保存しない）
+  const saveTimer = useRef(null)
+  useEffect(() => {
+    if (isDemo || readyKey.current !== boardKey) return
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      fetch('/api/dispatch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: boardKey, jobs, manualUn, fleet: vehicles }) }).catch(() => {})
+    }, 800)
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
+  }, [jobs, manualUn, vehicles, boardKey, isDemo])
 
   // NOWライン：現在時刻（営業時間内のときだけ表示）
   const nowH = useMemo(() => { const d = new Date(); return d.getHours() + d.getMinutes() / 60 }, [])
@@ -83,12 +126,14 @@ export default function DispatchBoard({ filter, onToast }) {
   const assignHere = (vKey, hour) => {
     if (armed === null) { toast('未手配カードを選んでから枠をクリック'); return }
     const u = unassigned[armed]
+    if (!u) { setArmed(null); return }
     const dur = u.cat === 'move' ? 3 : 1.5
     const clash = jobs.some(j => j.v === vKey && hour < (j.s + j.d) && (hour + dur) > j.s)
     const isExt = !!(vehOf(vKey) || {}).ext
     const id = 'j' + (++idRef.current)
-    setJobs(prev => [...prev, { id, v: vKey, cat: u.cat, name: u.name, crew: u.crew, from: u.from, to: u.to, s: hour, d: dur, st: clash ? 'conflict' : 'tentative', src: String(u.src || '').toUpperCase(), amt: 0, extJob: isExt, locked: false }])
-    setUnassigned(prev => prev.filter((_, i) => i !== armed))
+    setJobs(prev => [...prev, { id, contractId: u.contractId, v: vKey, cat: u.cat, name: u.name, crew: u.crew, from: u.from, to: u.to, s: hour, d: dur, st: clash ? 'conflict' : 'tentative', src: String(u.src || '').toUpperCase(), amt: u.amt || 0, extJob: isExt, locked: false }])
+    // 成約由来カードはjobsのcontractIdでderive除外される。手動カード(manualUn)だけ実配列から取り除く。
+    if (armed >= contractCardsAvail.length) { const mi = armed - contractCardsAvail.length; setManualUn(prev => prev.filter((_, i) => i !== mi)) }
     setArmed(null)
     toast(clash ? '割り当てました（時間重複あり・要確認）' : '割り当てました')
   }
@@ -97,12 +142,12 @@ export default function DispatchBoard({ filter, onToast }) {
   const toggleLock = (id) => setJobs(prev => prev.map(j => j.id === id ? { ...j, locked: !j.locked } : j))
 
   // 配置済みカードを未手配一覧に戻す（ロック中は不可）
-  const jobToUn = (j) => ({ cat: j.cat, name: j.name, crew: j.crew, need: (vehOf(j.v) || {}).cls || '—', from: j.from, to: j.to, whn: '本日 ' + fmt(j.s), src: String(j.src || 'hp').toLowerCase() })
+  const jobToUn = (j) => ({ contractId: j.contractId, cat: j.cat, name: j.name, crew: j.crew, need: (vehOf(j.v) || {}).cls || '—', from: j.from, to: j.to, whn: '本日 ' + fmt(j.s), src: String(j.src || 'hp').toLowerCase(), amt: j.amt || 0 })
   const returnJob = (id) => {
     const j = jobs.find(x => x.id === id)
     if (!j || j.locked) return
-    setUnassigned(prev => [jobToUn(j), ...prev])
     setJobs(prev => prev.filter(x => x.id !== id))
+    if (!j.contractId) setManualUn(prev => [jobToUn(j), ...prev]) // 成約由来はderiveで自動的に未手配へ戻る
     toast('未手配に戻しました')
   }
 
@@ -119,8 +164,8 @@ export default function DispatchBoard({ filter, onToast }) {
     const orphaned = jobs.filter(j => !keys.has(j.v))
     if (orphaned.some(j => j.locked)) { toast('ロック中の予定がある車両は削除できません'); return false }
     if (orphaned.length) {
-      const ret = orphaned.map(jobToUn)
-      setUnassigned(prev => [...ret, ...prev])
+      const manualOrphans = orphaned.filter(j => !j.contractId).map(jobToUn) // 成約由来はderiveで戻る
+      if (manualOrphans.length) setManualUn(prev => [...manualOrphans, ...prev])
       setJobs(prev => prev.filter(j => keys.has(j.v)))
     }
     setVehicles(draft)
@@ -287,7 +332,7 @@ export default function DispatchBoard({ filter, onToast }) {
       )}
 
       {showCreate && (
-        <CreateModal onClose={() => setShowCreate(false)} onAdd={(u) => { setUnassigned(prev => [u, ...prev]); setShowCreate(false); toast('未手配に追加しました') }} />
+        <CreateModal onClose={() => setShowCreate(false)} onAdd={(u) => { setManualUn(prev => [u, ...prev]); setShowCreate(false); toast('未手配に追加しました') }} />
       )}
       {showVeh && (
         <VehicleModal vehicles={vehicles} jobs={jobs} onClose={() => setShowVeh(false)} onApply={applyVehicles} />

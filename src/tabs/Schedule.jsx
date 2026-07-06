@@ -5,6 +5,7 @@
 // - 永続化：/api/schedule（ライブ）。デモはサンプルをローカル表示。
 import { useState, useEffect, useMemo, useRef } from 'react'
 import DispatchBoard from '../components/DispatchBoard'
+import { DEMO_CONTRACTS } from '../lib/demoData'
 
 const GENRES = ['引っ越し', '見積り', '段ボール配達']
 const GENRE_COLOR = { '引っ越し': '#1E5FA8', '見積り': '#EAB308', '段ボール配達': '#22C55E' }
@@ -45,7 +46,7 @@ export default function Schedule({ user }) {
   const isDemo = user?.mode === 'demo'
   const now = new Date()
   const [items, setItems] = useState(isDemo ? SAMPLE : [])
-  const [contracts, setContracts] = useState([]) // 成約（売り上げ登録日でカレンダー表示）
+  const [contracts, setContracts] = useState(isDemo ? DEMO_CONTRACTS : []) // 成約（カレンダー表示＋配車ボードの案件元）
   const [loading, setLoading] = useState(!isDemo)
   const [viewY, setViewY] = useState(now.getFullYear())
   const [viewM, setViewM] = useState(now.getMonth()) // 0-indexed
@@ -192,7 +193,7 @@ export default function Schedule({ user }) {
       )}
 
       {/* ============ 配車ボード ============ */}
-      {view === 'board' && <DispatchBoard filter={catFilter} onToast={showToast} />}
+      {view === 'board' && <DispatchBoard filter={catFilter} onToast={showToast} contracts={contracts} boardDate={boardDate} isDemo={isDemo} />}
 
       {/* ============ 月カレンダー（既存）============ */}
       {view === 'month' && (loading ? (
