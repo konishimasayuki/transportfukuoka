@@ -77,3 +77,31 @@ export const DEMO_LEADS = (() => {
   })
   return out
 })()
+
+// ===== スケジュール(カレンダー)用の見積り・段ボール配達デモ =====
+// 引越し予定日はSchedule側で「成約(引越し日)」から表示するため、ここでは
+// 見積り・段ボール配達だけを当月に“少量”散りばめる（1日あたり0〜1件）。すべて架空。
+export const DEMO_SCHEDULE_EXTRA = (() => {
+  const items = []
+  const estNames = ['大塚', '三浦', '岡田', '小川', '中島', '藤本', '清水', '橋本', '武田', '東']
+  const estTimes = ['10:00', '11:30', '14:00', '16:00']
+  const estLoc = ['中央区高砂', '早良区西新', '南区大橋', '東区香椎', '西区姪浜', '博多区博多駅前', '城南区別府']
+  const estDays = [2, 4, 7, 11, 14, 17, 20, 23, 26]
+  estDays.forEach((day, i) => items.push({
+    id: 'des' + i, calendar: '見積り', title: `${estNames[i % estNames.length]}様 見積り訪問`,
+    allDay: false, start: `${YM}-${dd(day)}`, startTime: estTimes[i % estTimes.length], end: `${YM}-${dd(day)}`, endTime: '',
+    label: 'yellow', location: estLoc[i % estLoc.length], memo: '', attachments: [],
+  }))
+  const boxNames = ['リー', 'チャン', 'キム', 'グエン', '佐野', '原田', '工藤', '野口']
+  const boxTimes = ['09:00', '11:00', '13:30', '15:00']
+  const boxDays = [3, 8, 12, 15, 19, 22, 25, 27]
+  boxDays.forEach((day, i) => {
+    const allDay = i % 2 === 0
+    items.push({
+      id: 'dbx' + i, calendar: '段ボール配達', title: `${boxNames[i % boxNames.length]}様 段ボール配達`,
+      allDay, start: `${YM}-${dd(day)}`, startTime: allDay ? '' : boxTimes[i % boxTimes.length], end: `${YM}-${dd(day)}`, endTime: '',
+      label: 'green', location: estLoc[(i + 3) % estLoc.length], memo: '大10 / 小20', attachments: [],
+    })
+  })
+  return items
+})()

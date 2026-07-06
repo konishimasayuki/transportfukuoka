@@ -5,7 +5,7 @@
 // - 永続化：/api/schedule（ライブ）。デモはサンプルをローカル表示。
 import { useState, useEffect, useMemo, useRef } from 'react'
 import DispatchBoard from '../components/DispatchBoard'
-import { DEMO_CONTRACTS } from '../lib/demoData'
+import { DEMO_CONTRACTS, DEMO_SCHEDULE_EXTRA } from '../lib/demoData'
 
 const GENRES = ['引っ越し', '見積り', '段ボール配達']
 const GENRE_COLOR = { '引っ越し': '#1E5FA8', '見積り': '#EAB308', '段ボール配達': '#22C55E' }
@@ -45,7 +45,7 @@ const MAX_FILE = 1.5 * 1024 * 1024 // 添付1ファイルの上限（Redis肥大
 export default function Schedule({ user }) {
   const isDemo = user?.mode === 'demo'
   const now = new Date()
-  const [items, setItems] = useState(isDemo ? SAMPLE : [])
+  const [items, setItems] = useState(isDemo ? [...SAMPLE, ...DEMO_SCHEDULE_EXTRA] : [])
   const [contracts, setContracts] = useState(isDemo ? DEMO_CONTRACTS : []) // 成約（カレンダー表示＋配車ボードの案件元）
   const [loading, setLoading] = useState(!isDemo)
   const [viewY, setViewY] = useState(now.getFullYear())
@@ -232,11 +232,11 @@ export default function Schedule({ user }) {
                         }}>{d.getDate()}</span>
                       </div>
                       <div style={{ marginTop: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {/* 成約（売り上げ登録日）を金色チップで表示 */}
-                        {contractsOn(ds).map(c => (
-                          <div key={'c_' + c.id} title={`成約 ${c.name} ¥${(c.amount || 0).toLocaleString()}`}
-                            style={{ fontSize: 10, fontWeight: 700, color: '#7C4A03', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            💰 {c.name || '成約'} ¥{(c.amount || 0).toLocaleString()}
+                        {/* 成約を「引越し予定日(引越し日)」の引越し予定として表示（引っ越し表示中のみ）。金額は出さない。 */}
+                        {genres.includes('引っ越し') && contractsOn(ds).map(c => (
+                          <div key={'c_' + c.id} title={`引越し ${c.name || ''}${c.route ? ' ・ ' + c.route : ''}`}
+                            style={{ fontSize: 10, fontWeight: 700, color: '#fff', background: GENRE_COLOR['引っ越し'], borderRadius: 4, padding: '2px 5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            🚚 {c.name || 'お客'}様 引越し
                           </div>
                         ))}
                         {evs.slice(0, 5).map(e => (
