@@ -3,6 +3,7 @@
 // - 広告費(掲載費)は「広告費」タブと同じ自動算出ロジック(src/lib/adcost)で最新合計を表示。
 import { useEffect, useMemo, useState } from 'react'
 import { autoAdCostForMonth } from '../lib/adcost'
+import { DEMO_CONTRACTS, DEMO_LEADS } from '../lib/demoData'
 
 // 月選択（直近12ヶ月）
 function monthOptions() {
@@ -71,9 +72,9 @@ export default function Sales({ user, switchTab }) {
   const isDemo = user?.mode === 'demo'
   const months = useMemo(monthOptions, [])
   const [selMonth, setSelMonth] = useState(months[0].key)
-  const [contracts, setContracts] = useState([])
+  const [contracts, setContracts] = useState(isDemo ? DEMO_CONTRACTS : [])
   const [expenses, setExpenses] = useState({})
-  const [leads, setLeads] = useState([]) // 広告費を最新のリード件数から自動算出するため
+  const [leads, setLeads] = useState(isDemo ? DEMO_LEADS : []) // 広告費を最新のリード件数から自動算出するため
   const [loading, setLoading] = useState(!isDemo)
 
   useEffect(() => { if (!isDemo) fetchAll() }, [isDemo])

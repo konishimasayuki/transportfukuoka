@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from 'react'
 // 広告費（反響課金）自動算出の単価・集計ロジックは src/lib/adcost.js に集約（売上管理と共有）
 import { SAMURAI_SINGLE_UNIT, SAMURAI_FAMILY_UNIT, KAKAKU_UNIT, ZUBATTO_UNIT, AD_AUTO_FROM, AD_KEYS, AD_UNIT, adCountsByMonthDay } from '../lib/adcost'
+import { DEMO_LEADS } from '../lib/demoData'
 const AUTO_KEYS = AD_KEYS
 const AUTO_UNIT = AD_UNIT
 const AUTO_FROM = AD_AUTO_FROM
@@ -64,7 +65,7 @@ export default function AdCost({ user }) {
   const months = useMemo(monthOptions, [])
   const [selMonth, setSelMonth] = useState(months[0].key)
   const [expenses, setExpenses] = useState({})
-  const [leads, setLeads]       = useState([]) // 引越し侍の広告費 自動算出用
+  const [leads, setLeads]       = useState(isDemo ? DEMO_LEADS : []) // 引越し侍の広告費 自動算出用
   const [loading, setLoading]   = useState(!isDemo)
   const [saving, setSaving]     = useState(false)
   const [draftExp, setDraftExp] = useState({ daily: {}, monthly: {}, note: '' })
@@ -102,7 +103,8 @@ export default function AdCost({ user }) {
   const autoByMonthDay = useMemo(() => adCountsByMonthDay(leads), [leads])
 
   // この月は自動算出するか（デモ以外・2026-07以降）
-  const isAutoMonth = !isDemo && selMonth >= AUTO_FROM
+  // 対象月(2026-07以降)は自動算出。デモも表示は自動算出（保存はデモでは無効=saveExpensesでガード）。
+  const isAutoMonth = selMonth >= AUTO_FROM
   // 指定日の自動算出額と件数。自動対象外なら null。単身/家族は別々に保持。
   const autoDaily = (day) => {
     if (!isAutoMonth) return null

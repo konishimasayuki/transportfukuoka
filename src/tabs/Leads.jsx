@@ -109,6 +109,15 @@ const DEMO_DATA = [
   },
   // 既存に近いシンプルなレコード（詳細なし）
   { id: '3', site: 'ズバット', name: '稗田 和子', phone: '090-8356-3208', from: '福岡県福岡市中央区', to: '福岡県福岡市中央区', count: '1人', receivedAt: '06/23 07:45', moveDate: '06月24日 いつでも', status: '成約' },
+  // 追加のデモリード（すべて架空・当月中心）
+  { id: '4', site: '引越し侍', name: '大隈 亮介', kana: 'オオクマ リョウスケ', phone: '090-2244-6810', email: 'ryosuke_o@example.com', from: '福岡県福岡市東区', to: '福岡県糟屋郡新宮町', count: '2人', receivedAt: '07/02 10:20', moveDate: '07月20日 午前中', status: '架電済' },
+  { id: '5', site: '価格.com', name: '志村 遥',  kana: 'シムラ ハルカ', phone: '080-3391-5027', from: '福岡県福岡市南区', to: '福岡県春日市', count: '1人', receivedAt: '07/03 14:05', moveDate: '07月28日 いつでも', status: '未架電' },
+  { id: '6', site: '引越し侍', name: '網野 桂子', kana: 'アミノ ケイコ', phone: '090-7712-4488', from: '福岡県福岡市早良区', to: '福岡県福岡市博多区', count: '3人', receivedAt: '07/05 09:12', moveDate: '08月03日 午後', status: '未架電' },
+  { id: '7', site: 'ズバット', name: '真鍋 悠人', phone: '080-5560-1193', from: '福岡県大野城市', to: '福岡県福岡市中央区', count: '1人', receivedAt: '07/06 08:40', moveDate: '07月19日 午前中', status: '成約' },
+  { id: '8', site: '価格.com', name: '津久井 千尋', phone: '090-4408-2276', from: '福岡県福岡市西区', to: '福岡県糸島市', count: '2人', receivedAt: '07/07 16:55', moveDate: '08月10日 いつでも', status: '架電済' },
+  { id: '9', site: '引越し侍', name: '一之瀬 諒', phone: '080-6621-9034', from: '福岡県筑紫野市', to: '福岡県福岡市南区', count: '1人', receivedAt: '07/08 11:30', moveDate: '07月25日 午後', status: '未架電' },
+  { id: '10', site: 'ズバット', name: '柚木 沙耶', phone: '090-1180-7752', from: '福岡県福岡市城南区', to: '福岡県福岡市早良区', count: '2人', receivedAt: '07/09 13:18', moveDate: '08月01日 いつでも', status: '見送り' },
+  { id: '11', site: '引越し侍', name: '園田 敬三', phone: '090-9903-5561', from: '福岡県宗像市', to: '福岡県福岡市東区', count: '4人', receivedAt: '07/10 19:44', moveDate: '08月15日 午前中', status: '未架電' },
 ]
 
 const modalOverlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }

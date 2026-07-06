@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { DEMO_CONTRACTS } from '../lib/demoData'
 
 /* =========================================================================
  * 御見積書（株式会社トランスポーター）— 見積書タブ Phase A
@@ -258,7 +259,7 @@ const feeInput = { ...inputStyle, textAlign: 'right', padding: '6px 8px' }
 export default function Estimate({ user }) {
   const isDemo = user?.mode === 'demo'
   const [items, setItems]         = useState([])
-  const [contracts, setContracts] = useState([]) // 成約管理由来の行をマージ表示するため
+  const [contracts, setContracts] = useState(isDemo ? DEMO_CONTRACTS : []) // 成約管理由来の行をマージ表示するため
   const [loading, setLoading]     = useState(!isDemo)
   const [view, setView]       = useState('list')      // 'list' | 'edit'
   const [form, setForm]       = useState(emptyForm())
