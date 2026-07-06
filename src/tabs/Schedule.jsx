@@ -73,8 +73,8 @@ export default function Schedule({ user }) {
     setLoading(false)
   }
 
-  // 売り上げ登録日（無ければ引越し日）でその日の成約を返す
-  const contractsOn = (dateStr) => contracts.filter(c => (c.salesDate || c.date) === dateStr)
+  // 引越し日(＝配車日)でその日の成約を返す（配車ボードと基準日を統一。売上登録日では表示しない）
+  const contractsOn = (dateStr) => contracts.filter(c => c.date === dateStr)
 
   const toggleGenre = (g) => {
     setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
