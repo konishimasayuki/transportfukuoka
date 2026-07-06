@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { DEFAULT_STAFF } from '../lib/staff'
+import { DEFAULT_FLEET, TRUCK_CLASSES } from '../lib/fleet'
 
 // 担当者設定：名前を入力→登録。成約管理・成約登録の担当者プルダウンに反映される。
 function StaffSettings({ isDemo }) {
@@ -307,6 +308,96 @@ function GmapKeySettings() {
   )
 }
 
+// トラック（車両）設定：号車・クラス・乗務員・人数を登録。配車ボードのフリート(/api/dispatch の _fleet)に反映。
+function TruckSettings({ isDemo }) {
+  const [list, setList] = useState(DEFAULT_FLEET)
+  const [loading, setLoading] = useState(!isDemo)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const nextKey = useRef(1)
+  const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 2200) }
+
+  useEffect(() => {
+    if (isDemo) { setList(DEFAULT_FLEET); setLoading(false); return }
+    fetch('/api/dispatch')
+      .then(r => r.json())
+      .then(d => { const f = d && d.data && d.data._fleet; setList(Array.isArray(f) && f.length ? f : DEFAULT_FLEET) })
+      .catch(() => setList(DEFAULT_FLEET))
+      .finally(() => setLoading(false))
+  }, [isDemo])
+
+  const setField = (key, field, val) => setList(prev => prev.map(v => v.key === key ? { ...v, [field]: field === 'n' ? (parseInt(val, 10) || 0) : val } : v))
+  const addRow = () => setList(prev => [...prev, { key: 'v_new' + (nextKey.current++) + '_' + prev.length, id: '', cls: '2t', crew: '', n: 2 }])
+  const removeRow = (key) => setList(prev => prev.filter(v => v.key !== key))
+
+  const save = async () => {
+    // 号車が空の行は落とす（外注枠は除く）
+    const cleaned = list.filter(v => String(v.id || '').trim() || v.ext).map(v => ({ ...v, id: String(v.id || '').trim() }))
+    setList(cleaned)
+    if (isDemo) { flash('保存しました（デモ：保存なし）'); return }
+    setBusy(true)
+    try {
+      await fetch('/api/dispatch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fleet: cleaned }) })
+      flash('保存しました（配車ボードに反映されます）')
+    } catch { flash('保存に失敗しました') }
+    setBusy(false)
+  }
+
+  const ip = { width: '100%', padding: '7px 9px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff', color: '#1E293B', boxSizing: 'border-box' }
+  const th = { fontSize: 10, fontWeight: 700, color: '#64748B', textAlign: 'left', padding: '0 6px 6px' }
+
+  return (
+    <div className="card">
+      <div className="card-head"><h3>🚚 トラック設定</h3>{msg && <span className="c-sub" style={{ color: '#15803D' }}>{msg}</span>}</div>
+      <div className="card-body">
+        <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10, lineHeight: 1.6 }}>
+          自社トラック（号車・クラス・乗務員・人数）を登録します。<b>配車ボード</b>の車両行として使われます。
+        </div>
+        {loading ? (
+          <div style={{ fontSize: 12, color: '#94A3B8' }}>読み込み中...</div>
+        ) : (
+          <>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...th, width: 84 }}>号車</th>
+                  <th style={{ ...th, width: 116 }}>クラス</th>
+                  <th style={th}>乗務員</th>
+                  <th style={{ ...th, width: 62 }}>人数</th>
+                  <th style={{ ...th, width: 40 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map(v => (
+                  <tr key={v.key}>
+                    <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9' }}><input style={ip} value={v.id} onChange={e => setField(v.key, 'id', e.target.value)} placeholder="831" /></td>
+                    <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9' }}>
+                      <select style={ip} value={v.cls} onChange={e => setField(v.key, 'cls', e.target.value)}>
+                        {TRUCK_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9' }}><input style={ip} value={v.crew} onChange={e => setField(v.key, 'crew', e.target.value)} placeholder="田中 / 佐藤" /></td>
+                    <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9' }}><input type="number" min="0" style={ip} value={v.n} onChange={e => setField(v.key, 'n', e.target.value)} /></td>
+                    <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9', textAlign: 'center' }}>
+                      <button title="削除" onClick={() => removeRow(v.key)}
+                        style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 7, width: 26, height: 26, cursor: 'pointer', fontSize: 13 }}>×</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'space-between' }}>
+              <button className="btn btn-outline btn-sm" onClick={addRow}>＋ トラックを追加</button>
+              <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? '保存中…' : '保存する'}</button>
+            </div>
+            <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 8, lineHeight: 1.5 }}>※ 号車が空の行は保存時に除外されます。{isDemo ? 'デモアカウントでは保存されません。' : '保存すると配車ボードの車両に反映されます。'}</div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Settings({ user }) {
   const isDemo = user?.mode === 'demo'
   return (
@@ -346,6 +437,8 @@ export default function Settings({ user }) {
         </div>
 
         <div>
+          <TruckSettings isDemo={isDemo} />
+
           <GmapKeySettings />
 
           <div className="card">

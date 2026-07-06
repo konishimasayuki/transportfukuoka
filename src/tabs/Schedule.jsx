@@ -42,7 +42,8 @@ const todayStr = () => ymd(new Date())
 
 const MAX_FILE = 1.5 * 1024 * 1024 // 添付1ファイルの上限（Redis肥大化を避ける）
 
-export default function Schedule({ user }) {
+export default function Schedule({ user, switchTab, view = 'month' }) {
+  // view は App(サイドバータブ) から制御：'month'（月カレンダー）| 'board'（配車ボード）
   const isDemo = user?.mode === 'demo'
   const now = new Date()
   const [items, setItems] = useState(isDemo ? [...SAMPLE, ...DEMO_SCHEDULE_EXTRA] : [])
@@ -50,7 +51,6 @@ export default function Schedule({ user }) {
   const [loading, setLoading] = useState(!isDemo)
   const [viewY, setViewY] = useState(now.getFullYear())
   const [viewM, setViewM] = useState(now.getMonth()) // 0-indexed
-  const [view, setView] = useState('month')           // 'month'（月カレンダー）| 'board'（配車ボード）
   const [boardDate, setBoardDate] = useState(new Date()) // 配車ボードの対象日
   const [genres, setGenres] = useState([...GENRES])   // 表示中のジャンル（複数可）
   const [selDate, setSelDate] = useState(todayStr())
@@ -154,11 +154,14 @@ export default function Schedule({ user }) {
   return (
     <div>
       <div className="page-hdr" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-        <div><h1>スケジュール</h1><p>引っ越し・見積り・段ボール配達の予定を管理します</p></div>
-        <button className="btn btn-primary btn-sm" onClick={() => openAdd()}>＋ 予定を作成</button>
+        <div>
+          <h1>{view === 'board' ? '配車ボード' : '月カレンダー'}</h1>
+          <p>{view === 'board' ? '車両×時間で当日の配車を組み立てます' : '引っ越し・見積り・段ボール配達の予定を管理します'}</p>
+        </div>
+        {view === 'month' && <button className="btn btn-primary btn-sm" onClick={() => openAdd()}>＋ 予定を作成</button>}
       </div>
 
-      {/* ジャンル切替チップ（複数選択で重ね表示）＋ 表示トグル */}
+      {/* ジャンル切替チップ（複数選択で重ね表示） */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
         {GENRES.map(g => (
           <span key={g} style={chip(genres.includes(g), GENRE_COLOR[g])} onClick={() => toggleGenre(g)}>
@@ -167,10 +170,6 @@ export default function Schedule({ user }) {
           </span>
         ))}
         <div style={{ flex: 1 }} />
-        <div className="db-seg">
-          <button className={view === 'month' ? 'on' : ''} onClick={() => setView('month')}>🗓 月カレンダー</button>
-          <button className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}>🚚 配車ボード</button>
-        </div>
         {!isDemo && view === 'month' && <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={loading}>⟳ 更新</button>}
       </div>
 
@@ -217,8 +216,8 @@ export default function Schedule({ user }) {
                   const isSel = ds === selDate
                   const evs = eventsOn(ds)
                   return (
-                    // 日付クリックでその日の配車ボードを開く
-                    <div key={idx} onClick={() => { setSelDate(ds); setBoardDate(d); setView('board') }}
+                    // 日付クリックでその日の配車ボード（配車ボードタブ）を開く
+                    <div key={idx} onClick={() => { setSelDate(ds); setBoardDate(d); switchTab && switchTab('board') }}
                       style={{
                         minHeight: 128, borderRight: '1px solid #EEF2F7', borderBottom: '1px solid #EEF2F7',
                         padding: 5, cursor: 'pointer', background: isSel ? '#EFF6FF' : inMonth ? '#fff' : '#FAFBFC',

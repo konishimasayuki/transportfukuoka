@@ -6,7 +6,8 @@ const TITLES = {
   leads:     'リード管理',
   call:      '架電機能',
   estimate:  '見積書',
-  schedule:  'スケジュール',
+  schedule:  '月カレンダー',
+  board:     '配車ボード',
   settings:  '設定',
   debug:     'デバッグ（架電テスト）',
 }

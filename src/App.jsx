@@ -23,6 +23,7 @@ const TABS = {
   call: Call,
   estimate: Estimate,
   schedule: Schedule,
+  board: Schedule, // 配車ボード（Schedule と同一コンポーネント：view で切替、state は保持される）
   settings: Settings,
   debug: Debug,
 }
@@ -90,7 +91,7 @@ export default function App() {
       <div className="main">
         <Topbar activeTab={activeTab} onMenuClick={() => setSidebarOpen(true)} onRefresh={refresh} loading={loading} user={user} />
         <div className="content">
-          <ActiveTab user={user} switchTab={switchTab} />
+          <ActiveTab user={user} switchTab={switchTab} view={safeTab === 'board' ? 'board' : 'month'} />
         </div>
       </div>
       <LeadNotifier user={user} switchTab={switchTab} />

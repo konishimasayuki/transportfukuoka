@@ -6,7 +6,8 @@ const NAV_ITEMS = [
   { tab: 'leads',     icon: '📥', label: 'リード管理' },
   { tab: 'call',      icon: '📞', label: '架電機能' },
   { tab: 'estimate',  icon: '📝', label: '見積書', isNew: true },
-  { tab: 'schedule',  icon: '📅', label: 'スケジュール', isNew: true },
+  { tab: 'schedule',  icon: '📅', label: '月カレンダー', isNew: true },
+  { tab: 'board',     icon: '🚚', label: '配車ボード', isNew: true },
   { tab: 'settings',  icon: '⚙️', label: '設定' },
   { tab: 'debug',     icon: '🧪', label: 'デバッグ' },
 ]

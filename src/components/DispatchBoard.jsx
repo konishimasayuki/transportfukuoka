@@ -9,6 +9,7 @@
 // データはダミー配列（後で /api/schedule 等の実データ・型に差し替え可能）。
 // 車両は内部キー(key)で参照し、号車番号(id)を変更してもジョブの紐付けが壊れない設計。
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { DEFAULT_FLEET } from '../lib/fleet'
 
 const START = 8, END = 19, COLS = END - START // 08:00–19:00 = 11列
 const CAT_NAME = { move: '引っ越し', quote: '見積り', box: '段ボール配達' }
@@ -18,13 +19,8 @@ const pctL = (h) => ((h - START) / COLS) * 100
 const pctW = (d) => (d / COLS) * 100
 
 // ---- 初期ダミーデータ（外注枠は含めない：必要時に追加）----
-const INIT_VEHICLES = [
-  { key: 'v1', id: '831', cls: '2t', crew: '田中 / 佐藤', n: 2 },
-  { key: 'v2', id: '712', cls: '2tロング', crew: '山本 / 中村', n: 2 },
-  { key: 'v3', id: '405', cls: '3t', crew: '高橋班', n: 3 },
-  { key: 'v4', id: '218', cls: '4t', crew: '伊藤班', n: 3 },
-  { key: 'v5', id: '109', cls: '軽', crew: '小林', n: 1 },
-]
+// 車両フリートの初期値は設定「トラック設定」と共有（src/lib/fleet.js）。
+const INIT_VEHICLES = DEFAULT_FLEET
 const INIT_JOBS = [
   { id: 'j1', v: 'v1', cat: 'move', name: '松本 様', crew: '2名', from: '早良区', to: '中央区', s: 9, d: 3, st: 'confirmed', src: 'SUUMO', amt: 52000 },
   { id: 'j2', v: 'v1', cat: 'quote', name: '井上 様', crew: '2名', from: '南区', to: '—', s: 14, d: 1.5, st: 'tentative', src: 'HP', amt: 0 },
