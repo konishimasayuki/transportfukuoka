@@ -261,6 +261,52 @@ function SettingRow({ label, desc, children }) {
   )
 }
 
+// Googleマップ設定：APIキーを localStorage(tf_gmaps_key) に保存し、配車ルートマップを実地図に切り替える。
+// キーはクライアント側で使うもの（元々ブラウザに露出）。Google側でHTTPリファラー制限して保護する前提。
+function GmapKeySettings() {
+  const [key, setKey] = useState('')
+  const [saved, setSaved] = useState('')
+  const [msg, setMsg] = useState('')
+  useEffect(() => { try { setSaved(localStorage.getItem('tf_gmaps_key') || '') } catch {} }, [])
+  const mask = (k) => k ? (k.length > 8 ? k.slice(0, 4) + '••••' + k.slice(-4) : '設定済み') : ''
+  const save = () => {
+    const k = key.trim()
+    if (!k) { setMsg('キーを入力してください'); return }
+    try { localStorage.setItem('tf_gmaps_key', k) } catch {}
+    setMsg('保存しました。反映のため再読み込みします…')
+    setTimeout(() => { try { location.reload() } catch {} }, 900)
+  }
+  const clear = () => {
+    try { localStorage.removeItem('tf_gmaps_key') } catch {}
+    setMsg('解除しました。概略図に戻します…')
+    setTimeout(() => { try { location.reload() } catch {} }, 900)
+  }
+  return (
+    <div className="card">
+      <div className="card-head"><h3>🗺 Googleマップ設定</h3>{msg && <span className="c-sub" style={{ color: '#15803D' }}>{msg}</span>}</div>
+      <div className="card-body">
+        <div style={{ fontSize: 12, color: 'var(--sub)', marginBottom: 8, lineHeight: 1.6 }}>
+          配車ルートマップを<b>実際のGoogleマップ＋実道路ルート</b>に切り替えます。未設定時は概略図で動作します。
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+          現在の状態：{saved ? <b style={{ color: '#15803D' }}>設定済み（{mask(saved)}）</b> : '未設定（概略図）'}
+        </div>
+        <input type="password" value={key} onChange={e => setKey(e.target.value)} placeholder="Google Maps APIキーを貼り付け"
+          style={{ width: '100%', padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', marginBottom: 8, boxSizing: 'border-box' }} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary btn-sm" onClick={save}>保存して反映</button>
+          {saved && <button className="btn btn-outline btn-sm" onClick={clear}>解除（概略図に戻す）</button>}
+        </div>
+        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 10, lineHeight: 1.6 }}>
+          ※ 必要API：Maps JavaScript API ／ Directions API（単一地点は Geocoding API）。<br />
+          ※ セキュリティ：Google側でキーを「HTTPリファラー」制限してください。<br />
+          ※ この設定は<b>このブラウザのみ</b>有効です。全端末に反映するには Vercel環境変数 <code>VITE_GOOGLE_MAPS_KEY</code> を設定して再デプロイしてください。
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Settings({ user }) {
   const isDemo = user?.mode === 'demo'
   return (
@@ -300,6 +346,8 @@ export default function Settings({ user }) {
         </div>
 
         <div>
+          <GmapKeySettings />
+
           <div className="card">
             <div className="card-head"><h3>🏢 会社情報</h3></div>
             <div className="card-body">
