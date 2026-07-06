@@ -344,6 +344,23 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
           )
         })()}
 
+        {/* 獲得の内訳（拡張機能が計測した段階別の時間。timingを持つリードのみ表示） */}
+        {item.timing && (() => {
+          const total = captureLagSec(item)
+          const B = (item.timing.list || 0) / 1000
+          const D = (item.timing.detail || 0) / 1000
+          const A = total != null ? Math.max(0, total - B - D) : null
+          return (
+            <div style={{ fontSize: 11, color: '#64748B', padding: '10px 14px', borderBottom: '1px solid #EEF2F7', lineHeight: 1.8 }}>
+              <div style={{ fontWeight: 700, color: '#475569', marginBottom: 2 }}>獲得の内訳（段階別）</div>
+              {A != null && <div>A 巡回待ち：約{Math.round(A)}秒 <span style={{ color: '#94A3B8' }}>（受付の分精度の誤差・送信を含む）</span></div>}
+              <div>B 一覧取得：{B.toFixed(1)}秒</div>
+              <div>D 詳細取得：{D.toFixed(1)}秒</div>
+              {total != null && <div style={{ fontWeight: 700 }}>合計：{total}秒</div>}
+            </div>
+          )
+        })()}
+
         {/* 日時 */}
         <div style={{ fontSize: 11, color: '#94A3B8', padding: '10px 14px', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           {item.receivedAt && <span>ズバット登録: {item.receivedAt}</span>}

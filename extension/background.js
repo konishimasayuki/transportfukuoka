@@ -625,7 +625,9 @@ function samuraiLoop(gen, todayMD) {
   async function tick() {
     if (window.__tfSamuraiGen !== gen) return // 新しい注入が来たら旧ループは終了
     try {
+      const _listT0 = Date.now()
       let ldoc = await fetchList()
+      const listMs = Date.now() - _listT0 // B:一覧取得の所要(ms)
       // ログイン画面が返る＝セッション切れ。まず自動再ログインを試み、ダメなら未接続通知してスキップ。
       if (ldoc && ldoc.querySelector('input[type="password"]')) {
         const ok = await relogin(ldoc)
@@ -649,13 +651,15 @@ function samuraiLoop(gen, todayMD) {
         for (const base of fresh.slice(0, PER)) {
           if (window.__tfSamuraiGen !== gen) return
           try {
+            const _detT0 = Date.now()
             const doc = await fetchDoc('/admin/request/detail/id/' + base.id)
+            const detailMs = Date.now() - _detT0 // D:詳細取得の所要(ms)
             const map = buildLabelMap(doc); const get = k => map[k] || ''
             const phone = (get('電話番号').match(/0\d{1,4}-\d{1,4}-\d{3,4}/) || [''])[0]
             const email = (get('メールアドレス').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [''])[0]
             const name = get('名前').replace(/\s*様$/, '').replace(/\s*さん$/, '') || base.name
             const k = parseKazaiFull(doc)
-            const lead = { site: '引越し侍', key: phone || ('引越し侍:' + base.id), phone, name, kana: get('フリガナ'), email, count: get('引越し人数') || base.type, from: addrOf(doc, '現住所') || base.fromPref, to: addrOf(doc, '引越し先') || base.toPref, receivedAt: base.receivedAt, moveDate: get('引越し希望日') || base.moveDate, preferredTime: get('引越し希望時間'), referenceFee: get('表示料金相場'), request: get('備考・その他要望'), orderId: String(base.id), kazai: k.kazai, boxCount: k.boxCount, detail: true, detectedAt: new Date().toISOString() }
+            const lead = { site: '引越し侍', key: phone || ('引越し侍:' + base.id), phone, name, kana: get('フリガナ'), email, count: get('引越し人数') || base.type, from: addrOf(doc, '現住所') || base.fromPref, to: addrOf(doc, '引越し先') || base.toPref, receivedAt: base.receivedAt, moveDate: get('引越し希望日') || base.moveDate, preferredTime: get('引越し希望時間'), referenceFee: get('表示料金相場'), request: get('備考・その他要望'), orderId: String(base.id), kazai: k.kazai, boxCount: k.boxCount, detail: true, timing: { list: listMs, detail: detailMs }, detectedAt: new Date().toISOString() }
             const r = await send(lead)
             if (r && r.ok) { seen.add(base.id); changed = true; cnt++ }
           } catch (e) { /* skip */ }
