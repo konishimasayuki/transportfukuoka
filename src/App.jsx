@@ -30,6 +30,9 @@ const TABS = {
 const USERS = {
   a: { id: 'a', name: 'デモユーザー', mode: 'demo' },
   b: { id: 'b', name: 'トランスポート福岡', mode: 'live' },
+  // 東部生コン(株)向けデモ：DB非依存(mode:'demo')・開発者(デバッグ)非表示・会社名ブランディング。
+  // 会社名以外は全て架空。
+  z: { id: 'z', name: '東部生コン株式会社', mode: 'demo', company: '東部生コン(株)', hideDev: true },
 }
 
 const STORAGE_KEY = 'tf_user'
@@ -72,7 +75,9 @@ export default function App() {
 
   if (!user) return <Login users={USERS} onLogin={handleLogin} />
 
-  const ActiveTab = TABS[activeTab]
+  // 開発者(デバッグ)非表示ユーザーは debug に入れない（ガード）
+  const safeTab = (user.hideDev && activeTab === 'debug') ? 'dashboard' : activeTab
+  const ActiveTab = TABS[safeTab] || Dashboard
 
   return (
     <div className="app">
