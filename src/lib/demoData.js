@@ -30,6 +30,18 @@ export const DEMO_CONTRACTS = [
   { id: 'dc18', name: '堀江 実咲',  src: 'bg', srcLabel: '価格.com', route: '中央区→城南区', amount: 49000,  badge: 'bg', status: '成約済み', staff: '松本 亮' },
   { id: 'dc19', name: '大西 康平',  src: 'bb', srcLabel: '引越し侍', route: '博多区→糟屋郡', amount: 142000, badge: 'bg', status: '成約済み', staff: '大谷 彩' },
   { id: 'dc20', name: '及川 里穂',  src: 'bp', srcLabel: 'SUUMO',   route: '西区→中央区',   amount: 97000,  badge: 'bg', status: '成約済み', staff: '井上 悠' },
+  { id: 'dc21', name: '桑田 隼人',  src: 'bb', srcLabel: '引越し侍', route: '東区→福津市',   amount: 76000,  badge: 'bg', status: '成約済み', staff: '松本 亮' },
+  { id: 'dc22', name: '白石 詩',    src: 'bp', srcLabel: 'SUUMO',   route: '博多区→中央区', amount: 134000, badge: 'bg', status: '成約済み', staff: '大谷 彩' },
+  { id: 'dc23', name: '谷口 楓',    src: 'bo', srcLabel: 'ズバット', route: '南区→春日市',   amount: 58000,  badge: 'bg', status: '成約済み', staff: '井上 悠' },
+  { id: 'dc24', name: '安藤 拓也',  src: 'bb', srcLabel: '引越し侍', route: '西区→糸島市',   amount: 112000, badge: 'bg', status: '成約済み', staff: '森 香織' },
+  { id: 'dc25', name: '中川 采', src: 'bg', srcLabel: '価格.com', route: '中央区→南区',   amount: 47000,  badge: 'bb', status: '交渉中',   staff: '松本 亮' },
+  { id: 'dc26', name: '樋口 大和',  src: 'bb', srcLabel: '引越し侍', route: '早良区→西区',   amount: 95000,  badge: 'bg', status: '成約済み', staff: '大谷 彩' },
+  { id: 'dc27', name: '別府 千歳',  src: 'bo', srcLabel: 'ズバット', route: '城南区→早良区', amount: 68000,  badge: 'bg', status: '成約済み', staff: '井上 悠' },
+  { id: 'dc28', name: '荒木 悠真',  src: 'bb', srcLabel: '引越し侍', route: '博多区→大野城市', amount: 158000, badge: 'bg', status: '成約済み', staff: '森 香織' },
+  { id: 'dc29', name: '川原 紗希',  src: 'bp', srcLabel: 'SUUMO',   route: '中央区→筑紫野市', amount: 83000,  badge: 'bg', status: '成約済み', staff: '松本 亮' },
+  { id: 'dc30', name: '尾崎 圭',    src: 'bg', srcLabel: '価格.com', route: '南区→那珂川市', amount: 51000,  badge: 'bg', status: '成約済み', staff: '大谷 彩' },
+  { id: 'dc31', name: '甲斐 陽菜',  src: 'bb', srcLabel: '引越し侍', route: '東区→宗像市',   amount: 124000, badge: 'bg', status: '成約済み', staff: '井上 悠' },
+  { id: 'dc32', name: '芝田 康介',  src: 'bo', srcLabel: 'ズバット', route: '西区→中央区',   amount: 89000,  badge: 'bg', status: '成約済み', staff: '森 香織' },
 ].map((c, i) => {
   const day = dd(2 + (i * 2) % 26) // 当月の2日〜に散らす
   return { ...c, date: `${YM}-${day}`, salesDate: `${YM}-${day}` }
