@@ -61,6 +61,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
   const [jobs, setJobs] = useState([])          // その日の割当（/api/dispatch で日付別に保存）
   const [manualUn, setManualUn] = useState([])  // 成約以外の未手配カード（手動追加・非成約の戻し）。成約由来は下でderive
   const [armed, setArmed] = useState(null)   // 選択中の未手配カードindex
+  const [dragId, setDragId] = useState(null) // ドラッグ中の配置済みジョブid（車両間移動）
   const [tip, setTip] = useState(null)       // ツールチップ { job, x, y }
   const [showCreate, setShowCreate] = useState(false)
   const [showVeh, setShowVeh] = useState(false)
@@ -104,6 +105,17 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
   }, [jobs, manualUn, vehicles, boardKey, isDemo])
 
+  // ツールチップ(hover詳細)が画面に残る不具合対策：モーダルを開いた時、
+  // またはクリック/スクロールが起きた時に必ず閉じる（mouseleaveが発火しないケースの保険）。
+  useEffect(() => { if (showCreate || showVeh) setTip(null) }, [showCreate, showVeh])
+  useEffect(() => {
+    if (!tip) return
+    const clear = () => setTip(null)
+    document.addEventListener('click', clear, true)
+    window.addEventListener('scroll', clear, true)
+    return () => { document.removeEventListener('click', clear, true); window.removeEventListener('scroll', clear, true) }
+  }, [tip])
+
   // NOWライン：現在時刻（営業時間内のときだけ表示）
   const nowH = useMemo(() => { const d = new Date(); return d.getHours() + d.getMinutes() / 60 }, [])
   const showNow = nowH >= START && nowH <= END
@@ -136,6 +148,20 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
     if (armed >= contractCardsAvail.length) { const mi = armed - contractCardsAvail.length; setManualUn(prev => prev.filter((_, i) => i !== mi)) }
     setArmed(null)
     toast(clash ? '割り当てました（時間重複あり・要確認）' : '割り当てました')
+  }
+
+  // 配置済みカードを別の車両／時間へ移動（ドラッグ＆ドロップ）。ロック中は不可。時間が重なれば conflict。
+  const moveJob = (id, vKey, hour) => {
+    if (!id) return
+    const j = jobs.find(x => x.id === id)
+    if (!j || j.locked) return
+    if (j.v === vKey && j.s === hour) return // 同じ位置なら何もしない
+    const clash = jobs.some(o => o.id !== id && o.v === vKey && hour < (o.s + o.d) && (hour + j.d) > o.s)
+    const isExt = !!(vehOf(vKey) || {}).ext
+    setJobs(prev => prev.map(x => x.id === id
+      ? { ...x, v: vKey, s: hour, st: clash ? 'conflict' : (x.st === 'confirmed' ? 'confirmed' : 'tentative'), extJob: isExt }
+      : x))
+    toast(clash ? '移動しました（時間重複あり・要確認）' : '移動しました')
   }
 
   // 配置済みカードのロック切替
@@ -255,14 +281,20 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
                       <div className="db-vc">{v.crew}{v.n ? ` · ${v.n}名` : ''}</div>
                     </div>
                   </div>
-                  <div className={'db-lane' + (armed !== null ? ' armed' : '')}>
-                    {/* 空き枠（クリックで割当） */}
+                  <div className={'db-lane' + (armed !== null || dragId ? ' armed' : '')}>
+                    {/* 空き枠（クリックで割当／ドラッグ中はドロップ先） */}
                     {Array.from({ length: COLS }, (_, i) => (
-                      <div key={i} className="db-slot" style={{ left: pctL(START + i) + '%' }} onClick={() => assignHere(v.key, START + i)} />
+                      <div key={i} className="db-slot" style={{ left: pctL(START + i) + '%' }}
+                        onClick={() => assignHere(v.key, START + i)}
+                        onDragOver={(e) => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } }}
+                        onDrop={(e) => { e.preventDefault(); const id = dragId || e.dataTransfer.getData('text/plain'); moveJob(id, v.key, START + i); setDragId(null) }} />
                     ))}
-                    {/* ジョブブロック */}
+                    {/* ジョブブロック（ロック中以外はドラッグで他車両へ移動可） */}
                     {jobs.filter(j => j.v === v.key && show(j.cat)).map((j) => (
-                      <div key={j.id} className={jobClass(j) + (j.locked ? ' locked' : '')}
+                      <div key={j.id} className={jobClass(j) + (j.locked ? ' locked' : '') + (dragId === j.id ? ' dragging' : '')}
+                        draggable={!j.locked}
+                        onDragStart={(e) => { setTip(null); setDragId(j.id); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', j.id) } catch {} }}
+                        onDragEnd={() => setDragId(null)}
                         style={{ left: pctL(j.s) + '%', width: `calc(${pctW(j.d)}% - 6px)` }}
                         onMouseMove={(e) => moveTip(e, j)} onMouseLeave={() => setTip(null)}>
                         {j.locked && <span className="db-lockbadge">🔒</span>}
@@ -297,7 +329,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
             <div className="t"><span className="dot" />未手配案件</div>
             <div className="cnt">{unassigned.length}</div>
           </div>
-          <div className="db-side-hint">カードを選び、ボードの空き枠をクリックで割り当て</div>
+          <div className="db-side-hint">カードを選び、ボードの空き枠をクリックで割り当て。配置済みカードはドラッグで別の車両へ移動できます。</div>
           <div className="db-side-list">
             {unassigned.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 14 }}>未手配はありません</div>}
             {unassigned.map((u, i) => show(u.cat) && (
@@ -586,19 +618,41 @@ function GoogleRouteMap({ routes }) {
   )
 }
 
-// ラッパー：APIキーがあれば実地図、無ければ概略図に自動フォールバック
+// ラッパー：APIキーがあれば実地図、無ければ概略図に自動フォールバック。
+// キーがある場合はトグルでGoogleマップAPIのON/OFFを切替可（OFFで概略図＝API呼び出し0）。
+// OFF状態は localStorage 'tf_gmaps_off' に保存し、リロード後も維持する。
 function DispatchMap({ vehicles, jobs, show }) {
   const routes = useMemo(() => computeVehicleRoutes(vehicles, jobs, show), [vehicles, jobs, show])
+  const hasKey = !!GMAPS_KEY
+  const [gmapOn, setGmapOn] = useState(() => {
+    try { return hasKey && localStorage.getItem('tf_gmaps_off') !== '1' } catch { return hasKey }
+  })
+  const toggle = () => setGmapOn(prev => {
+    const next = !prev
+    try { localStorage.setItem('tf_gmaps_off', next ? '0' : '1') } catch {}
+    return next
+  })
+  const useGmap = hasKey && gmapOn
   return (
     <div className="card" style={{ marginBottom: 14 }}>
       <div className="card-head">
         <h3>🗺 配車ルートマップ <span className="c-sub">· 各車両の進行ルート</span></h3>
-        <span className="c-sub">{GMAPS_KEY ? 'Googleマップ' : '区の相対位置に基づく概略図'}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span className="c-sub">{useGmap ? 'Googleマップ' : '区の相対位置に基づく概略図'}</span>
+          {hasKey && (
+            <button type="button" onClick={toggle}
+              title={gmapOn ? 'Googleマップ APIを使用中（クリックで概略図に切替＝API呼び出し停止）' : '概略図を表示中（クリックでGoogleマップに切替）'}
+              className={'db-gmap-toggle' + (gmapOn ? ' on' : '')}>
+              <span className="knob" />
+              <span className="lbl">Googleマップ API {gmapOn ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
+        </div>
       </div>
       <div className="card-body" style={{ padding: 12 }}>
         {routes.length === 0
           ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
-          : (GMAPS_KEY ? <GoogleRouteMap routes={routes} /> : <SchematicMap routes={routes} />)}
+          : (useGmap ? <GoogleRouteMap routes={routes} /> : <SchematicMap routes={routes} />)}
       </div>
     </div>
   )
