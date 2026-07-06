@@ -12,6 +12,7 @@ const ZBA_CSRF = 'https://hikkoshi-kanri.zba.jp/hikkoshi-kanriengine-api/csrf'
 
 const KEEPALIVE_ALARM    = 'zba-keepalive'
 const KEEPALIVE_STALE_MS = 90 * 1000   // タブ側ハートビートがこれより古ければ背面で生存確認
+const STALE_RELOAD_MS    = 4 * 60 * 1000 // ハートビートがこれより長く途絶＝frozen/停止とみなしタブ再読込（営業時間中・最短間隔も兼ねる）
 const SAMURAI_ALARM      = 'samurai-poll'
 
 chrome.runtime.onInstalled.addListener(ensureAlarm)
@@ -43,9 +44,19 @@ ensureKakakuLoop()
 // ===== ズバット セッション・キープアライブ =====
 async function keepAlive() {
   try {
-    // ズバットのタブがメモリセーバーで休止していたら復帰（content.jsを再起動して監視継続）
-    try { const zt = await chrome.tabs.query({ url: 'https://hikkoshi-kanri.zba.jp/*' }); zt.forEach(t => { if (t.discarded) chrome.tabs.reload(t.id) }) } catch {}
-    const { lastBeatAt } = await chrome.storage.local.get(['lastBeatAt'])
+    const { lastBeatAt, zbaLastReloadAt } = await chrome.storage.local.get(['lastBeatAt', 'zbaLastReloadAt'])
+    const beatStale = !lastBeatAt || (Date.now() - lastBeatAt) > STALE_RELOAD_MS
+    const _h = new Date().getHours(); const business = _h >= 6 && _h < 24
+    // ズバットのタブが休止(discarded)、または長時間ハートビート途絶(frozen/停止)なら再読込してcontent.jsを再起動。
+    try {
+      const zt = await chrome.tabs.query({ url: 'https://hikkoshi-kanri.zba.jp/*' })
+      for (const t of zt) {
+        if (t.discarded) { try { chrome.tabs.reload(t.id) } catch {} }
+        else if (beatStale && business && (!zbaLastReloadAt || Date.now() - zbaLastReloadAt > STALE_RELOAD_MS)) {
+          try { await chrome.tabs.reload(t.id); await chrome.storage.local.set({ zbaLastReloadAt: Date.now() }) } catch {}
+        }
+      }
+    } catch {}
     if (lastBeatAt && (Date.now() - lastBeatAt) < KEEPALIVE_STALE_MS) return // タブが生存ポーリング中
     const r = await fetch(ZBA_CSRF, { method: 'GET', credentials: 'include', headers: { accept: 'application/json' } })
     if (r.status === 401 || r.status === 403) { setAuthBadge(false); await postStatus(false, 'auth'); return }

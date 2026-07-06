@@ -293,24 +293,26 @@ async function csrfForLogin() {
   } catch { return null }
 }
 
+// 戻り値：成功=true / 失敗=理由文字列（'night','no-creds','no-csrf','http-XXX','fetch-error'）。
+// 呼び出し側は「誤ID/PWによる拒否(http-401/403)・no-creds」だけをハード失敗として上限カウントする。
 async function relogin() {
-  if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) { safeStorageSet({ zbaReloginReason: '夜間（22〜6時）は再ログイン休止' }); return false } // 夜間22〜6時は再ログイン休止
+  if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) { safeStorageSet({ zbaReloginReason: '夜間（22〜6時）は再ログイン休止' }); return 'night' } // 夜間22〜6時は再ログイン休止
   let creds = {}
-  try { creds = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword']) } catch { safeStorageSet({ zbaReloginReason: 'storage-error' }); return false }
-  if (!creds.zbaLoginId || !creds.zbaPassword) { safeStorageSet({ zbaReloginReason: 'no-creds（ID/PW未保存）' }); return false }
+  try { creds = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword']) } catch { safeStorageSet({ zbaReloginReason: 'storage-error' }); return 'storage-error' }
+  if (!creds.zbaLoginId || !creds.zbaPassword) { safeStorageSet({ zbaReloginReason: 'no-creds（ID/PW未保存）' }); return 'no-creds' }
   const token = await csrfForLogin()
-  if (!token) { safeStorageSet({ zbaReloginReason: 'no-csrf（CSRF取得不可）' }); return false }
+  if (!token) { safeStorageSet({ zbaReloginReason: 'no-csrf（CSRF取得不可）' }); return 'no-csrf' }
   try {
     const r = await fetch(`${ZBA_API}/supplier-kanri/login`, {
       method: 'POST', credentials: 'include',
       headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
       body: JSON.stringify({ loginId: creds.zbaLoginId, password: creds.zbaPassword }),
     })
-    if (!r.ok) { safeStorageSet({ zbaReloginReason: 'login-http-' + r.status }); return false }
+    if (!r.ok) { safeStorageSet({ zbaReloginReason: 'login-http-' + r.status }); return 'http-' + r.status }
     invalidateCsrf() // ログイン後はトークンを取り直す
     safeStorageSet({ zbaReloginReason: 'ok' })
     return true
-  } catch (e) { safeStorageSet({ zbaReloginReason: 'fetch-error' }); return false }
+  } catch (e) { safeStorageSet({ zbaReloginReason: 'fetch-error' }); return 'fetch-error' }
 }
 
 // authError 時の回復試行。成功したら true（呼び出し側はそのまま継続/次サイクルで再取得）。
@@ -323,8 +325,8 @@ async function tryRecoverAuth() {
   if (now - lastReloginAt < RELOGIN_MIN_GAP) return false // 5分に1回まで
   lastReloginAt = now
   console.log(`[リード監視:${SITE}] 自動再ログインを試行`)
-  const ok = await relogin()
-  if (ok) {
+  const res = await relogin()
+  if (res === true) {
     reloginFails = 0
     setAuthState(true)
     postStatus(true, '')
@@ -332,9 +334,12 @@ async function tryRecoverAuth() {
     console.log(`[リード監視:${SITE}] ✓ 自動再ログイン成功`)
     return true
   }
-  reloginFails++
+  // ロック防止：誤ID/PWによる拒否(http-401/403)・資格情報未設定のみ“ハード失敗”として上限にカウントし停止。
+  // 一時的失敗(CSRF取得不可・通信エラー・サーバ5xx・夜間休止)は上限にカウントせず、5分ごとに自動リトライを継続する。
+  const hardFail = (res === 'no-creds' || res === 'http-401' || res === 'http-403')
+  if (hardFail) reloginFails++
   safeStorageSet({ zbaReloginResult: 'fail', zbaReloginAt: Date.now() })
-  console.warn(`[リード監視:${SITE}] 自動再ログイン失敗 (${reloginFails}/${RELOGIN_MAX_FAILS})`)
+  console.warn(`[リード監視:${SITE}] 自動再ログイン失敗 res=${res} hard=${hardFail} (${reloginFails}/${RELOGIN_MAX_FAILS})`)
   return false
 }
 
