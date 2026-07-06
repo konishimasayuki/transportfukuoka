@@ -302,6 +302,13 @@ tr:hover td { background: var(--bg); }
 .db-badge { font-weight: 900; font-size: 12px; color: #fff; background: #334155; border-radius: 8px; padding: 5px 7px; min-width: 42px; text-align: center; line-height: 1.1; flex: none; }
 .db-vt { font-weight: 700; font-size: 12px; white-space: nowrap; }
 .db-vc { font-size: 10px; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+.db-vc-edit { cursor: pointer; border-radius: 5px; padding: 1px 4px; margin-left: -4px; display: inline-flex; align-items: center; gap: 3px; max-width: 118px; overflow: hidden; text-overflow: ellipsis; transition: background .12s; }
+.db-vc-edit:hover { background: #EFF3F9; }
+.db-vc-pen { opacity: 0; font-size: 9px; color: var(--blue); transition: opacity .12s; }
+.db-vc-edit:hover .db-vc-pen { opacity: 1; }
+.db-vc-unassigned { margin-top: 3px; cursor: pointer; font-size: 10px; font-weight: 700; color: #B45309; background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 6px; padding: 2px 6px; display: inline-block; white-space: nowrap; transition: filter .12s; }
+.db-vc-unassigned:hover { filter: brightness(.97); }
+.db-crew-input { margin-top: 2px; width: 122px; max-width: 122px; font-size: 10px; font-family: inherit; padding: 2px 5px; border: 1px solid var(--blue); border-radius: 5px; outline: none; color: #1E293B; background: #fff; box-sizing: border-box; }
 .db-lane { position: relative; grid-column: 2 / -1; height: 62px; }
 .db-slot { position: absolute; top: 0; bottom: 0; width: calc(100% / 11); border-left: 1px solid var(--border); cursor: copy; transition: background .12s; }
 .db-slot:hover { background: #DBEAFE; }

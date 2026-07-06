@@ -58,6 +58,8 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
   const [manualUn, setManualUn] = useState([])  // 成約以外の未手配カード（手動追加・非成約の戻し）。成約由来は下でderive
   const [armed, setArmed] = useState(null)   // 選択中の未手配カードindex
   const [dragId, setDragId] = useState(null) // ドラッグ中の配置済みジョブid（車両間移動）
+  const [editCrew, setEditCrew] = useState(null) // 乗務員インライン編集中の車両key
+  const [crewDraft, setCrewDraft] = useState('')
   const [tip, setTip] = useState(null)       // ツールチップ { job, x, y }
   const [showCreate, setShowCreate] = useState(false)
   const [showVeh, setShowVeh] = useState(false)
@@ -158,6 +160,16 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
       ? { ...x, v: vKey, s: hour, st: clash ? 'conflict' : (x.st === 'confirmed' ? 'confirmed' : 'tentative'), extJob: isExt }
       : x))
     toast(clash ? '移動しました（時間重複あり・要確認）' : '移動しました')
+  }
+
+  // 乗務員をボード上で直接編集（クリック→入力→Enter/フォーカス外しで確定）
+  const startEditCrew = (v) => { setEditCrew(v.key); setCrewDraft(v.crew || '') }
+  const commitCrew = () => {
+    if (editCrew == null) return
+    const val = crewDraft.trim()
+    setVehicles(prev => prev.map(v => v.key === editCrew ? { ...v, crew: val } : v))
+    setEditCrew(null)
+    toast(val ? '乗務員を更新しました' : '乗務員を未割当にしました')
   }
 
   // 配置済みカードのロック切替
@@ -272,9 +284,23 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
                 <div className="db-row" key={v.key}>
                   <div className={'db-veh' + (v.ext ? ' ext' : '')}>
                     <span className="db-badge">{v.ext ? '外注' : '#' + v.id}</span>
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <div className="db-vt">{v.cls}</div>
-                      <div className="db-vc">{v.crew}{v.n ? ` · ${v.n}名` : ''}</div>
+                      {editCrew === v.key ? (
+                        <input className="db-crew-input" autoFocus value={crewDraft}
+                          onChange={e => setCrewDraft(e.target.value)}
+                          onBlur={commitCrew}
+                          onKeyDown={e => { if (e.key === 'Enter') commitCrew(); else if (e.key === 'Escape') setEditCrew(null) }}
+                          placeholder="乗務員名（例：田中 / 佐藤）" />
+                      ) : v.crew ? (
+                        <div className="db-vc db-vc-edit" title="クリックで乗務員を変更" onClick={() => startEditCrew(v)}>
+                          {v.crew}{v.n ? ` · ${v.n}名` : ''}<span className="db-vc-pen">✎</span>
+                        </div>
+                      ) : (
+                        <div className="db-vc-unassigned" title="クリックで乗務員を割り当て" onClick={() => startEditCrew(v)}>
+                          ⚠ 乗務員 未割当
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className={'db-lane' + (armed !== null || dragId ? ' armed' : '')}>
