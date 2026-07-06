@@ -12,9 +12,10 @@ const NAV_ITEMS = [
 ]
 
 export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout }) {
-  // 会社名ブランディング（未指定はトランスポート福岡）／開発者向けタブ(debug)は hideDev で非表示
+  // 会社名ブランディング（未指定はトランスポート福岡）／開発者向けタブ(debug)はデモ・hideDevで非表示
   const companyName = user?.company || 'トランスポート福岡'
-  const navItems = NAV_ITEMS.filter(item => !(user?.hideDev && item.tab === 'debug'))
+  const hideDev = user?.hideDev || user?.mode === 'demo'
+  const navItems = NAV_ITEMS.filter(item => !(hideDev && item.tab === 'debug'))
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="sidebar-logo">

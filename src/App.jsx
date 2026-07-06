@@ -75,8 +75,8 @@ export default function App() {
 
   if (!user) return <Login users={USERS} onLogin={handleLogin} />
 
-  // 開発者(デバッグ)非表示ユーザーは debug に入れない（ガード）
-  const safeTab = (user.hideDev && activeTab === 'debug') ? 'dashboard' : activeTab
+  // 開発者(デバッグ)非表示ユーザー（デモ含む）は debug に入れない（ガード）
+  const safeTab = ((user.hideDev || user.mode === 'demo') && activeTab === 'debug') ? 'dashboard' : activeTab
   const ActiveTab = TABS[safeTab] || Dashboard
 
   return (

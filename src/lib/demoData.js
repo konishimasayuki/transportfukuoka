@@ -24,6 +24,12 @@ export const DEMO_CONTRACTS = [
   { id: 'dc12', name: '横山 健',    src: 'bb', srcLabel: '引越し侍', route: '東区→宗像市',   amount: 61000,  badge: 'br', status: '失注',     staff: '松本 亮' },
   { id: 'dc13', name: '柴田 真由',  src: 'bg', srcLabel: '価格.com', route: '南区→那珂川市', amount: 44000,  badge: 'bg', status: '成約済み', staff: '森 香織' },
   { id: 'dc14', name: '内田 蓮',    src: 'bo', srcLabel: 'ズバット', route: '西区→糸島市',   amount: 132000, badge: 'bg', status: '成約済み', staff: '大谷 彩' },
+  { id: 'dc15', name: '木下 沙羅',  src: 'bb', srcLabel: '引越し侍', route: '東区→古賀市',   amount: 88000,  badge: 'bg', status: '成約済み', staff: '大谷 彩' },
+  { id: 'dc16', name: '菅原 澪',    src: 'bo', srcLabel: 'ズバット', route: '早良区→西区',   amount: 73000,  badge: 'bg', status: '成約済み', staff: '井上 悠' },
+  { id: 'dc17', name: '浜口 亮太',  src: 'bb', srcLabel: '引越し侍', route: '南区→筑紫野市', amount: 56000,  badge: 'bb', status: '交渉中',   staff: '森 香織' },
+  { id: 'dc18', name: '堀江 実咲',  src: 'bg', srcLabel: '価格.com', route: '中央区→城南区', amount: 49000,  badge: 'bg', status: '成約済み', staff: '松本 亮' },
+  { id: 'dc19', name: '大西 康平',  src: 'bb', srcLabel: '引越し侍', route: '博多区→糟屋郡', amount: 142000, badge: 'bg', status: '成約済み', staff: '大谷 彩' },
+  { id: 'dc20', name: '及川 里穂',  src: 'bp', srcLabel: 'SUUMO',   route: '西区→中央区',   amount: 97000,  badge: 'bg', status: '成約済み', staff: '井上 悠' },
 ].map((c, i) => {
   const day = dd(2 + (i * 2) % 26) // 当月の2日〜に散らす
   return { ...c, date: `${YM}-${day}`, salesDate: `${YM}-${day}` }
@@ -33,30 +39,27 @@ export const DEMO_CONTRACTS = [
 // adCountsByMonthDay が読む最小フィールド：site / count(人数) / receivedAt('MM/DD HH:MM')。
 // 当月の各日に数件ずつ散らして、掲載費が自然な額になるようにする。
 export const DEMO_LEADS = (() => {
-  const rows = [
-    { site: '引越し侍', count: '1人' },
-    { site: '引越し侍', count: '2人' },
-    { site: '引越し侍', count: '3人' },
-    { site: 'ズバット', count: '1人' },
-    { site: '価格.com', count: '2人' },
-    { site: 'ズバット', count: '2人' },
-  ]
-  // 1〜19日に加え「当日・前日」も必ず含める（広告費タブの“当日のみ”表示が空にならないように）
-  const _today = _now.getDate()
-  const days = Array.from(new Set([...Array.from({ length: 19 }, (_, i) => i + 1), _today, _today - 1]))
-    .filter(d => d >= 1 && d <= 28).sort((a, b) => a - b)
   const out = []
-  days.forEach((day, i) => {
-    const take = 2 + (i % 3) // 2〜4件/日
-    for (let k = 0; k < take; k++) {
-      const r = rows[(i + k) % rows.length]
-      out.push({
-        id: `dl${i}_${k}`,
-        site: r.site,
-        count: r.count,
-        receivedAt: `${MM}/${dd(day)} ${dd(9 + k)}:${dd((i * 7 + k * 13) % 60)}`,
-      })
+  let seq = 0
+  // 当月1〜20日に加え「当日・前日」も必ず含める（広告費タブの“当日のみ”表示が空にならないように）
+  const _today = _now.getDate()
+  const days = Array.from(new Set([...Array.from({ length: 20 }, (_, i) => i + 1), _today, _today - 1]))
+    .filter(d => d >= 1 && d <= 28).sort((a, b) => a - b)
+  const add = (day, site, count, hour, min) => out.push({
+    id: `dl${seq++}`, site, count, receivedAt: `${MM}/${dd(day)} ${dd(hour)}:${dd(min)}`,
+  })
+  days.forEach((day, di) => {
+    // 引越し侍：1日20〜28件（生々しく多数）。人数1=単身(¥715)、2〜4=家族(¥1100)。約45%を家族に。
+    const samuraiN = 20 + ((di * 3) % 9)
+    for (let i = 0; i < samuraiN; i++) {
+      const fam = (i % 20) >= 11
+      add(day, '引越し侍', fam ? `${2 + (i % 3)}人` : '1人', 8 + (i % 14), (i * 7) % 60)
     }
+    // ズバット：5〜9件／価格.com：3〜6件
+    const zN = 5 + ((di * 2) % 5)
+    for (let i = 0; i < zN; i++) add(day, 'ズバット', `${1 + (i % 3)}人`, 9 + (i % 12), (i * 11) % 60)
+    const kN = 3 + (di % 4)
+    for (let i = 0; i < kN; i++) add(day, '価格.com', `${1 + (i % 2)}人`, 10 + (i % 10), (i * 17) % 60)
   })
   return out
 })()
