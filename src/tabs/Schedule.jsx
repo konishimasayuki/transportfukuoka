@@ -5,6 +5,7 @@
 // - 永続化：/api/schedule（ライブ）。デモはサンプルをローカル表示。
 import { useState, useEffect, useMemo, useRef } from 'react'
 import DispatchBoard from '../components/DispatchBoard'
+import FlowNav from '../components/FlowNav'
 import { DEMO_CONTRACTS, DEMO_SCHEDULE_EXTRA } from '../lib/demoData'
 
 const GENRES = ['引っ越し', '見積り', '段ボール配達']
@@ -160,6 +161,7 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
         </div>
         {view === 'month' && <button className="btn btn-primary btn-sm" onClick={() => openAdd()}>＋ 予定を作成</button>}
       </div>
+      <FlowNav switchTab={switchTab} current={view === 'board' ? 'board' : 'schedule'} />
 
       {/* ジャンル切替チップ（複数選択で重ね表示） */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { SourceTag } from '../lib/source'
+import FlowNav from '../components/FlowNav'
 
 const DEMO_DATA = [
   { id: '1', name: '田中 誠一', src: 'bb', srcLabel: '引越し侍', date: '2025-06-15', route: '東区→博多区', amount: 68000, badge: 'bg', status: '成約済み' },
@@ -54,7 +55,7 @@ const formRow      = { marginBottom: 14 }
 const formLabel    = { fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 5, display: 'block' }
 const twoCol       = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }
 
-export default function Contracts({ user }) {
+export default function Contracts({ user, switchTab }) {
   const isDemo = user?.mode === 'demo'
   const [items, setItems]     = useState(isDemo ? DEMO_DATA : [])
   const [loading, setLoading] = useState(!isDemo)
@@ -219,6 +220,7 @@ export default function Contracts({ user }) {
           <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} style={{ display: 'none' }} />
         </div>
       </div>
+      <FlowNav switchTab={switchTab} current="contracts" />
 
       <div className="kpi-row kpi-4">
         <div className="kpi-card c-green"><div className="kpi-label">成約済み</div><div className="kpi-val">{countBy('成約済み')}<span>件</span></div><div className="kpi-change up">¥{totalAmount.toLocaleString()}</div></div>
