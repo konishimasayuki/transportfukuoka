@@ -4,19 +4,7 @@ import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { receivedAtMs } from '../lib/sortLeads'
 import { SourceTag } from '../lib/source'
-
-// 住所を「区／市／町」まで短縮（デモの区間表記に合わせる。例: 福岡市中央区 平尾… → 中央区）
-function shortArea(s) {
-  s = String(s || '').replace(/　/g, ' ').trim()
-  if (!s) return ''
-  let m = s.match(/([^\s\d都道府県市区]{1,8}区)/) // 政令市の区（中央区・小倉南区 等）優先
-  if (m) return m[1]
-  m = s.match(/([^\s\d都道府県市]{1,8}市)/)         // 市（大野城市 等）
-  if (m) return m[1]
-  m = s.match(/([^\s\d]{1,8}[町村郡])/)             // 町/村/郡
-  if (m) return m[1]
-  return (s.split(/[\s\d]/)[0] || s)                // 都道府県のみ等はそのまま
-}
+import { shortArea } from '../lib/area'
 
 const pad2 = n => String(n).padStart(2, '0')
 // 受付日時を「MM/DD HH:MM」に統一（価格.comの "2026/07/01 19:37:05" 等も他サイトに合わせる）

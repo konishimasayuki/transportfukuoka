@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { SourceTag } from '../lib/source'
+import { shortArea, splitRoute } from '../lib/area'
 
 const DEMO_DATA = [
   { id: '1', name: '田中 誠一', src: 'bb', srcLabel: '引越し侍', date: '2025-06-15', route: '東区→博多区', amount: 68000, badge: 'bg', status: '成約済み' },
@@ -53,6 +54,17 @@ const inputStyle   = { width: '100%', padding: '9px 12px', border: '1px solid #E
 const formRow      = { marginBottom: 14 }
 const formLabel    = { fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 5, display: 'block' }
 const twoCol       = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }
+
+// 成約の区間を「短縮エリア → 短縮エリア」で表示（リード管理と同じ体裁）。
+// 住所(fromAddress/toAddress)があれば優先、無ければ route 文字列を分解して短縮する。
+function contractRoute(item) {
+  let from = item.fromAddress || '', to = item.toAddress || ''
+  if (!from && !to) { const [a, b] = splitRoute(item.route); from = a; to = b }
+  const sf = shortArea(from), st = shortArea(to)
+  const short = (!sf && !st) ? (item.route || '—') : `${sf || '—'} → ${st || '—'}`
+  const full = (!from && !to) ? (item.route || '') : `${from || ''} → ${to || ''}`
+  return { short, full }
+}
 
 export default function Contracts({ user, switchTab }) {
   const isDemo = user?.mode === 'demo'
@@ -254,7 +266,9 @@ export default function Contracts({ user, switchTab }) {
                     <td><SourceTag label={item.srcLabel} /></td>
                     <td>{item.salesDate || '—'}</td>
                     <td>{item.date}</td>
-                    <td>{item.route}</td>
+                    <td title={contractRoute(item).full}>
+                      <div style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractRoute(item).short}</div>
+                    </td>
                     <td>¥{(item.amount||0).toLocaleString()}</td>
                     <td>
                       <select value={item.status || ''} onChange={e => updateContractStatus(item, e.target.value)}
