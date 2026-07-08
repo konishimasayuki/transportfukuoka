@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { DEMO_CONTRACTS } from '../lib/demoData'
+import { GMAPS_KEY, zipFromAddress } from '../lib/gmaps'
 
 /* =========================================================================
  * 御見積書（株式会社トランスポーター）— 見積書タブ Phase A
@@ -290,6 +291,8 @@ export default function Estimate({ user, switchTab }) {
     if (p.toZip) f.toZip = p.toZip
     if (p.toAddress) f.toAddress = p.toAddress
     if (p.fromTelMobile) f.fromTelMobile = p.fromTelMobile
+    if (p.moveDate) f.moveDate = p.moveDate
+    if (p.moveAP) f.moveAP = p.moveAP
     if (p.memo) f.memo = p.memo
     // 家財をリードから自動マッピング（品名一致のみ）
     if (Array.isArray(p.kazai)) {
@@ -306,6 +309,11 @@ export default function Estimate({ user, switchTab }) {
       if (boxKey) f.items[boxKey] = Number(p.boxCount) || 0
     }
     setForm(f); setEditId(null); setView('edit'); setPreview(false)
+    // 郵便番号が空なら住所から自動補完（Googleマップキーがある時のみ）
+    if (GMAPS_KEY) {
+      if (f.toAddress && !f.toZip) zipFromAddress(f.toAddress).then(r => { if (r.zip) setForm(prev => ({ ...prev, toZip: r.zip })) }).catch(() => {})
+      if (f.fromAddress && !f.fromZip) zipFromAddress(f.fromAddress).then(r => { if (r.zip) setForm(prev => ({ ...prev, fromZip: r.zip })) }).catch(() => {})
+    }
   }, [])
 
   const fetchItems = async () => {
@@ -349,6 +357,19 @@ export default function Estimate({ user, switchTab }) {
 
   // フォーム更新ヘルパー
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  // 住所から郵便番号を取得（転居先／現住所）。Googleマップキーが必要。
+  const [zipBusy, setZipBusy] = useState('') // 'from' | 'to' | ''
+  const lookupZip = async (section) => {
+    const addr = section === 'to' ? form.toAddress : form.fromAddress
+    if (!addr || !addr.trim()) { showToast('先に住所を入力してください'); return }
+    if (!GMAPS_KEY) { showToast('郵便番号の自動取得にはGoogleマップAPIキーが必要です（設定→Googleマップ設定）'); return }
+    setZipBusy(section)
+    const r = await zipFromAddress(addr)
+    setZipBusy('')
+    if (r.zip) { set(section === 'to' ? 'toZip' : 'fromZip', r.zip); showToast('郵便番号を取得しました') }
+    else showToast('郵便番号を取得できませんでした（住所をご確認ください）')
+  }
   const setItemQty = (key, v) => setForm(p => ({ ...p, items: { ...p.items, [key]: v } }))
   const setFee = (block, key, v) => setForm(p => ({ ...p, [block]: { ...p[block], [key]: v } }))
 
@@ -589,7 +610,12 @@ export default function Estimate({ user, switchTab }) {
 
         <div style={{ marginTop: 12, fontWeight: 700, fontSize: 12, color: '#1E5FA8' }}>［A］現住所</div>
         <div className="two-col" style={{ marginTop: 6 }}>
-          <Field label="〒"><input style={inputStyle} value={form.fromZip} onChange={e => set('fromZip', e.target.value)} placeholder="815-0000" /></Field>
+          <Field label="〒">
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input style={inputStyle} value={form.fromZip} onChange={e => set('fromZip', e.target.value)} placeholder="815-0000" />
+              <button type="button" className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => lookupZip('from')} disabled={zipBusy === 'from'} title="住所から郵便番号を取得">{zipBusy === 'from' ? '…' : '住所から'}</button>
+            </div>
+          </Field>
           <Field label="住所"><input style={inputStyle} value={form.fromAddress} onChange={e => set('fromAddress', e.target.value)} placeholder="福岡市南区…" /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 6 }}>
@@ -600,7 +626,12 @@ export default function Estimate({ user, switchTab }) {
 
         <div style={{ marginTop: 14, fontWeight: 700, fontSize: 12, color: '#0E8A7A' }}>［B］転居先</div>
         <div className="two-col" style={{ marginTop: 6 }}>
-          <Field label="〒"><input style={inputStyle} value={form.toZip} onChange={e => set('toZip', e.target.value)} /></Field>
+          <Field label="〒">
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input style={inputStyle} value={form.toZip} onChange={e => set('toZip', e.target.value)} placeholder="819-0000" />
+              <button type="button" className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => lookupZip('to')} disabled={zipBusy === 'to'} title="転居先の住所から郵便番号を取得">{zipBusy === 'to' ? '…' : '住所から'}</button>
+            </div>
+          </Field>
           <Field label="住所"><input style={inputStyle} value={form.toAddress} onChange={e => set('toAddress', e.target.value)} placeholder="福岡市南区…" /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 6 }}>

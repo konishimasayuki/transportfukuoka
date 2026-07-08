@@ -46,6 +46,20 @@ function normJa(s) {
     .toLowerCase()
 }
 
+// リードの引越し希望日（例「2026年07月10日 午前中」「07月20日 午前中」）を
+// 見積書用の日付(YYYY-MM-DD)とAM/PMに変換。年が無ければ当年（過ぎていれば翌年）。
+function parseLeadMoveDate(raw) {
+  const str = String(raw || '')
+  const m = str.match(/(?:(\d{4})年)?\s*(\d{1,2})月\s*(\d{1,2})日/)
+  if (!m) return { date: '', ap: '' }
+  const now = new Date()
+  let y = m[1] ? parseInt(m[1], 10) : now.getFullYear()
+  const mm = parseInt(m[2], 10), dd = parseInt(m[3], 10)
+  if (!m[1]) { const cand = new Date(y, mm - 1, dd); if (cand < new Date(now.getFullYear(), now.getMonth(), now.getDate())) y += 1 }
+  const ap = /午後|PM|1[3-9]:|2[0-3]:/.test(str) ? 'PM' : (/午前|AM|0?[6-9]:|1[0-2]:/.test(str) ? 'AM' : '')
+  return { date: `${y}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`, ap }
+}
+
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
 
@@ -280,6 +294,7 @@ export default function Leads({ user, switchTab }) {
 
   // 詳細から「見積書を作成」→ Estimate タブで使うプリフィルを保存して切替
   const createEstimateFromLead = (item) => {
+    const md = parseLeadMoveDate(item.moveDateDetail || item.moveDate)
     const prefill = {
       name: item.name || '',
       kana: item.kana || '',
@@ -288,7 +303,8 @@ export default function Leads({ user, switchTab }) {
       toZip: (item.toZip || '').replace(/^〒/, ''),
       toAddress: item.toAddress || item.to || '',
       fromTelMobile: item.phone || '',
-      moveDate: '', // 希望日は文字列のため日付化はユーザーに任せる
+      moveDate: md.date, // 引越し希望日を日付化（可能な場合）
+      moveAP: md.ap || 'AM',
       kazai: Array.isArray(item.kazai) ? item.kazai : [],
       boxCount: item.boxCount || '',
       memo: [item.memo, item.request, item.option].filter(Boolean).join(' / '),
