@@ -161,6 +161,46 @@ const KAZAI_GROUPS = [
 
 const ALL_ITEMS = KAZAI_GROUPS.flatMap(g => g.items)
 
+// リードの家財語彙（LeadDetailModalの選択肢）→ 見積書の品目キー への対応表。
+// 語彙・サイズ表記が異なるため明示的に対応づける（一致すれば家財数量に自動反映）。
+const LEAD_KAZAI_TO_KEY = {
+  // 家具
+  'ソファ': 'sofa_2', 'ソファ（1人掛け）': 'sofa_1', 'ソファ（2人掛け）': 'sofa_2', 'ソファ（3人掛け）': 'sofa_3',
+  'サイドボード・テレビ台': 'sideboard',
+  'チェスト': 'chest', 'チェスト（大）': 'chest', 'チェスト（中・小）': 'chest',
+  'リビングテーブル': 'table', 'ダイニングテーブルセット': 'dining_A',
+  'シャンデリア・スタンド': 'shoumei', 'こたつ': 'kotatsu',
+  '絨毯・カーペット': 'juutan', '絨毯・カーペット（10畳未満）': 'juutan', '絨毯・カーペット（10畳以上）': 'juutan',
+  'ベッド': 'bed_S', 'ベッド（シングル）': 'bed_S', 'ベッド（セミダブル）': 'bed_SW', 'ベッド（ダブル）': 'bed_W',
+  '布団類': 'futonbukuro',
+  'タンス': 'seiri_B', 'タンス（中・小）': 'seiri_B', 'タンス（大）': 'seiri_A',
+  '本棚': 'hondana_B', '本棚（中・小）': 'hondana_B', '本棚（大）': 'hondana_A',
+  '衣装ケース': 'ishou', '机/椅子': 'tsukue_B', '机': 'tsukue_B', 'ドレッサー': 'dresser',
+  '食器棚': 'shokki_B', '食器棚（中・小）': 'shokki_B', '食器棚（大）': 'shokki_A',
+  // 家電
+  'テレビ': 'tv_thin', 'テレビ（40インチ未満）': 'tv_thin', 'テレビ（40インチ以上）': 'tv_thin',
+  'ステレオ・コンポ類': 'minicompo', 'ステレオ': 'minicompo', 'ミニコンポ': 'minicompo', 'デスクトップパソコン': 'pc',
+  '冷蔵庫': 'fridge_2D', '冷蔵庫（２ドア）': 'fridge_2D', '冷蔵庫（2ドア）': 'fridge_2D', '冷蔵庫（3ドア）': 'fridge_3C',
+  '洗濯機': 'washer_full', '洗濯機（縦型）': 'washer_full', '洗濯機（ドラム式）': 'washer_drum',
+  '乾燥機': 'dryer', '電子レンジ': 'range', 'エアコン': 'aircon_S', 'ストーブ・ヒーター': 'onpuuki', '扇風機': 'senpuuki',
+  // その他
+  '自転車': 'jitensha', '物干し竿': 'monohoshi', '植木鉢・観葉植物': 'kanyou', '仏壇': 'butsudan_B',
+  // 重量物
+  'ピアノ類': 'piano_U', '小型ピアノ・エレクトーン': 'electone_B', '大型ピアノ': 'piano_G', 'バイク': 'minibike',
+}
+// 見積書語彙そのものの完全一致（保険）
+const ITEM_NAME_TO_KEY = (() => {
+  const m = {}
+  ALL_ITEMS.forEach(it => { m[it.name + (it.size ? `（${it.size}）` : '')] = it.key; if (!(it.name in m)) m[it.name] = it.key })
+  return m
+})()
+// リード家財名 → 見積書品目キー（完全一致 → カッコ前のベース名 → 見積書語彙一致 の順）
+function resolveKazaiKey(name) {
+  if (!name) return null
+  const base = String(name).replace(/[（(].*$/, '').trim()
+  return LEAD_KAZAI_TO_KEY[name] || LEAD_KAZAI_TO_KEY[base] || ITEM_NAME_TO_KEY[name] || ITEM_NAME_TO_KEY[base] || null
+}
+
 // 料金欄の定義（帳票の項目名どおり）
 const FEE_A = [
   { key: 'space',    label: 'スペース料' },
@@ -294,12 +334,10 @@ export default function Estimate({ user, switchTab }) {
     if (p.moveDate) f.moveDate = p.moveDate
     if (p.moveAP) f.moveAP = p.moveAP
     if (p.memo) f.memo = p.memo
-    // 家財をリードから自動マッピング（品名一致のみ）
+    // 家財をリードから自動マッピング（語彙が異なるため対応表で変換）
     if (Array.isArray(p.kazai)) {
-      const nameToKey = {}
-      ALL_ITEMS.forEach(it => { nameToKey[it.name + (it.size ? `（${it.size}）` : '')] = it.key; nameToKey[it.name] = nameToKey[it.name] || it.key })
       p.kazai.forEach(k => {
-        const key = nameToKey[k.name]
+        const key = resolveKazaiKey(k.name)
         if (key) f.items[key] = (Number(f.items[key]) || 0) + (Number(k.qty) || 0)
       })
     }
