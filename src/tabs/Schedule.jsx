@@ -5,7 +5,6 @@
 // - 永続化：/api/schedule（ライブ）。デモはサンプルをローカル表示。
 import { useState, useEffect, useMemo, useRef } from 'react'
 import DispatchBoard from '../components/DispatchBoard'
-import FlowNav from '../components/FlowNav'
 import { DEMO_CONTRACTS, DEMO_SCHEDULE_EXTRA } from '../lib/demoData'
 
 const GENRES = ['引っ越し', '見積り', '段ボール配達']
@@ -60,6 +59,16 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2400) }
 
   useEffect(() => { if (!isDemo) fetchItems() }, [isDemo])
+
+  // 成約登録の完了ハンドオフから来たとき、その引越し日にカレンダーを合わせて選択状態にする
+  useEffect(() => {
+    let focus = null
+    try { focus = sessionStorage.getItem('tf_schedule_focus'); if (focus) sessionStorage.removeItem('tf_schedule_focus') } catch {}
+    if (!focus) return
+    const d = new Date(focus)
+    if (isNaN(d.getTime())) return
+    setViewY(d.getFullYear()); setViewM(d.getMonth()); setSelDate(focus); setBoardDate(d)
+  }, [])
 
   const fetchItems = async () => {
     setLoading(true)
@@ -161,7 +170,6 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
         </div>
         {view === 'month' && <button className="btn btn-primary btn-sm" onClick={() => openAdd()}>＋ 予定を作成</button>}
       </div>
-      <FlowNav switchTab={switchTab} current={view === 'board' ? 'board' : 'schedule'} />
 
       {/* ジャンル切替チップ（複数選択で重ね表示） */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>

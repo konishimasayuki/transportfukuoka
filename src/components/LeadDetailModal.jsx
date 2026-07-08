@@ -393,7 +393,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
 const SRC_LIST = ['サムライ', 'ズバッと', '価格.com', 'SUUMO', '直電', 'チラシ', '企業紹介', 'その他']
 const SITE_TO_SRC = { 'ズバット': 'ズバッと', 'ズバッと': 'ズバッと', '引越し侍': 'サムライ', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
 
-export function ConvertToContractModal({ lead, onClose, onConfirm }) {
+export function ConvertToContractModal({ lead, onClose, onConfirm, onGoCalendar }) {
   const today = new Date().toISOString().slice(0, 10)
   const [amount, setAmount]   = useState('')
   const [srcLabel, setSrcLabel] = useState('その他')
@@ -402,6 +402,7 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
   const [staff, setStaff]     = useState('')
   const [memo, setMemo]       = useState('')
   const [saving, setSaving]   = useState(false)
+  const [done, setDone]       = useState(false) // 登録完了→次工程ハンドオフ表示
   const [staffList, setStaffList] = useState(DEFAULT_STAFF)
 
   useEffect(() => { fetchStaffList().then(setStaffList) }, [])
@@ -415,6 +416,7 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
     setStaff('')
     setMemo([lead.memo, lead.option, lead.request].filter(Boolean).join(' / '))
     setSaving(false)
+    setDone(false)
   }, [lead && lead.id, lead && lead.phone])
 
   if (!lead) return null
@@ -426,13 +428,14 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
   })()
 
   const submit = async () => {
+    if (!amount || !staff) return // 金額・担当者は必須
     setSaving(true)
     try {
       await onConfirm(lead, {
         amount: Number(amount) || 0,
         srcLabel, date, salesDate, staff, memo, route,
       })
-      onClose()
+      setDone(true) // 完了：閉じずに次工程へのハンドオフを表示
     } catch (e) { console.error(e) }
     setSaving(false)
   }
@@ -441,8 +444,9 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
   const bx = { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
   const ip = { width: '100%', padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff' }
   const lb = { fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4, display: 'block' }
+  const money = (n) => '¥' + (Number(n) || 0).toLocaleString('ja-JP')
 
-  return (
+  const formView = (
     <div style={ov} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={bx}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -481,12 +485,14 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
             <div style={{ ...ip, background: '#F8FAFC', color: '#1E293B', fontWeight: 600 }}>{route || '—'}</div>
           </div>
           <div>
-            <label style={lb}>担当者</label>
-            <select value={staff} onChange={e => setStaff(e.target.value)} style={ip}>
-              <option value="">（未選択）</option>
+            <label style={lb}>担当者 *</label>
+            <select value={staff} onChange={e => setStaff(e.target.value)}
+              style={{ ...ip, borderColor: staff ? '#E2E8F0' : '#FCA5A5' }}>
+              <option value="">（担当者を選択）</option>
               {staffList.map(s => <option key={s} value={s}>{s}</option>)}
               {staff && !staffList.includes(staff) && <option value={staff}>{staff}</option>}
             </select>
+            {!staff && <div style={{ fontSize: 10, color: '#DC2626', marginTop: 4 }}>担当者は必須です</div>}
           </div>
           <div>
             <label style={lb}>メモ</label>
@@ -494,7 +500,7 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
             <button className="btn btn-outline" onClick={onClose}>キャンセル</button>
-            <button className="btn btn-primary" onClick={submit} disabled={saving || !amount} style={{ opacity: (!amount || saving) ? .55 : 1 }}>
+            <button className="btn btn-primary" onClick={submit} disabled={saving || !amount || !staff} style={{ opacity: (!amount || !staff || saving) ? .55 : 1 }}>
               {saving ? '登録中…' : '成約管理に登録'}
             </button>
           </div>
@@ -503,4 +509,31 @@ export function ConvertToContractModal({ lead, onClose, onConfirm }) {
       </div>
     </div>
   )
+
+  // ---- 登録完了：次工程（配車の確認）へ気持ちよくつなぐハンドオフ ----
+  const doneView = (
+    <div style={ov} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={bx}>
+        <div style={{ padding: '26px 22px 22px', textAlign: 'center' }}>
+          <div style={{ width: 54, height: 54, borderRadius: '50%', background: '#F0FDF4', color: '#16A34A', fontSize: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>✓</div>
+          <div style={{ fontSize: 17, fontWeight: 800 }}>成約を登録しました</div>
+          <div style={{ fontSize: 12, color: '#64748B', marginTop: 6, lineHeight: 1.6 }}>
+            {lead.name || ''} 様 ／ {money(Number(amount) || 0)}<br />
+            引越し日 {date} · 担当 {staff}
+          </div>
+          <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 14px', margin: '16px 0', fontSize: 11.5, color: '#475569', lineHeight: 1.6 }}>
+            次は<b>引越し日の配車</b>を組み立てましょう。カレンダーで日付を開くと、その日の配車ボードに進めます。
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {onGoCalendar && (
+              <button className="btn btn-primary" onClick={() => onGoCalendar(date)} style={{ fontWeight: 700 }}>📅 カレンダーで配車を確認 →</button>
+            )}
+            <button className="btn btn-outline" onClick={onClose}>閉じて次のリードへ</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  return done ? doneView : formView
 }

@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
 import { DEMO_CONTRACTS } from '../lib/demoData'
-import FlowNav from '../components/FlowNav'
 
 /* =========================================================================
  * 御見積書（株式会社トランスポーター）— 見積書タブ Phase A
@@ -451,7 +450,6 @@ export default function Estimate({ user, switchTab }) {
     return (
       <div>
         <div className="page-hdr"><h1>見積書</h1><p>御見積書の作成・管理（成約管理のレコードも自動表示）</p></div>
-        <FlowNav switchTab={switchTab} current="estimate" nextTab="board" nextText="🚚 配車ボードへ →" />
 
         <div className="kpi-row kpi-3">
           <div className="kpi-card c-blue"><div className="kpi-label">件数（見積 ／ 成約）</div><div className="kpi-val">{estCount}<span>件</span> <span style={{ fontSize: 14, color: '#64748B' }}>/ {conCount}件</span></div></div>

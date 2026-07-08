@@ -4,7 +4,6 @@ import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { receivedAtMs } from '../lib/sortLeads'
 import { SourceTag } from '../lib/source'
-import FlowNav from '../components/FlowNav'
 
 // 住所を「区／市／町」まで短縮（デモの区間表記に合わせる。例: 福岡市中央区 平尾… → 中央区）
 function shortArea(s) {
@@ -363,7 +362,6 @@ export default function Leads({ user, switchTab }) {
   return (
     <div>
       <div className="page-hdr"><h1>リード管理</h1><p>一括査定サイトから取得した新規リードを管理します</p></div>
-      <FlowNav switchTab={switchTab} current="leads" />
 
       <div className="kpi-row kpi-3">
         <div className="kpi-card c-blue"><div className="kpi-label">総リード数</div><div className="kpi-val">{items.length}<span>件</span></div></div>
@@ -502,6 +500,11 @@ export default function Leads({ user, switchTab }) {
           lead={convertLead}
           onClose={() => setConvertLead(null)}
           onConfirm={confirmConvertToContract}
+          onGoCalendar={(moveDate) => {
+            try { if (moveDate) sessionStorage.setItem('tf_schedule_focus', moveDate) } catch {}
+            setConvertLead(null); setDetailItem(null)
+            if (typeof switchTab === 'function') switchTab('schedule')
+          }}
         />
       )}
 
