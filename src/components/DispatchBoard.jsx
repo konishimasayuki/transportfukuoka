@@ -9,7 +9,7 @@
 // データはダミー配列（後で /api/schedule 等の実データ・型に差し替え可能）。
 // 車両は内部キー(key)で参照し、号車番号(id)を変更してもジョブの紐付けが壊れない設計。
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { DEFAULT_FLEET } from '../lib/fleet'
+import { DEFAULT_FLEET, DEFAULT_CREW } from '../lib/fleet'
 
 const START = 8, END = 19, COLS = END - START // 08:00–19:00 = 11列
 const CAT_NAME = { move: '引っ越し', quote: '見積り', box: '段ボール配達' }
@@ -58,8 +58,8 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
   const [manualUn, setManualUn] = useState([])  // 成約以外の未手配カード（手動追加・非成約の戻し）。成約由来は下でderive
   const [armed, setArmed] = useState(null)   // 選択中の未手配カードindex
   const [dragId, setDragId] = useState(null) // ドラッグ中の配置済みジョブid（車両間移動）
-  const [editCrew, setEditCrew] = useState(null) // 乗務員インライン編集中の車両key
-  const [crewDraft, setCrewDraft] = useState('')
+  const [editCrew, setEditCrew] = useState(null) // 乗務員ラベル選択中の車両key
+  const [crewList, setCrewList] = useState(DEFAULT_CREW) // 選択できる乗務員(班)ラベル（設定→乗務員設定）
   const [tip, setTip] = useState(null)       // ツールチップ { job, x, y }
   const [showCreate, setShowCreate] = useState(false)
   const [showVeh, setShowVeh] = useState(false)
@@ -79,7 +79,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
   const readyKey = useRef('')
   useEffect(() => {
     setArmed(null)
-    if (isDemo) { setJobs([]); setManualUn([]); readyKey.current = boardKey; return }
+    if (isDemo) { setJobs([]); setManualUn([]); setCrewList(DEFAULT_CREW); readyKey.current = boardKey; return }
     let cancelled = false; readyKey.current = ''
     fetch('/api/dispatch').then(r => r.json()).then(d => {
       if (cancelled) return
@@ -87,6 +87,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
       setJobs(Array.isArray(st.jobs) ? st.jobs : [])
       setManualUn(Array.isArray(st.manualUn) ? st.manualUn : [])
       if (Array.isArray(data._fleet) && data._fleet.length) setVehicles(data._fleet)
+      setCrewList(Array.isArray(data._crew) && data._crew.length ? data._crew : DEFAULT_CREW)
       readyKey.current = boardKey
     }).catch(() => { if (!cancelled) { setJobs([]); setManualUn([]); readyKey.current = boardKey } })
     return () => { cancelled = true }
@@ -162,14 +163,12 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
     toast(clash ? '移動しました（時間重複あり・要確認）' : '移動しました')
   }
 
-  // 乗務員をボード上で直接編集（クリック→入力→Enter/フォーカス外しで確定）
-  const startEditCrew = (v) => { setEditCrew(v.key); setCrewDraft(v.crew || '') }
-  const commitCrew = () => {
-    if (editCrew == null) return
-    const val = crewDraft.trim()
-    setVehicles(prev => prev.map(v => v.key === editCrew ? { ...v, crew: val } : v))
+  // 乗務員をボード上でラベル選択（クリック→ドロップダウンから選ぶ）
+  const startEditCrew = (v) => setEditCrew(v.key)
+  const chooseCrew = (vKey, val) => {
+    setVehicles(prev => prev.map(v => v.key === vKey ? { ...v, crew: val } : v))
     setEditCrew(null)
-    toast(val ? '乗務員を更新しました' : '乗務員を未割当にしました')
+    toast(val ? '乗務員を割り当てました' : '乗務員を未割当にしました')
   }
 
   // 配置済みカードのロック切替
@@ -287,14 +286,17 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
                     <div style={{ minWidth: 0 }}>
                       <div className="db-vt">{v.cls}</div>
                       {editCrew === v.key ? (
-                        <input className="db-crew-input" autoFocus value={crewDraft}
-                          onChange={e => setCrewDraft(e.target.value)}
-                          onBlur={commitCrew}
-                          onKeyDown={e => { if (e.key === 'Enter') commitCrew(); else if (e.key === 'Escape') setEditCrew(null) }}
-                          placeholder="乗務員名（例：田中 / 佐藤）" />
+                        <select className="db-crew-input" autoFocus value={v.crew || ''}
+                          onChange={e => chooseCrew(v.key, e.target.value)}
+                          onBlur={() => setEditCrew(null)}
+                          onKeyDown={e => { if (e.key === 'Escape') setEditCrew(null) }}>
+                          <option value="">（未割当）</option>
+                          {crewList.map(c => <option key={c} value={c}>{c}</option>)}
+                          {v.crew && !crewList.includes(v.crew) && <option value={v.crew}>{v.crew}</option>}
+                        </select>
                       ) : v.crew ? (
                         <div className="db-vc db-vc-edit" title="クリックで乗務員を変更" onClick={() => startEditCrew(v)}>
-                          {v.crew}{v.n ? ` · ${v.n}名` : ''}<span className="db-vc-pen">✎</span>
+                          {v.crew}{v.n ? ` · ${v.n}名` : ''}<span className="db-vc-pen">▾</span>
                         </div>
                       ) : (
                         <div className="db-vc-unassigned" title="クリックで乗務員を割り当て" onClick={() => startEditCrew(v)}>
@@ -712,7 +714,7 @@ function VehicleModal({ vehicles, jobs, onClose, onApply }) {
     <div style={ov} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={bx}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div><div style={{ fontSize: 15, fontWeight: 800 }}>車両 / 乗務員の設定</div><div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>号車・車両クラス・乗務員・人数を登録します</div></div>
+          <div><div style={{ fontSize: 15, fontWeight: 800 }}>車両の設定</div><div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>号車・車両クラス・人数を登録します（乗務員はボード上でラベル割り当て）</div></div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94A3B8' }}>×</button>
         </div>
         <div style={{ padding: '14px 18px', maxHeight: '60vh', overflowY: 'auto' }}>
@@ -720,9 +722,8 @@ function VehicleModal({ vehicles, jobs, onClose, onApply }) {
             <thead>
               <tr>
                 <th style={{ ...th, width: 90 }}>号車</th>
-                <th style={{ ...th, width: 120 }}>車両クラス</th>
-                <th style={th}>乗務員</th>
-                <th style={{ ...th, width: 70 }}>人数</th>
+                <th style={th}>車両クラス</th>
+                <th style={{ ...th, width: 80 }}>人数</th>
                 <th style={{ ...th, width: 44 }}></th>
               </tr>
             </thead>
@@ -735,7 +736,6 @@ function VehicleModal({ vehicles, jobs, onClose, onApply }) {
                       {['軽', '2t', '2tロング', '3t', '4t', '外注枠'].map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </td>
-                  <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9' }}><input style={ip} value={v.crew} onChange={e => setField(v.key, 'crew', e.target.value)} placeholder="田中 / 佐藤" /></td>
                   <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9' }}><input type="number" min="0" style={{ ...ip, width: 60 }} value={v.n} onChange={e => setField(v.key, 'n', e.target.value)} /></td>
                   <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9', textAlign: 'center' }}>
                     <button title={lockedCount(v.key) ? 'ロック中の予定があり削除不可' : (jobCount(v.key) ? '削除（配置済みは未手配へ戻る）' : '削除')}

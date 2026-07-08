@@ -34,6 +34,7 @@ export default async function handler(req, res) {
       const body = req.body || {}
       const all = await getAll()
       if (Array.isArray(body.fleet)) all._fleet = body.fleet // 車両フリート（全日共通の設定）
+      if (Array.isArray(body.crew)) all._crew = body.crew    // 乗務員(班)ラベル一覧（全日共通）
       if (body.date) { // その日の割当
         all[body.date] = { jobs: body.jobs || [], manualUn: body.manualUn || [], updatedAt: new Date().toISOString() }
       }
