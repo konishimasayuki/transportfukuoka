@@ -176,9 +176,13 @@ export default function Leads({ user, switchTab }) {
     return false
   }
 
+  // 1リード＝1成約：一度成約登録したリードは再登録できない
+  const isContracted = (l) => !!(l && (l.contracted || l.status === '成約'))
+
   const updateStatus = async (item, status) => {
     // 「成約」に変えたら金額入力モーダルを開き、確定時にまとめて保存する
     if (status === '成約') {
+      if (isContracted(item)) { showToast('このリードは既に成約登録済みです。編集は成約管理で行えます。'); return }
       setConvertLead(item)
       return
     }
@@ -214,14 +218,14 @@ export default function Leads({ user, switchTab }) {
       memo: payload.memo || '',
       leadKey: lead.key || lead.phone,
     }
-    // ローカル楽観更新：リードのステータスと金額
-    setItems(prev => prev.map(i => i.id === lead.id ? { ...i, status: '成約', amount: payload.amount } : i))
-    setDetailItem(d => (d && d.id === lead.id ? { ...d, status: '成約', amount: payload.amount } : d))
+    // ローカル楽観更新：リードのステータスと金額（contracted=1リード1成約の恒久フラグ）
+    setItems(prev => prev.map(i => i.id === lead.id ? { ...i, status: '成約', amount: payload.amount, contracted: true } : i))
+    setDetailItem(d => (d && d.id === lead.id ? { ...d, status: '成約', amount: payload.amount, contracted: true } : d))
     if (isDemo) return
     try {
       await Promise.all([
         fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contract) }),
-        fetch('/api/inbound',   { method: 'PUT',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, status: '成約', amount: payload.amount }) }),
+        fetch('/api/inbound',   { method: 'PUT',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, status: '成約', amount: payload.amount, contracted: true }) }),
       ])
     } catch (e) { console.error(e) }
   }
@@ -499,7 +503,10 @@ export default function Leads({ user, switchTab }) {
         item={detailItem}
         onClose={() => setDetailItem(null)}
         onStatusChange={(it, status) => {
-          if (status === '成約') { setConvertLead(it); return }
+          if (status === '成約') {
+            if (isContracted(it)) { showToast('このリードは既に成約登録済みです。編集は成約管理で行えます。'); return }
+            setConvertLead(it); return
+          }
           updateStatus(it, status)
           setDetailItem(d => ({ ...d, status }))
         }}

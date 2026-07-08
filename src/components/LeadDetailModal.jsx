@@ -206,7 +206,10 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
               </button>
             )}
             {onCreateContract && (
-              <button className="btn btn-sm" style={{ background: '#16A34A', color: '#fff', fontWeight: 700 }} onClick={() => onCreateContract(item)}>✅ 成約登録</button>
+              (item.status === '成約' || item.contracted)
+                ? <button className="btn btn-sm" disabled title="このリードは成約登録済みです。編集は成約管理で行えます。"
+                    style={{ background: '#E2E8F0', color: '#64748B', fontWeight: 700, cursor: 'default' }}>✅ 成約済み</button>
+                : <button className="btn btn-sm" style={{ background: '#16A34A', color: '#fff', fontWeight: 700 }} onClick={() => onCreateContract(item)}>✅ 成約登録</button>
             )}
             {onCreateEstimate && (
               <button className="btn btn-primary btn-sm" onClick={() => onCreateEstimate(item)}>📝 見積書を作成</button>
