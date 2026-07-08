@@ -351,7 +351,7 @@ function TruckSettings({ isDemo }) {
       <div className="card-head"><h3>🚚 トラック設定</h3>{msg && <span className="c-sub" style={{ color: '#15803D' }}>{msg}</span>}</div>
       <div className="card-body">
         <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10, lineHeight: 1.6 }}>
-          自社トラック（号車・クラス・人数）を登録します。<b>配車ボード</b>の車両行として使われます。
+          自社トラック（号車・クラス）を登録します。<b>配車ボード</b>の車両行として使われます。
           乗務員は<b>「乗務員設定」</b>で登録し、配車ボードで各車両にラベル割り当てします。
         </div>
         {loading ? (
@@ -361,9 +361,8 @@ function TruckSettings({ isDemo }) {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={{ ...th, width: 96 }}>号車</th>
+                  <th style={{ ...th, width: 110 }}>号車</th>
                   <th style={th}>クラス</th>
-                  <th style={{ ...th, width: 72 }}>人数</th>
                   <th style={{ ...th, width: 40 }}></th>
                 </tr>
               </thead>
@@ -376,7 +375,6 @@ function TruckSettings({ isDemo }) {
                         {TRUCK_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </td>
-                    <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9' }}><input type="number" min="0" style={ip} value={v.n} onChange={e => setField(v.key, 'n', e.target.value)} /></td>
                     <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9', textAlign: 'center' }}>
                       <button title="削除" onClick={() => removeRow(v.key)}
                         style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 7, width: 26, height: 26, cursor: 'pointer', fontSize: 13 }}>×</button>
