@@ -7,6 +7,15 @@ const YM = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')
 const MM = String(_now.getMonth() + 1).padStart(2, '0')
 const dd = (n) => String(n).padStart(2, '0')
 
+// 成約デモの家財セット（リード家財の語彙。見積書の家財数量に自動変換される）
+const _K = (name, qty) => ({ name, qty })
+export const DEMO_KAZAI_SETS = [
+  [_K('ベッド（シングル）', 1), _K('冷蔵庫（２ドア）', 1), _K('洗濯機（縦型）', 1), _K('本棚（中・小）', 2), _K('電子レンジ', 1), _K('テレビ（40インチ未満）', 1)],
+  [_K('ベッド（ダブル）', 1), _K('冷蔵庫（3ドア）', 1), _K('洗濯機（ドラム式）', 1), _K('ソファ（3人掛け）', 1), _K('食器棚（大）', 1), _K('エアコン', 2), _K('ダイニングテーブルセット', 1)],
+  [_K('ベッド（セミダブル）', 1), _K('冷蔵庫（２ドア）', 1), _K('洗濯機（縦型）', 1), _K('テレビ（40インチ以上）', 1), _K('こたつ', 1), _K('タンス（大）', 1)],
+  [_K('ベッド（シングル）', 2), _K('冷蔵庫（3ドア）', 1), _K('洗濯機（ドラム式）', 1), _K('ソファ（2人掛け）', 1), _K('本棚（大）', 1), _K('ドレッサー', 1), _K('エアコン', 1)],
+]
+
 // ===== 成約（売上管理・見積書で使用） =====
 // 形は Contracts.jsx の DEMO_DATA に合わせつつ、当月の salesDate を持たせて集計に載せる。
 export const DEMO_CONTRACTS = [
@@ -46,7 +55,9 @@ export const DEMO_CONTRACTS = [
   const day = dd(2 + (i * 2) % 26) // 売上登録日：当月に散らす（売上集計用）
   const td = _now.getDate()
   const moveDay = dd(Math.min(28, Math.max(1, td + (i % 7) - 3))) // 引越し日(=配車日)：当日±3日（配車ボード用）
-  return { ...c, date: `${YM}-${moveDay}`, salesDate: `${YM}-${day}` }
+  // 家財（成約由来の見積書に反映されるデモ用）
+  const kazai = DEMO_KAZAI_SETS[i % DEMO_KAZAI_SETS.length]
+  return { ...c, date: `${YM}-${moveDay}`, salesDate: `${YM}-${day}`, kazai, boxCount: String(8 + (i % 4) * 4) }
 })
 
 // ===== 広告費(反響課金)算出用のリード（売上管理・広告費で使用） =====

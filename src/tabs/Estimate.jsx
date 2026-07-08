@@ -503,6 +503,11 @@ export default function Estimate({ user, switchTab }) {
       f.memo = c.memo || ''
       f.contractId = c.id
       f.contractAmount = num(c.amount) // 参考表示用
+      // 家財を成約から見積書の家財数量へ反映（リード→成約で引き継いだkazai/boxCount）
+      if (Array.isArray(c.kazai)) {
+        c.kazai.forEach(k => { const key = resolveKazaiKey(k.name); if (key) f.items[key] = (Number(f.items[key]) || 0) + (Number(k.qty) || 0) })
+      }
+      if (c.boxCount) { const boxKey = ALL_ITEMS.find(it => it.name === 'ダンボール' && it.size === '小')?.key; if (boxKey) f.items[boxKey] = Number(c.boxCount) || 0 }
       setForm(f); setEditId(null); setView('edit'); setPreview(false)
     }
 

@@ -218,6 +218,9 @@ export default function Leads({ user, switchTab }) {
       status: '成約済み',
       staff: payload.staff || '',
       memo: payload.memo || '',
+      // 家財情報を成約に引き継ぐ（成約由来の見積書で家財が空にならないように）
+      kazai: Array.isArray(lead.kazai) ? lead.kazai : [],
+      boxCount: lead.boxCount || '',
       leadKey: lead.key || lead.phone,
     }
     // ローカル楽観更新：リードのステータスと金額（contracted=1リード1成約の恒久フラグ）
