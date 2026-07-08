@@ -164,23 +164,19 @@ export default function Sales({ user, switchTab }) {
     const byStaff = {}
     const bySite  = {}
     SHEET_SITES.forEach(s => { bySite[s] = { count: 0, amount: 0 } })
-    bySite['キャンセル'] = { count: 0, amount: 0 }
 
     for (const c of monthly) {
       const amt = num(c.amount)
       const isCancel = c.status === '失注' || c.status === 'キャンセル'
+      // 失注/キャンセルは売上に計上しない（件数・担当者別・サイト別・円グラフからも除外）
+      if (isCancel) { cancelAmt += amt; cancelCnt += 1; continue }
       total += amt; count += 1
-      if (isCancel) { cancelAmt += amt; cancelCnt += 1 }
-      const staffKey = isCancel ? 'キャンセル' : (c.staff && String(c.staff).trim() ? c.staff : '営業以外')
+      const staffKey = (c.staff && String(c.staff).trim()) ? c.staff : '営業以外'
       byStaff[staffKey] = byStaff[staffKey] || { count: 0, amount: 0 }
       byStaff[staffKey].count += 1; byStaff[staffKey].amount += amt
-      if (isCancel) {
-        bySite['キャンセル'].count += 1; bySite['キャンセル'].amount += amt
-      } else {
-        const sheetSite = SOURCE_TO_SHEET[c.srcLabel] || 'その他'
-        bySite[sheetSite] = bySite[sheetSite] || { count: 0, amount: 0 }
-        bySite[sheetSite].count += 1; bySite[sheetSite].amount += amt
-      }
+      const sheetSite = SOURCE_TO_SHEET[c.srcLabel] || 'その他'
+      bySite[sheetSite] = bySite[sheetSite] || { count: 0, amount: 0 }
+      bySite[sheetSite].count += 1; bySite[sheetSite].amount += amt
     }
     const avg = count > 0 ? Math.round(total / count) : 0
     const reverbAmount = AD_SITES.reduce((s, k) => s + (bySite[k]?.amount || 0), 0)
@@ -207,7 +203,7 @@ export default function Sales({ user, switchTab }) {
     .filter(([, v]) => v.amount > 0)
     .sort((a, b) => b[1].amount - a[1].amount)
     .map(([label, v], i) => ({ label, value: v.amount, count: v.count, color: CHART_COLORS[i % CHART_COLORS.length] })), [totals])
-  const sitePie = useMemo(() => [...SHEET_SITES, 'キャンセル']
+  const sitePie = useMemo(() => SHEET_SITES
     .map(s => ({ s, v: totals.bySite[s] || { count: 0, amount: 0 } }))
     .filter(x => x.v.amount > 0)
     .map((x, i) => ({ label: x.s, value: x.v.amount, count: x.v.count, color: SITE_COLORS[x.s] || CHART_COLORS[i % CHART_COLORS.length] })), [totals])
@@ -295,7 +291,7 @@ export default function Sales({ user, switchTab }) {
                 <table>
                   <thead><tr><th>サイト</th><th style={{ textAlign: 'right' }}>契約件数</th><th style={{ textAlign: 'right' }}>売上</th></tr></thead>
                   <tbody>
-                    {[...SHEET_SITES, 'キャンセル'].map(s => {
+                    {SHEET_SITES.map(s => {
                       const v = totals.bySite[s] || { count: 0, amount: 0 }
                       if (v.count === 0 && v.amount === 0) return null
                       return (
