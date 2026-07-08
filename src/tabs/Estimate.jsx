@@ -331,8 +331,10 @@ export default function Estimate({ user, switchTab }) {
     if (p.toZip) f.toZip = p.toZip
     if (p.toAddress) f.toAddress = p.toAddress
     if (p.fromTelMobile) f.fromTelMobile = p.fromTelMobile
-    if (p.moveDate) f.moveDate = p.moveDate
-    if (p.moveAP) f.moveAP = p.moveAP
+    if (p.toTelMobile) f.toTelMobile = p.toTelMobile
+    if (p.estimator) f.estimator = p.estimator
+    if (p.moveDate) { f.moveDate = p.moveDate; f.deliverDate = p.moveDate } // お届日は引越日と同日を既定に
+    if (p.moveAP) { f.moveAP = p.moveAP; f.deliverAP = p.moveAP }
     if (p.memo) f.memo = p.memo
     // 家財をリードから自動マッピング（語彙が異なるため対応表で変換）
     if (Array.isArray(p.kazai)) {
@@ -522,9 +524,12 @@ export default function Estimate({ user, switchTab }) {
       f.name = c.name || ''
       f.kana = c.kana || ''
       f.fromTelMobile = c.phone || ''
+      f.toTelMobile = c.phone || '' // 同一人物なので転居先の携帯も同じ番号
+      f.estimator = c.staff || ''   // 見積者は担当者で補完
       f.fromAddress = c.fromAddress || ''
       f.toAddress = c.toAddress || ''
       f.moveDate = (c.date && /^\d{4}-\d{2}-\d{2}/.test(c.date)) ? c.date : ''
+      f.deliverDate = f.moveDate // お届日は引越日と同日を既定に
       f.memo = c.memo || ''
       f.contractId = c.id
       f.contractAmount = num(c.amount) // 参考表示用

@@ -294,6 +294,8 @@ export default function Leads({ user, switchTab }) {
       toZip: (item.toZip || '').replace(/^〒/, ''),
       toAddress: item.toAddress || item.to || '',
       fromTelMobile: item.phone || '',
+      toTelMobile: item.phone || '', // 同一人物なので転居先の携帯も同じ番号で補完
+      estimator: item.staff || '',   // 見積者は担当者で補完
       moveDate: md.date, // 引越し希望日を日付化（可能な場合）
       moveAP: md.ap || 'AM',
       kazai: Array.isArray(item.kazai) ? item.kazai : [],

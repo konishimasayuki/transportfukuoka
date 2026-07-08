@@ -57,7 +57,9 @@ export const DEMO_CONTRACTS = [
   const moveDay = dd(Math.min(28, Math.max(1, td + (i % 7) - 3))) // 引越し日(=配車日)：当日±3日（配車ボード用）
   // 家財（成約由来の見積書に反映されるデモ用）
   const kazai = DEMO_KAZAI_SETS[i % DEMO_KAZAI_SETS.length]
-  return { ...c, date: `${YM}-${moveDay}`, salesDate: `${YM}-${day}`, kazai, boxCount: String(8 + (i % 4) * 4) }
+  // 架空の携帯番号（見積書の連絡先が空にならないように）
+  const phone = `090-${String(1000 + (i * 37) % 9000)}-${String(2000 + (i * 53) % 8000)}`
+  return { ...c, date: `${YM}-${moveDay}`, salesDate: `${YM}-${day}`, phone, kazai, boxCount: String(8 + (i % 4) * 4) }
 })
 
 // ===== 広告費(反響課金)算出用のリード（売上管理・広告費で使用） =====

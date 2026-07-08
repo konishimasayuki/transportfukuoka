@@ -671,13 +671,14 @@ function DispatchMap({ vehicles, jobs, show }) {
           )}
         </div>
       </div>
-      <div className="card-body" style={{ padding: 12 }}>
-        {hasKey && !gmapOn
-          ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>右上のトグルをONにするとマップを表示します。</div>
-          : routes.length === 0
+      {/* OFF時（キーあり・トグルOFF）は本文を出さず、ヘッダーのトグルだけに畳む */}
+      {!(hasKey && !gmapOn) && (
+        <div className="card-body" style={{ padding: 12 }}>
+          {routes.length === 0
             ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
             : (useGmap ? <GoogleRouteMap routes={routes} /> : <SchematicMap routes={routes} />)}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
