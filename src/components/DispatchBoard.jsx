@@ -660,20 +660,20 @@ function DispatchMap({ vehicles, jobs, show }) {
       <div className="card-head">
         <h3>🗺 配車ルートマップ <span className="c-sub">· 各車両の進行ルート</span></h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span className="c-sub">{hasKey ? (gmapOn ? 'Googleマップ' : '非表示（API OFF）') : '区の相対位置に基づく概略図'}</span>
+          {!hasKey && <span className="c-sub">区の相対位置に基づく概略図</span>}
           {hasKey && (
             <button type="button" onClick={toggle}
-              title={gmapOn ? 'Googleマップ APIを使用中（クリックでマップ非表示＝API呼び出し停止）' : 'マップ非表示中（クリックでGoogleマップを表示）'}
+              title={gmapOn ? 'クリックでGoogleマップをOFFにします' : 'クリックでGoogleマップをONにします'}
               className={'db-gmap-toggle' + (gmapOn ? ' on' : '')}>
               <span className="knob" />
-              <span className="lbl">Googleマップ API {gmapOn ? 'ON' : 'OFF'}</span>
+              <span className="lbl">Googleマップ {gmapOn ? 'ON' : 'OFF'}</span>
             </button>
           )}
         </div>
       </div>
       <div className="card-body" style={{ padding: 12 }}>
         {hasKey && !gmapOn
-          ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>GoogleマップAPIはOFFです。マップは表示されません（トグルをONにすると表示します）。</div>
+          ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>右上のトグルをONにするとマップを表示します。</div>
           : routes.length === 0
             ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
             : (useGmap ? <GoogleRouteMap routes={routes} /> : <SchematicMap routes={routes} />)}

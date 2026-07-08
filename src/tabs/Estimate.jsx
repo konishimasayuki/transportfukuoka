@@ -357,13 +357,38 @@ export default function Estimate({ user, switchTab }) {
   const fetchItems = async () => {
     setLoading(true)
     try {
-      const [eRes, cRes] = await Promise.all([
+      const [eRes, cRes, lRes] = await Promise.all([
         fetch('/api/estimate').then(r => r.json()).catch(() => ({ items: [] })),
         fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
+        fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })), // 家財の後追い紐付け用
       ])
       setItems(eRes.items || [])
-      setContracts(cRes.items || [])
+      setContracts(backfillContractKazai(cRes.items || [], lRes.items || []))
     } catch (e) { console.error(e) } finally { setLoading(false) }
+  }
+
+  // 過去の成約（家財未保存）に、元リード(leadKey一致)の家財を後から紐付けして保管する。
+  // 家財が空でleadに家財がある成約だけを対象に、成約レコードへ永続化（PUT）する。
+  const backfillContractKazai = (cons, leads) => {
+    const byKey = {}
+    ;(leads || []).forEach(l => { if (l && l.key) byKey[l.key] = l })
+    const fixes = []
+    const merged = (cons || []).map(c => {
+      const hasKazai = Array.isArray(c.kazai) && c.kazai.length
+      const l = (!hasKazai && c.leadKey) ? byKey[c.leadKey] : null
+      if (l && Array.isArray(l.kazai) && l.kazai.length) {
+        const patch = { id: c.id, kazai: l.kazai, boxCount: c.boxCount || l.boxCount || '' }
+        fixes.push(patch)
+        return { ...c, ...patch }
+      }
+      return c
+    })
+    if (fixes.length) {
+      Promise.all(fixes.map(p => fetch('/api/contracts', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p),
+      }))).catch(() => {})
+    }
+    return merged
   }
 
   // 採番：EST-YYYY####（同年の既存件数+1）
