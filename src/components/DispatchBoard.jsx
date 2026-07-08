@@ -61,7 +61,6 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
   const [editCrew, setEditCrew] = useState(null) // 乗務員ラベル選択中の車両key
   const [crewList, setCrewList] = useState(DEFAULT_CREW) // 選択できる乗務員(班)ラベル（設定→乗務員設定）
   const [tip, setTip] = useState(null)       // ツールチップ { job, x, y }
-  const [showCreate, setShowCreate] = useState(false)
   const [showVeh, setShowVeh] = useState(false)
   const idRef = useRef(1000)                 // 新規ジョブのid採番
   const extRef = useRef(0)                   // 外注枠の連番
@@ -106,7 +105,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
 
   // ツールチップ(hover詳細)が画面に残る不具合対策：モーダルを開いた時、
   // またはクリック/スクロールが起きた時に必ず閉じる（mouseleaveが発火しないケースの保険）。
-  useEffect(() => { if (showCreate || showVeh) setTip(null) }, [showCreate, showVeh])
+  useEffect(() => { if (showVeh) setTip(null) }, [showVeh])
   useEffect(() => {
     if (!tip) return
     const clear = () => setTip(null)
@@ -182,6 +181,13 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
     setJobs(prev => prev.filter(x => x.id !== id))
     if (!j.contractId) setManualUn(prev => [jobToUn(j), ...prev]) // 成約由来はderiveで自動的に未手配へ戻る
     toast('未手配に戻しました')
+  }
+
+  // 成約・リード由来でない未手配カード(manualUn)の削除。成約由来はderive元なのでここでは消せない。
+  const removeManualUn = (mi) => {
+    setManualUn(prev => prev.filter((_, idx) => idx !== mi))
+    setArmed(null) // インデックスずれ防止で選択解除
+    toast('未手配を削除しました')
   }
 
   // 外注枠の追加
@@ -264,7 +270,6 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
                 <span><i style={{ background: 'var(--red)' }} />重複</span>
               </div>
               <button className="btn btn-outline btn-sm" onClick={() => setShowVeh(true)}>🚚 車両設定</button>
-              <button className="btn btn-outline btn-sm" onClick={() => setShowCreate(true)}>＋ 未手配を追加</button>
             </div>
           </div>
 
@@ -362,6 +367,10 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
                 <div className="row1">
                   <div className="nm">{u.name}</div>
                   <div className={'db-catpill ' + u.cat}>{CAT_NAME[u.cat]}</div>
+                  {i >= contractCardsAvail.length && (
+                    <button title="この未手配を削除" onClick={(e) => { e.stopPropagation(); removeManualUn(i - contractCardsAvail.length) }}
+                      style={{ marginLeft: 4, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, width: 22, height: 22, cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>×</button>
+                  )}
                 </div>
                 <div className="route">📍 {u.from}{u.to && u.to !== '—' ? ' → ' + u.to : ''}</div>
                 <div className="need">希望車両 {u.need} ・ 作業員 {u.crew}</div>
@@ -387,9 +396,6 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
         </div>
       )}
 
-      {showCreate && (
-        <CreateModal onClose={() => setShowCreate(false)} onAdd={(u) => { setManualUn(prev => [u, ...prev]); setShowCreate(false); toast('未手配に追加しました') }} />
-      )}
       {showVeh && (
         <VehicleModal vehicles={vehicles} jobs={jobs} onClose={() => setShowVeh(false)} onApply={applyVehicles} />
       )}
