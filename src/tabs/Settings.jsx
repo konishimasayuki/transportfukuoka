@@ -57,7 +57,6 @@ function StaffSettings({ isDemo }) {
           <input
             value={name}
             onChange={e => setName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') add() }}
             placeholder="例：古賀"
             style={{ flex: 1, padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
           />
@@ -438,7 +437,7 @@ function CrewSettings({ isDemo }) {
           乗務員（班）を登録します。<b>配車ボード</b>の各車両にラベルとして割り当てできます（例：「田中 / 佐藤」「高橋班」）。
         </div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add() }}
+          <input value={name} onChange={e => setName(e.target.value)}
             placeholder="例：田中 / 佐藤、高橋班"
             style={{ flex: 1, padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
           <button className="btn btn-primary" onClick={add} disabled={busy || !name.trim()} style={{ opacity: !name.trim() ? .5 : 1, whiteSpace: 'nowrap' }}>登録</button>
