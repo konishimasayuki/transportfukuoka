@@ -28,3 +28,7 @@ self.addEventListener('notificationclick', (event) => {
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
+
+// PWAインストール要件を満たす最小のfetchハンドラ（ネットワーク優先のパススルー）。
+// 常に最新を表示するためキャッシュはせず、ハンドラの存在のみでインストール可能にする。
+self.addEventListener('fetch', () => { /* パススルー：ブラウザ既定のfetchに委ねる */ })

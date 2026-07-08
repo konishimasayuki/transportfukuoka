@@ -210,7 +210,7 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
       ) : (
         <div className="card" style={{ overflow: 'hidden' }}>
           <div className="scroll-x">
-            <div style={{ minWidth: 680 }}>
+            <div className="cal-grid">
               {/* 曜日ヘッダ */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: '#F1F5FB' }}>
                 {WEEK.map((w, i) => (

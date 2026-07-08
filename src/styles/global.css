@@ -382,6 +382,29 @@ tr:hover td { background: var(--bg); }
   .db-layout { grid-template-columns: 1fr; }
   .db-side { max-height: none; }
 }
+
+/* 月カレンダー：既定は横幅を確保しつつ、スマホでは画面内に収める（横スクロールで見切れない） */
+.cal-grid { min-width: 680px; }
+@media (max-width: 760px) { .cal-grid { min-width: 0; } }
+
+/* 配車ボード：スマホ・iPadで横が見切れないよう画面内に収める（列幅を詰める） */
+@media (max-width: 1024px) {
+  .db-grid { min-width: 0; }
+  .db-timerow, .db-row { grid-template-columns: 92px repeat(11, 1fr); }
+  .db-timerow .tc { font-size: 9px; padding: 6px 1px; }
+  .db-timerow .corner { padding: 0 8px; font-size: 10px; }
+  .db-veh { padding: 6px 7px; gap: 6px; }
+  .db-badge { min-width: 32px; font-size: 10px; padding: 4px 5px; }
+  .db-vt { font-size: 11px; }
+  .db-vc, .db-vc-edit, .db-vc-unassigned, .db-crew-input { font-size: 9px; }
+  .db-job { padding: 3px 5px; }
+  .db-job .jt { font-size: 10px; }
+  .db-job .jm, .db-job .jtime { font-size: 8px; }
+}
+@media (max-width: 560px) {
+  .db-timerow, .db-row { grid-template-columns: 76px repeat(11, 1fr); }
+  .db-timerow .tc { font-size: 8px; }
+}
 /* ルートマップ：地図＋凡例。狭い画面（iPhone/iPad縦）では縦積みにして地図を潰さない */
 .db-maprow { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 12px; align-items: start; }
 /* 地図は固定高さのパネル（余白を作らず、凡例スクロールと高さを揃える） */
