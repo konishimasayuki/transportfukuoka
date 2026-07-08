@@ -36,6 +36,16 @@ function leadDateStr(item) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 }
 
+// 検索の日本語正規化：カタカナ→ひらがなに寄せ、全角/半角と大小文字を無視。
+// これで「フリガナ（カタカナ）」に対してひらがな入力でも一致する。
+function normJa(s) {
+  return String(s || '')
+    .replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)) // カタカナ→ひらがな
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0)) // 全角英数→半角
+    .replace(/\s+/g, '')
+    .toLowerCase()
+}
+
 const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
 
@@ -351,8 +361,11 @@ export default function Leads({ user, switchTab }) {
       return true
     })
     .filter(i => {
-      const q = search.toLowerCase()
-      return !q || (i.name || '').toLowerCase().includes(q) || (i.phone || '').includes(q) || (i.from || '').includes(q) || (i.to || '').includes(q)
+      const q = normJa(search)
+      if (!q) return true
+      // フリガナ(カタカナ)もひらがなに正規化して対象に含める → ひらがな検索でヒット
+      const hay = normJa(`${i.name || ''} ${i.kana || ''} ${i.phone || ''} ${i.from || ''} ${i.to || ''}`)
+      return hay.includes(q)
     })
     .filter(i => !filterStatus || i.status === filterStatus)
     .sort((a, b) => receivedAtMs(b) - receivedAtMs(a))
@@ -370,7 +383,7 @@ export default function Leads({ user, switchTab }) {
       </div>
 
       <div className="filter-row">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 名前・電話・エリアで検索..." />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 名前・フリガナ(ひらがな可)・電話・エリアで検索..." />
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
           <option value="">全ステータス</option>
           {STATUS_LIST.map(s => <option key={s}>{s}</option>)}
