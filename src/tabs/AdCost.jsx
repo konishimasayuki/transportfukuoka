@@ -70,7 +70,6 @@ export default function AdCost({ user }) {
   const [saving, setSaving]     = useState(false)
   const [draftExp, setDraftExp] = useState({ daily: {}, monthly: {}, note: '' })
   const [bulkPaste, setBulkPaste] = useState('')
-  const [showAllDays, setShowAllDays] = useState(false) // 日別テーブル：当日のみ↔全日
   const [toast, setToast] = useState('')
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2200) }
 
@@ -196,8 +195,8 @@ export default function AdCost({ user }) {
   const todayDate = new Date()
   const isCurrentMonth = selMonth === `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}`
   const todayDD = isCurrentMonth ? String(todayDate.getDate()).padStart(2, '0') : null
-  // 当月は既定で当日のみ表示（折りたたみ）。過去月は全日表示。
-  const rowsToShow = (showAllDays || !isCurrentMonth) ? dailyRows : dailyRows.filter(d => d === todayDD)
+  // 日別テーブルは常に全日（1日〜末日）を表示（折りたたみなし）。
+  const rowsToShow = dailyRows
 
   const inputCell = { width: 92, padding: '5px 6px', border: '1px solid #E2E8F0', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', outline: 'none', textAlign: 'right' }
   const cellTd = { padding: '4px 6px', borderBottom: '1px solid #F1F5F9' }
@@ -205,7 +204,7 @@ export default function AdCost({ user }) {
 
   return (
     <div>
-      <div className="page-hdr"><h1>広告費</h1><p>掲載費を日別に入力（サムライ単身・家族・価格・ズバッと）。月ごとに切り替えできます。</p></div>
+      <div className="page-hdr"><h1>広告費</h1></div>
 
       <div className="filter-row">
         <select value={selMonth} onChange={e => setSelMonth(e.target.value)}>
@@ -249,7 +248,7 @@ export default function AdCost({ user }) {
                 <div className="card-head"><h3>今月の掲載費（日別合計）</h3><span className="c-sub">{monthLabel} 合計 {yen(sums.dailyGrand)}</span></div>
                 <div className="card-body">
                   <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
-                    <div style={{ minWidth: totals.length * 20, position: 'relative' }}>
+                    <div style={{ minWidth: totals.length * 24, position: 'relative' }}>
                       {/* 棒＋横線エリア */}
                       <div style={{ position: 'relative', height: H }}>
                         {/* 1万円ごとの横線 */}
@@ -263,11 +262,21 @@ export default function AdCost({ user }) {
                           {totals.map(t => {
                             const barH = (t.v / roundedMax) * H
                             const isToday = t.day === todayDD
+                            // 金額ラベルは縦書きで大きく・高コントラストに（見やすさ改善）。
+                            // 背の高い棒は棒内(白)、低い棒は棒の上(濃色)に配置して重なりや潰れを防ぐ。
+                            const inside = barH >= 48
                             return (
-                              <div key={t.day} style={{ flex: '1 0 18px', minWidth: 18, height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} title={`${Number(t.day)}日：${yen(t.v)}`}>
-                                <div style={{ width: '78%', height: barH, minHeight: t.v > 0 ? 4 : 0, background: isToday ? '#1E5FA8' : '#93C5FD', borderRadius: '3px 3px 0 0', position: 'relative' }}>
+                              <div key={t.day} style={{ flex: '1 0 22px', minWidth: 22, height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} title={`${Number(t.day)}日：${yen(t.v)}`}>
+                                <div style={{ width: '80%', height: barH, minHeight: t.v > 0 ? 4 : 0, background: isToday ? '#1E5FA8' : '#93C5FD', borderRadius: '3px 3px 0 0', position: 'relative' }}>
                                   {t.v > 0 && (
-                                    <span style={{ position: 'absolute', top: 2, left: '50%', transform: 'translateX(-50%)', fontSize: 7, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(15,23,42,.7)' }}>{t.v.toLocaleString('ja-JP')}</span>
+                                    <span style={{
+                                      position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+                                      writingMode: 'vertical-rl', textOrientation: 'mixed',
+                                      fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap', letterSpacing: '-.03em',
+                                      ...(inside
+                                        ? { top: 3, color: '#fff', textShadow: '0 1px 2px rgba(15,23,42,.9)' }
+                                        : { bottom: '100%', marginBottom: 2, color: isToday ? '#1E5FA8' : '#475569' }),
+                                    }}>{t.v.toLocaleString('ja-JP')}</span>
                                   )}
                                 </div>
                               </div>
@@ -288,22 +297,13 @@ export default function AdCost({ user }) {
             )
           })()}
 
-          {/* 掲載費（日別）：当日のみ表示、当日以外は折りたたみ */}
+          {/* 掲載費（日別）：1日〜末日を常に全日表示（折りたたみなし） */}
           <div className="card">
             <div className="card-head">
               <h3>掲載費（日別）</h3>
-              {isCurrentMonth
-                ? <button className="btn btn-outline btn-sm" onClick={() => setShowAllDays(s => !s)}>{showAllDays ? '▴ 当日のみ表示' : `▾ 全${days}日を表示`}</button>
-                : <span className="c-sub">{monthLabel} 全{days}日</span>}
+              <span className="c-sub">{monthLabel} 全{days}日</span>
             </div>
             <div className="card-body">
-              {isAutoMonth && (
-                <div style={{ fontSize: 11, color: '#475569', background: '#F1F5FB', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.7 }}>
-                  🚚 <b>広告費は自動算出</b>（受付日の取得リード件数 × 単価・{AUTO_FROM.replace('-', '/')}以降）：<br />
-                  ・引越し侍 … <b>サムライ単身 ¥{SAMURAI_SINGLE_UNIT}×件数</b> と <b>サムライ家族 ¥{SAMURAI_FAMILY_UNIT}×件数</b>（合算せず別々に算出。単身＝1人／家族＝2人以上）<br />
-                  ・価格.com … <b>¥{KAKAKU_UNIT}×件数</b>　／　ズバット … <b>¥{ZUBATTO_UNIT}×件数</b>
-                </div>
-              )}
               <div className="scroll-x">
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 580 }}>
                   <thead>
@@ -362,10 +362,6 @@ export default function AdCost({ user }) {
                   </tfoot>
                 </table>
               </div>
-              {isCurrentMonth && !showAllDays && (
-                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>※ 当日のみ表示中。他の{days - 1}日は「▾ 全{days}日を表示」で開けます（合計は全日を集計）。</div>
-              )}
-
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 13 }}>
                   <span style={{ color: '#64748B', marginRight: 6 }}>{monthLabel} 掲載費 合計（ドラフト）</span>
@@ -378,6 +374,23 @@ export default function AdCost({ user }) {
                 </button>
               </div>
               {isDemo && <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>※ デモモードでは保存できません（表示のみ）。</div>}
+            </div>
+          </div>
+
+          {/* ===== 説明（このタブの使い方・自動算出の内訳）：まとめて最下部に配置 ===== */}
+          <div className="card">
+            <div className="card-head"><h3>ℹ️ 広告費タブについて</h3></div>
+            <div className="card-body">
+              <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.8 }}>
+                掲載費を日別に入力（サムライ単身・家族・価格・ズバッと）します。上部のセレクトで月ごとに切り替えできます。日別リストは1日〜末日を常に全日表示します。
+              </div>
+              {isAutoMonth && (
+                <div style={{ fontSize: 11, color: '#475569', background: '#F1F5FB', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', marginTop: 10, lineHeight: 1.7 }}>
+                  🚚 <b>広告費は自動算出</b>（受付日の取得リード件数 × 単価・{AUTO_FROM.replace('-', '/')}以降）：<br />
+                  ・引越し侍 … <b>サムライ単身 ¥{SAMURAI_SINGLE_UNIT}×件数</b> と <b>サムライ家族 ¥{SAMURAI_FAMILY_UNIT}×件数</b>（合算せず別々に算出。単身＝1人／家族＝2人以上）<br />
+                  ・価格.com … <b>¥{KAKAKU_UNIT}×件数</b>　／　ズバット … <b>¥{ZUBATTO_UNIT}×件数</b>
+                </div>
+              )}
             </div>
           </div>
         </>

@@ -23,16 +23,17 @@ const LABELS = [
 const labelColor = (key) => (LABELS.find(l => l.key === key) || LABELS[2]).color
 const DEFAULT_LABEL_BY_CAL = { '引っ越し': 'blue', '見積り': 'yellow', '段ボール配達': 'green' }
 
+// すべて架空のサンプル予定（氏名は「サンプル○様」で実在しないと一目でわかる形）。
 const SAMPLE = [
-  { id: 'seed1', calendar: '引っ越し', title: '田中様 引越し', allDay: false, start: '2026-06-30', startTime: '09:00', end: '2026-06-30', endTime: '12:00', label: 'blue',   location: '東区→博多区', memo: '2tショート / 作業2名', attachments: [] },
-  { id: 'seed2', calendar: '引っ越し', title: '佐藤様 引越し', allDay: false, start: '2026-06-30', startTime: '13:30', end: '2026-06-30', endTime: '16:00', label: 'red',    location: '南区→春日市', memo: 'エアコン取外しあり', attachments: [] },
-  { id: 'seed3', calendar: '引っ越し', title: '山口様 引越し', allDay: true,  start: '2026-07-01', startTime: '', end: '2026-07-01', endTime: '', label: 'orange', location: '西区', memo: '', attachments: [] },
-  { id: 'seed4', calendar: '見積り',   title: '浜口様 見積り訪問', allDay: false, start: '2026-06-30', startTime: '10:00', end: '2026-06-30', endTime: '10:30', label: 'yellow', location: '中央区高砂', memo: '家族2名 2LDK', attachments: [] },
-  { id: 'seed5', calendar: '見積り',   title: '高松様 見積り', allDay: false, start: '2026-06-29', startTime: '11:00', end: '2026-06-29', endTime: '', label: 'yellow', location: '', memo: '', attachments: [] },
-  { id: 'seed6', calendar: '見積り',   title: '鈴木様 見積り', allDay: false, start: '2026-07-02', startTime: '14:00', end: '2026-07-02', endTime: '', label: 'yellow', location: '早良区', memo: '', attachments: [] },
-  { id: 'seed7', calendar: '段ボール配達', title: '大川原様 段ボール配達', allDay: true, start: '2026-06-30', startTime: '', end: '2026-06-30', endTime: '', label: 'green', location: '東区', memo: '大10 / 小20', attachments: [] },
-  { id: 'seed8', calendar: '段ボール配達', title: '長谷部様 配達', allDay: false, start: '2026-07-01', startTime: '15:00', end: '2026-07-01', endTime: '', label: 'green', location: '', memo: '', attachments: [] },
-  { id: 'seed9', calendar: '段ボール配達', title: '庄司様 段ボール配達', allDay: true, start: '2026-06-28', startTime: '', end: '2026-06-28', endTime: '', label: 'green', location: '', memo: '', attachments: [] },
+  { id: 'seed1', calendar: '引っ越し', title: 'サンプルA様 引越し', allDay: false, start: '2026-06-30', startTime: '09:00', end: '2026-06-30', endTime: '12:00', label: 'blue',   location: '東区→博多区', memo: '2tショート / 作業2名', attachments: [] },
+  { id: 'seed2', calendar: '引っ越し', title: 'サンプルB様 引越し', allDay: false, start: '2026-06-30', startTime: '13:30', end: '2026-06-30', endTime: '16:00', label: 'red',    location: '南区→春日市', memo: 'エアコン取外しあり', attachments: [] },
+  { id: 'seed3', calendar: '引っ越し', title: 'サンプルC様 引越し', allDay: true,  start: '2026-07-01', startTime: '', end: '2026-07-01', endTime: '', label: 'orange', location: '西区', memo: '', attachments: [] },
+  { id: 'seed4', calendar: '見積り',   title: 'サンプルD様 見積り訪問', allDay: false, start: '2026-06-30', startTime: '10:00', end: '2026-06-30', endTime: '10:30', label: 'yellow', location: '中央区高砂', memo: '家族2名 2LDK', attachments: [] },
+  { id: 'seed5', calendar: '見積り',   title: 'サンプルE様 見積り', allDay: false, start: '2026-06-29', startTime: '11:00', end: '2026-06-29', endTime: '', label: 'yellow', location: '', memo: '', attachments: [] },
+  { id: 'seed6', calendar: '見積り',   title: 'サンプルF様 見積り', allDay: false, start: '2026-07-02', startTime: '14:00', end: '2026-07-02', endTime: '', label: 'yellow', location: '早良区', memo: '', attachments: [] },
+  { id: 'seed7', calendar: '段ボール配達', title: 'サンプルG様 段ボール配達', allDay: true, start: '2026-06-30', startTime: '', end: '2026-06-30', endTime: '', label: 'green', location: '東区', memo: '大10 / 小20', attachments: [] },
+  { id: 'seed8', calendar: '段ボール配達', title: 'サンプルH様 配達', allDay: false, start: '2026-07-01', startTime: '15:00', end: '2026-07-01', endTime: '', label: 'green', location: '', memo: '', attachments: [] },
+  { id: 'seed9', calendar: '段ボール配達', title: 'サンプルI様 段ボール配達', allDay: true, start: '2026-06-28', startTime: '', end: '2026-06-28', endTime: '', label: 'green', location: '', memo: '', attachments: [] },
 ]
 
 const WEEK = ['日', '月', '火', '水', '木', '金', '土']
@@ -146,8 +147,6 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
   const tStr = todayStr()
   const selList = eventsOn(selDate)
 
-  // 配車ボード用：チップ選択をカテゴリ絞り込みに変換
-  const catFilter = { move: genres.includes('引っ越し'), quote: genres.includes('見積り'), box: genres.includes('段ボール配達') }
   // 配車ボードの日付ナビ（前日/今日/翌日）
   const shiftBoardDay = (delta) => { const d = new Date(boardDate); d.setDate(d.getDate() + delta); setBoardDate(d) }
   const boardDateLabel = `${boardDate.getMonth() + 1}月${boardDate.getDate()}日 (${WEEK[boardDate.getDay()]})`
@@ -171,17 +170,19 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
         {view === 'month' && <button className="btn btn-primary btn-sm" onClick={() => openAdd()}>＋ 予定を作成</button>}
       </div>
 
-      {/* ジャンル切替チップ（複数選択で重ね表示） */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
-        {GENRES.map(g => (
-          <span key={g} style={chip(genres.includes(g), GENRE_COLOR[g])} onClick={() => toggleGenre(g)}>
-            <span style={{ width: 10, height: 10, borderRadius: '50%', background: GENRE_COLOR[g], display: 'inline-block' }} />
-            {g}
-          </span>
-        ))}
-        <div style={{ flex: 1 }} />
-        {!isDemo && view === 'month' && <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={loading}>⟳ 更新</button>}
-      </div>
+      {/* ジャンル切替チップ（月カレンダーのみ。配車ボードではフィルターを出さず全件表示） */}
+      {view === 'month' && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+          {GENRES.map(g => (
+            <span key={g} style={chip(genres.includes(g), GENRE_COLOR[g])} onClick={() => toggleGenre(g)}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: GENRE_COLOR[g], display: 'inline-block' }} />
+              {g}
+            </span>
+          ))}
+          <div style={{ flex: 1 }} />
+          {!isDemo && <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={loading}>⟳ 更新</button>}
+        </div>
+      )}
 
       {/* 日付ナビ：月ビュー＝前月/今日/翌月、ボードビュー＝前日/今日/翌日 */}
       {view === 'month' ? (
@@ -196,13 +197,17 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
           <button className="btn btn-outline btn-sm" onClick={() => shiftBoardDay(-1)}>‹ 前日</button>
           <button className="btn btn-outline btn-sm" onClick={() => setBoardDate(new Date())}>今日</button>
           <button className="btn btn-outline btn-sm" onClick={() => shiftBoardDay(1)}>翌日 ›</button>
+          {/* 日付をカレンダーで直接選択 */}
+          <input type="date" value={ymd(boardDate)}
+            onChange={e => { if (e.target.value) { const d = new Date(e.target.value + 'T00:00:00'); if (!isNaN(d.getTime())) setBoardDate(d) } }}
+            style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--text)', outline: 'none' }} />
           <div style={{ fontSize: 16, fontWeight: 900, marginLeft: 6 }}>{boardDateLabel}</div>
           {boardIsToday && <span className="badge bb" style={{ marginLeft: 2 }}>今日</span>}
         </div>
       )}
 
-      {/* ============ 配車ボード ============ */}
-      {view === 'board' && <DispatchBoard filter={catFilter} onToast={showToast} contracts={contracts} boardDate={boardDate} isDemo={isDemo} />}
+      {/* ============ 配車ボード（フィルターなし＝全件表示） ============ */}
+      {view === 'board' && <DispatchBoard onToast={showToast} contracts={contracts} boardDate={boardDate} isDemo={isDemo} />}
 
       {/* ============ 月カレンダー（既存）============ */}
       {view === 'month' && (loading ? (

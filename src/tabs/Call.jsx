@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react'
 import LeadDetailModal, { ConvertToContractModal } from '../components/LeadDetailModal'
 import { receivedAtMs } from '../lib/sortLeads'
 
+// すべて架空のサンプル（氏名は「サンプル○」、番号はダミー）。
 const DEMO_LOGS = [
-  { icon:'📞', bg:'#F0FDF4', name:'山田 太郎', meta:'引越し侍 / 090-XXXX-1234 / 10:23', badge:'bg', status:'通話成立' },
-  { icon:'📵', bg:'#FEF2F2', name:'鈴木 優子', meta:'価格.com / 080-XXXX-5678 / 10:31',  badge:'br', status:'不在' },
-  { icon:'📞', bg:'#F0FDF4', name:'橋本 直樹', meta:'引越し侍 / 070-XXXX-9012 / 11:05', badge:'bg', status:'通話成立' },
-  { icon:'📞', bg:'#FFFBEB', name:'坂本 由美', meta:'引越し侍 / 090-XXXX-3456 / 11:42', badge:'by', status:'折返し待ち' },
-  { icon:'📞', bg:'#F0FDF4', name:'藤本 健司', meta:'価格.com / 080-XXXX-7890 / 13:18', badge:'bg', status:'通話成立' },
+  { icon:'📞', bg:'#F0FDF4', name:'サンプル 太郎', meta:'引越し侍 / 090-0000-0001 / 10:23', badge:'bg', status:'通話成立' },
+  { icon:'📵', bg:'#FEF2F2', name:'サンプル 花子', meta:'価格.com / 090-0000-0002 / 10:31',  badge:'br', status:'不在' },
+  { icon:'📞', bg:'#F0FDF4', name:'サンプル 一郎', meta:'引越し侍 / 090-0000-0003 / 11:05', badge:'bg', status:'通話成立' },
+  { icon:'📞', bg:'#FFFBEB', name:'サンプル 二郎', meta:'引越し侍 / 090-0000-0004 / 11:42', badge:'by', status:'折返し待ち' },
+  { icon:'📞', bg:'#F0FDF4', name:'サンプル 三郎', meta:'価格.com / 090-0000-0005 / 13:18', badge:'bg', status:'通話成立' },
 ]
 
 const DEMO_SITES = [

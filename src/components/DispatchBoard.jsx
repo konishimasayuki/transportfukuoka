@@ -21,24 +21,25 @@ const pctW = (d) => (d / COLS) * 100
 // ---- 初期ダミーデータ（外注枠は含めない：必要時に追加）----
 // 車両フリートの初期値は設定「トラック設定」と共有（src/lib/fleet.js）。
 const INIT_VEHICLES = DEFAULT_FLEET
+// ※すべて架空のサンプル（氏名は「サンプル○様」）。現在は初期表示に未使用（実データ/成約由来から生成）。
 const INIT_JOBS = [
-  { id: 'j1', v: 'v1', cat: 'move', name: '松本 様', crew: '2名', from: '早良区', to: '中央区', s: 9, d: 3, st: 'confirmed', src: 'SUUMO', amt: 52000 },
-  { id: 'j2', v: 'v1', cat: 'quote', name: '井上 様', crew: '2名', from: '南区', to: '—', s: 14, d: 1.5, st: 'tentative', src: 'HP', amt: 0 },
-  { id: 'j3', v: 'v2', cat: 'move', name: 'グエン 様', crew: '2名', from: '春日市', to: '大野城市', s: 10, d: 3, st: 'confirmed', src: 'ZBT', amt: 63000 },
-  { id: 'j4', v: 'v2', cat: 'move', name: '重複確認', crew: '2名', from: '大野城', to: '筑紫野', s: 12, d: 2, st: 'conflict', src: 'HP', amt: 48000 },
-  { id: 'j5', v: 'v3', cat: 'move', name: '佐々木 様', crew: '3名', from: '西区', to: '糸島市', s: 9, d: 4.5, st: 'confirmed', src: 'SUUMO', amt: 98000 },
-  { id: 'j6', v: 'v3', cat: 'box', name: '高田 様', crew: '1名', from: '糸島', to: '—', s: 15, d: 1.5, st: 'tentative', src: 'HP', amt: 0 },
-  { id: 'j7', v: 'v4', cat: 'move', name: '渡辺 様', crew: '3名', from: '東区', to: '新宮町', s: 8.5, d: 5, st: 'confirmed', src: 'ZBT', amt: 132000 },
-  { id: 'j8', v: 'v5', cat: 'quote', name: '田口 様', crew: '1名', from: '博多区', to: '—', s: 8.5, d: 1.5, st: 'confirmed', src: 'HP', amt: 0 },
-  { id: 'j9', v: 'v5', cat: 'move', name: 'パク 様', crew: '1名', from: '中央区', to: '中央区', s: 11, d: 1.5, st: 'confirmed', src: 'SUUMO', amt: 19000 },
-  { id: 'j10', v: 'v5', cat: 'box', name: '森 様', crew: '1名', from: '城南区', to: '—', s: 13.5, d: 1.5, st: 'tentative', src: 'HP', amt: 0 },
+  { id: 'j1', v: 'v1', cat: 'move', name: 'サンプルA 様', crew: '2名', from: '早良区', to: '中央区', s: 9, d: 3, st: 'confirmed', src: 'SUUMO', amt: 52000 },
+  { id: 'j2', v: 'v1', cat: 'quote', name: 'サンプルB 様', crew: '2名', from: '南区', to: '—', s: 14, d: 1.5, st: 'tentative', src: 'HP', amt: 0 },
+  { id: 'j3', v: 'v2', cat: 'move', name: 'サンプルC 様', crew: '2名', from: '春日市', to: '大野城市', s: 10, d: 3, st: 'confirmed', src: 'ZBT', amt: 63000 },
+  { id: 'j4', v: 'v2', cat: 'move', name: 'サンプルD 様', crew: '2名', from: '大野城', to: '筑紫野', s: 12, d: 2, st: 'conflict', src: 'HP', amt: 48000 },
+  { id: 'j5', v: 'v3', cat: 'move', name: 'サンプルE 様', crew: '3名', from: '西区', to: '糸島市', s: 9, d: 4.5, st: 'confirmed', src: 'SUUMO', amt: 98000 },
+  { id: 'j6', v: 'v3', cat: 'box', name: 'サンプルF 様', crew: '1名', from: '糸島', to: '—', s: 15, d: 1.5, st: 'tentative', src: 'HP', amt: 0 },
+  { id: 'j7', v: 'v4', cat: 'move', name: 'サンプルG 様', crew: '3名', from: '東区', to: '新宮町', s: 8.5, d: 5, st: 'confirmed', src: 'ZBT', amt: 132000 },
+  { id: 'j8', v: 'v5', cat: 'quote', name: 'サンプルH 様', crew: '1名', from: '博多区', to: '—', s: 8.5, d: 1.5, st: 'confirmed', src: 'HP', amt: 0 },
+  { id: 'j9', v: 'v5', cat: 'move', name: 'サンプルI 様', crew: '1名', from: '中央区', to: '中央区', s: 11, d: 1.5, st: 'confirmed', src: 'SUUMO', amt: 19000 },
+  { id: 'j10', v: 'v5', cat: 'box', name: 'サンプルJ 様', crew: '1名', from: '城南区', to: '—', s: 13.5, d: 1.5, st: 'tentative', src: 'HP', amt: 0 },
 ]
 const INIT_UN = [
-  { cat: 'move', name: '中村 様', crew: '2名', need: '2t', from: '南区', to: '城南区', whn: '7/3 09:00', src: 'suumo' },
-  { cat: 'box', name: 'リー 様', crew: '1名', need: '軽', from: '博多区', to: '—', whn: '7/3 14:00', src: 'zbt' },
-  { cat: 'quote', name: '大塚 様', crew: '1名', need: '軽', from: '中央区', to: '—', whn: '7/3 08:00', src: 'hp' },
-  { cat: 'move', name: 'チャン 様', crew: '2名', need: '2t', from: '早良区', to: '西区', whn: '7/3 13:00', src: 'suumo' },
-  { cat: 'move', name: '斉藤 様', crew: '2名', need: '2tロング', from: '東区', to: '粕屋町', whn: '7/3 15:30', src: 'hp' },
+  { cat: 'move', name: 'サンプルK 様', crew: '2名', need: '2t', from: '南区', to: '城南区', whn: '7/3 09:00', src: 'suumo' },
+  { cat: 'box', name: 'サンプルL 様', crew: '1名', need: '軽', from: '博多区', to: '—', whn: '7/3 14:00', src: 'zbt' },
+  { cat: 'quote', name: 'サンプルM 様', crew: '1名', need: '軽', from: '中央区', to: '—', whn: '7/3 08:00', src: 'hp' },
+  { cat: 'move', name: 'サンプルN 様', crew: '2名', need: '2t', from: '早良区', to: '西区', whn: '7/3 13:00', src: 'suumo' },
+  { cat: 'move', name: 'サンプルO 様', crew: '2名', need: '2tロング', from: '東区', to: '粕屋町', whn: '7/3 15:30', src: 'hp' },
 ]
 const SRC_TXT = { suumo: 'SUUMO', zbt: 'ズバット', hp: '自社HP' }
 const jobClass = (j) => 'db-job ' + (j.st === 'conflict' ? 'conflict' : j.cat) + (j.st === 'tentative' ? ' tentative' : '')
@@ -498,9 +499,42 @@ function RouteLegend({ routes, note }) {
   )
 }
 
+// ルート詳細カード（線をタップで表示：区間・出発住所・到着住所・距離/時間）。
+// 地図（概略図／実地図）の上に絶対配置する共通コンポーネント。
+function RouteDetailCard({ detail, onClose, onReroute, note }) {
+  if (!detail) return null
+  const Row = ({ label, value }) => (
+    <div style={{ display: 'flex', gap: 8, fontSize: 11.5, padding: '3px 0', lineHeight: 1.5 }}>
+      <span style={{ color: 'var(--muted)', flexShrink: 0, width: 58 }}>{label}</span>
+      <span style={{ color: 'var(--text)', fontWeight: 600, wordBreak: 'break-all' }}>{value || '—'}</span>
+    </div>
+  )
+  return (
+    <div style={{ position: 'absolute', left: 10, top: 10, zIndex: 30, width: 262, maxWidth: 'calc(100% - 20px)', background: '#fff', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 12px 34px rgba(0,0,0,.22)', padding: '10px 12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <span style={{ width: 16, height: 4, borderRadius: 2, background: detail.color, flexShrink: 0 }} />
+          <b style={{ fontSize: 13 }}>{detail.label}</b>
+          {detail.cls && <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>{detail.cls}</span>}
+        </div>
+        <button onClick={onClose} title="閉じる" style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: '#94A3B8', lineHeight: 1, flexShrink: 0 }}>×</button>
+      </div>
+      <Row label="区間" value={detail.stops.join(' → ')} />
+      <Row label="出発住所" value={detail.fromAddr} />
+      <Row label="到着住所" value={detail.toAddr} />
+      {(detail.distance || detail.duration) && <Row label="距離/時間" value={[detail.distance, detail.duration].filter(Boolean).join(' ・ ')} />}
+      {onReroute && detail.altCount > 1 && (
+        <button className="btn btn-outline btn-sm" style={{ marginTop: 8, width: '100%' }} onClick={onReroute}>↻ 別ルートに変更（{detail.altIndex + 1}/{detail.altCount}）</button>
+      )}
+      {note && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>{note}</div>}
+    </div>
+  )
+}
+
 // 概略図モード（キー無し）：区の相対座標をSVGに投影して色分け表示
 function SchematicMap({ routes }) {
   const W = 760, H = 360, pad = 46
+  const [detail, setDetail] = useState(null)
   const g = useMemo(() => {
     const withC = routes.map(r => ({ ...r, pts: r.stops.map(n => ({ name: n, c: coordOf(n) })).filter(x => x.c) })).filter(r => r.pts.length > 0)
     const all = withC.flatMap(r => r.pts.map(p => p.c))
@@ -526,7 +560,9 @@ function SchematicMap({ routes }) {
 
   return (
     <div className="db-maprow">
-      <div className="db-mapbox">
+      <div className="db-mapbox" style={{ position: 'relative' }}>
+        <RouteDetailCard detail={detail} onClose={() => setDetail(null)}
+          note="※ 概略図です。高速道路／有料道路の設定・実道路でのルート変更は、Googleマップキー設定時の実地図モードで利用できます。" />
         {g ? (
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%', display: 'block' }}>
             {/* 陸地 */}
@@ -545,6 +581,13 @@ function SchematicMap({ routes }) {
                 <g key={ri}>
                   {pts.length > 1 && <path d={d} fill="none" stroke="#fff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />}
                   {pts.length > 1 && <path d={d} fill="none" stroke={r.color} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />}
+                  {/* 透明な太い当たり判定パス：線をタップで詳細（区間・出発/到着）を表示 */}
+                  {pts.length > 1 && (
+                    <path d={d} fill="none" stroke="transparent" strokeWidth="18" strokeLinecap="round" style={{ cursor: 'pointer' }}
+                      onClick={() => setDetail({ color: r.color, label: r.v.ext ? '外注' : '#' + r.v.id, cls: r.v.cls, stops: r.stops, fromAddr: r.stops[0], toAddr: r.stops[r.stops.length - 1] })}>
+                      <title>タップでルート詳細</title>
+                    </path>
+                  )}
                   {pts.map((p, pi) => (
                     <circle key={pi} cx={p[0]} cy={p[1]} r={pi === 0 ? 6 : 5}
                       fill={pi === 0 ? r.color : '#fff'} stroke={r.color} strokeWidth="2.5" />
@@ -588,12 +631,21 @@ function loadGmaps(key) {
 const dirCache = new Map() // 同一停車列の経路計算を使い回す（API呼び出し削減）
 
 // 実地図モード（キーあり）：Directions API の実道路ルートを車両ごとに色分け描画
+// ・線をタップ → 区間／出発住所／到着住所／距離・時間を表示
+// ・高速道路／有料道路トグルで経路を再計算（ルート変更）
+// ・複数経路がある場合は詳細カードの「別ルートに変更」で切替
 function GoogleRouteMap({ routes }) {
   const mapRef = useRef(null)
   const mapObj = useRef(null)
   const overlays = useRef([])
+  const resultRef = useRef({}) // 車両key -> { result, altCount }（別ルート切替用に最新結果を保持）
+  const altRef = useRef({})    // 車両key -> 選択中の経路index
   const [status, setStatus] = useState('loading') // loading | ready | error
   const [err, setErr] = useState('')
+  const [avoidHighways, setAvoidHighways] = useState(false) // OFF=高速を使う（既定）
+  const [avoidTolls, setAvoidTolls] = useState(false)       // OFF=有料を使う（既定）
+  const [detail, setDetail] = useState(null)  // クリックしたルートの詳細
+  const [redraw, setRedraw] = useState(0)      // 別ルート切替などで再描画
   const sig = routes.map(r => r.v.key + ':' + r.stops.join('>')).join('|')
 
   useEffect(() => {
@@ -625,14 +677,37 @@ function GoogleRouteMap({ routes }) {
       const names = r.stops
       const place = (result) => {
         if (cancelled || !result) return resolve()
-        const rend = new g.maps.DirectionsRenderer({ map, suppressMarkers: true, preserveViewport: true, polylineOptions: { strokeColor: r.color, strokeWeight: 5, strokeOpacity: 0.85 } })
-        rend.setDirections(result); overlays.current.push(rend)
-        const legs = result.routes[0].legs
+        const altCount = result.routes.length
+        let ai = altRef.current[r.v.key] || 0
+        if (ai >= altCount) { ai = 0; altRef.current[r.v.key] = 0 }
+        resultRef.current[r.v.key] = { result, altCount }
+        const route0 = result.routes[ai]
+        const path = route0.overview_path
+        // 白casing → 車両色 の2本重ねで“地図の経路ライン”らしく。色線はクリックで詳細を出す。
+        const casing = new g.maps.Polyline({ map, path, strokeColor: '#fff', strokeWeight: 8, strokeOpacity: 0.95, zIndex: 1 })
+        const line = new g.maps.Polyline({ map, path, strokeColor: r.color, strokeWeight: 5, strokeOpacity: 0.9, zIndex: 2, clickable: true })
+        overlays.current.push(casing, line)
+        const legs = route0.legs
         legs.forEach((leg, i) => { if (i === 0) pin(leg.start_location, r.color, 9); pin(leg.end_location, r.color, 7) })
+        path.forEach(p => bounds.extend(p))
         try { map.fitBounds(bounds) } catch {}
+        const distM = legs.reduce((a, l) => a + ((l.distance && l.distance.value) || 0), 0)
+        const durS = legs.reduce((a, l) => a + ((l.duration && l.duration.value) || 0), 0)
+        const info = {
+          key: r.v.key, color: r.color, cls: r.v.cls,
+          label: r.v.ext ? '外注' : '#' + r.v.id,
+          stops: r.stops,
+          fromAddr: (legs[0] && legs[0].start_address) || r.stops[0],
+          toAddr: (legs[legs.length - 1] && legs[legs.length - 1].end_address) || r.stops[r.stops.length - 1],
+          distance: (distM / 1000).toFixed(1) + ' km',
+          duration: Math.max(1, Math.round(durS / 60)) + ' 分',
+          altIndex: ai, altCount,
+        }
+        g.maps.event.addListener(line, 'click', () => setDetail(info))
         resolve()
       }
-      const cacheKey = names.join('>')
+      // 経路オプション（高速/有料の回避）ごとにキャッシュを分ける
+      const cacheKey = names.join('>') + '|h' + (avoidHighways ? 1 : 0) + 't' + (avoidTolls ? 1 : 0)
       if (dirCache.has(cacheKey)) { place(dirCache.get(cacheKey)); return }
       if (names.length < 2) { // 単一地点：ジオコーディングして1ピン
         new g.maps.Geocoder().geocode({ address: names[0] + ' 福岡' }, (res, st) => {
@@ -641,10 +716,14 @@ function GoogleRouteMap({ routes }) {
         })
         return
       }
+      const hasWaypoints = names.length > 2
       svc.route({
         origin: names[0] + ' 福岡', destination: names[names.length - 1] + ' 福岡',
         waypoints: names.slice(1, -1).map(n => ({ location: n + ' 福岡', stopover: true })),
-        optimizeWaypoints: true, travelMode: g.maps.TravelMode.DRIVING,
+        optimizeWaypoints: hasWaypoints,
+        provideRouteAlternatives: !hasWaypoints, // 経由地なしのときだけ代替ルートを取得
+        avoidHighways, avoidTolls,
+        travelMode: g.maps.TravelMode.DRIVING,
       }, (result, st) => {
         if (st === 'OK') { dirCache.set(cacheKey, result); place(result) }
         else if (st === 'REQUEST_DENIED') { setErr('REQUEST_DENIED'); setStatus('error'); resolve() }
@@ -654,7 +733,22 @@ function GoogleRouteMap({ routes }) {
 
     ;(async () => { for (const r of routes) { if (cancelled) break; await draw(r) } })() // 逐次実行でレート超過を回避
     return () => { cancelled = true }
-  }, [status, sig])
+  }, [status, sig, avoidHighways, avoidTolls, redraw])
+
+  // 詳細カードの「別ルートに変更」：その車両の代替ルートindexを進めて再描画
+  const reroute = () => {
+    if (!detail) return
+    const cur = resultRef.current[detail.key]
+    if (!cur || cur.altCount <= 1) return
+    altRef.current[detail.key] = ((altRef.current[detail.key] || 0) + 1) % cur.altCount
+    setDetail(null)
+    setRedraw(x => x + 1)
+  }
+  // トグル操作時は代替ルート選択をリセットして再計算
+  const setHwy = () => { altRef.current = {}; setDetail(null); setAvoidHighways(v => !v) }
+  const setToll = () => { altRef.current = {}; setDetail(null); setAvoidTolls(v => !v) }
+
+  const pill = (on) => ({ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', userSelect: 'none', border: `1px solid ${on ? 'var(--blue)' : '#E2E8F0'}`, background: on ? '#EAF2FB' : '#fff', color: on ? 'var(--blue)' : '#94A3B8' })
 
   if (status === 'error') { // 失敗時は概略図にフォールバック
     return (
@@ -665,12 +759,23 @@ function GoogleRouteMap({ routes }) {
     )
   }
   return (
-    <div className="db-maprow">
-      <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
-        <div ref={mapRef} style={{ width: '100%', height: 340 }} />
-        {status === 'loading' && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: '#F1F5F9', fontSize: 12, color: 'var(--muted)' }}>地図を読み込み中…</div>}
+    <div>
+      {/* ルート設定：高速道路／有料道路の使用ON/OFF（切替で経路を再計算＝ルート変更） */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>ルート設定</span>
+        <span style={pill(!avoidHighways)} onClick={setHwy} title="クリックで高速道路の使用を切替（経路を再計算します）">🛣 高速道路を使う {avoidHighways ? 'OFF' : 'ON'}</span>
+        <span style={pill(!avoidTolls)} onClick={setToll} title="クリックで有料道路の使用を切替（経路を再計算します）">💴 有料道路を使う {avoidTolls ? 'OFF' : 'ON'}</span>
+        <span style={{ fontSize: 10, color: 'var(--muted)' }}>👆 地図上の線をタップで区間・住所を表示</span>
       </div>
-      <RouteLegend routes={routes} note={'※ 巡回順は自動最適化。線は実際の道路に沿った経路です。'} />
+      <div className="db-maprow">
+        <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+          <div ref={mapRef} style={{ width: '100%', height: 340 }} />
+          {status === 'loading' && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: '#F1F5F9', fontSize: 12, color: 'var(--muted)' }}>地図を読み込み中…</div>}
+          <RouteDetailCard detail={detail} onClose={() => setDetail(null)} onReroute={reroute}
+            note={detail && detail.altCount > 1 ? '「別ルートに変更」で代替経路に切り替えられます。' : '高速/有料の設定を変えると経路が再計算されます。'} />
+        </div>
+        <RouteLegend routes={routes} note={'※ 巡回順は自動最適化。線は実際の道路に沿った経路です。線をタップで詳細、上部トグルで高速/有料を切替できます。'} />
+      </div>
     </div>
   )
 }
@@ -851,7 +956,7 @@ function CreateModal({ onClose, onAdd }) {
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-            <div><label style={lb}>顧客名 *</label><input style={ip} value={name} onChange={e => setName(e.target.value)} placeholder="例）松本 健太" /></div>
+            <div><label style={lb}>顧客名 *</label><input style={ip} value={name} onChange={e => setName(e.target.value)} placeholder="例）サンプル 太郎" /></div>
             <div><label style={lb}>作業員</label>
               <select style={ip} value={crew} onChange={e => setCrew(e.target.value)}>{['2名', '3名', '4名', '1名'].map(x => <option key={x}>{x}</option>)}</select>
             </div>

@@ -4,14 +4,15 @@ import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { SourceTag } from '../lib/source'
 import { shortArea, splitRoute } from '../lib/area'
 
+// すべて架空のサンプル（氏名は「サンプル＋名」で実在しないと一目でわかる形）。
 const DEMO_DATA = [
-  { id: '1', name: '田中 誠一', src: 'bb', srcLabel: '引越し侍', date: '2025-06-15', route: '東区→博多区', amount: 68000, badge: 'bg', status: '成約済み' },
-  { id: '2', name: '佐藤 健太', src: 'bp', srcLabel: '比較ナビ',  date: '2025-06-22', route: '北九州→中央区', amount: 124000, badge: 'bb', status: '交渉中' },
-  { id: '3', name: '山口 花子', src: 'bg', srcLabel: '価格.com', date: '2025-06-18', route: '南区→春日市', amount: 38500, badge: 'bo', status: '見積済み' },
-  { id: '4', name: '高橋 美咲', src: 'bo', srcLabel: '自社HP',   date: '2025-06-20', route: '博多区→東区', amount: 52000, badge: 'bp', status: '連絡待ち' },
-  { id: '5', name: '中村 龍一', src: 'bb', srcLabel: '引越し侍', date: '2025-06-25', route: '糸島市→西区', amount: 45000, badge: 'bg', status: '成約済み' },
-  { id: '6', name: '小林 恵子', src: 'bg', srcLabel: '価格.com', date: '2025-07-02', route: '中央区→早良区', amount: 76000, badge: 'bb', status: '交渉中' },
-  { id: '7', name: '加藤 浩二', src: 'bb', srcLabel: '引越し侍', date: '2025-06-30', route: '東区→粕屋町', amount: 58000, badge: 'br', status: '失注' },
+  { id: '1', name: 'サンプル 太郎', src: 'bb', srcLabel: '引越し侍', date: '2025-06-15', route: '東区→博多区', amount: 68000, badge: 'bg', status: '成約済み' },
+  { id: '2', name: 'サンプル 花子', src: 'bp', srcLabel: '比較ナビ',  date: '2025-06-22', route: '北九州→中央区', amount: 124000, badge: 'bb', status: '交渉中' },
+  { id: '3', name: 'サンプル 一郎', src: 'bg', srcLabel: '価格.com', date: '2025-06-18', route: '南区→春日市', amount: 38500, badge: 'bo', status: '見積済み' },
+  { id: '4', name: 'サンプル 二郎', src: 'bo', srcLabel: '自社HP',   date: '2025-06-20', route: '博多区→東区', amount: 52000, badge: 'bp', status: '連絡待ち' },
+  { id: '5', name: 'サンプル 三郎', src: 'bb', srcLabel: '引越し侍', date: '2025-06-25', route: '糸島市→西区', amount: 45000, badge: 'bg', status: '成約済み' },
+  { id: '6', name: 'サンプル 桜',   src: 'bg', srcLabel: '価格.com', date: '2025-07-02', route: '中央区→早良区', amount: 76000, badge: 'bb', status: '交渉中' },
+  { id: '7', name: 'サンプル 陽子', src: 'bb', srcLabel: '引越し侍', date: '2025-06-30', route: '東区→粕屋町', amount: 58000, badge: 'br', status: '失注' },
 ]
 
 const STATUS_LIST  = ['成約済み', '交渉中', '見積済み', '連絡待ち', '失注']
@@ -315,7 +316,7 @@ export default function Contracts({ user, switchTab }) {
               <div style={twoCol}>
                 <div>
                   <label style={formLabel}>顧客名 *</label>
-                  <input style={inputStyle} value={form.name} onChange={e => f('name')(e.target.value)} placeholder="例：田中 誠一" />
+                  <input style={inputStyle} value={form.name} onChange={e => f('name')(e.target.value)} placeholder="例：サンプル 太郎" />
                 </div>
                 <div>
                   <label style={formLabel}>フリガナ</label>

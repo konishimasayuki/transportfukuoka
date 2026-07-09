@@ -70,11 +70,12 @@ const CSV_COLUMNS = [
 
 // デモデータ：今回追加した機能（獲得スピード/詳細編集/見積書プリフィル）を試せる中身を含む
 // receivedAt と detectedAt の差で「獲得スピード」が緑/橙/赤に色分けされる
+// ※すべて架空のサンプル（氏名は「サンプル＋名」、電話は 090-0000-XXXX のダミー）。
 const DEMO_DATA = [
   // 緑（17秒で獲得・詳細あり・家財あり）
   {
-    id: '1', site: 'ズバット', name: '山根 真桜', kana: 'ヤマネ マオ',
-    phone: '090-1351-8204', email: 'maomao@example.com',
+    id: '1', site: 'ズバット', name: 'サンプル 太郎', kana: 'サンプル タロウ',
+    phone: '090-0000-0001', email: 'sample01@example.com',
     from: '福岡県福岡市中央区', to: '福岡県福岡市西区', count: '2人',
     receivedAt: '06/26 09:00', moveDate: '07月10日 いつでも',
     detail: true,
@@ -99,8 +100,8 @@ const DEMO_DATA = [
   },
   // 橙（47秒で獲得・詳細あり・家財少なめ）
   {
-    id: '2', site: 'ズバット', name: '米盛 紀久子', kana: 'ヨネモリ キクコ',
-    phone: '090-9597-7557', email: '',
+    id: '2', site: 'ズバット', name: 'サンプル 花子', kana: 'サンプル ハナコ',
+    phone: '090-0000-0002', email: '',
     from: '福岡県福岡市城南区', to: '福岡県福岡市城南区', count: '1人',
     receivedAt: '06/26 08:15', moveDate: '08月08日 いつでも',
     detail: true,
@@ -120,16 +121,16 @@ const DEMO_DATA = [
     status: '架電済',
   },
   // 既存に近いシンプルなレコード（詳細なし）
-  { id: '3', site: 'ズバット', name: '稗田 和子', phone: '090-8356-3208', from: '福岡県福岡市中央区', to: '福岡県福岡市中央区', count: '1人', receivedAt: '06/23 07:45', moveDate: '06月24日 いつでも', status: '成約' },
+  { id: '3', site: 'ズバット', name: 'サンプル 一郎', phone: '090-0000-0003', from: '福岡県福岡市中央区', to: '福岡県福岡市中央区', count: '1人', receivedAt: '06/23 07:45', moveDate: '06月24日 いつでも', status: '成約' },
   // 追加のデモリード（すべて架空・当月中心）
-  { id: '4', site: '引越し侍', name: '大隈 亮介', kana: 'オオクマ リョウスケ', phone: '090-2244-6810', email: 'ryosuke_o@example.com', from: '福岡県福岡市東区', to: '福岡県糟屋郡新宮町', count: '2人', receivedAt: '07/02 10:20', moveDate: '07月20日 午前中', status: '架電済' },
-  { id: '5', site: '価格.com', name: '志村 遥',  kana: 'シムラ ハルカ', phone: '080-3391-5027', from: '福岡県福岡市南区', to: '福岡県春日市', count: '1人', receivedAt: '07/03 14:05', moveDate: '07月28日 いつでも', status: '未架電' },
-  { id: '6', site: '引越し侍', name: '網野 桂子', kana: 'アミノ ケイコ', phone: '090-7712-4488', from: '福岡県福岡市早良区', to: '福岡県福岡市博多区', count: '3人', receivedAt: '07/05 09:12', moveDate: '08月03日 午後', status: '未架電' },
-  { id: '7', site: 'ズバット', name: '真鍋 悠人', phone: '080-5560-1193', from: '福岡県大野城市', to: '福岡県福岡市中央区', count: '1人', receivedAt: '07/06 08:40', moveDate: '07月19日 午前中', status: '成約' },
-  { id: '8', site: '価格.com', name: '津久井 千尋', phone: '090-4408-2276', from: '福岡県福岡市西区', to: '福岡県糸島市', count: '2人', receivedAt: '07/07 16:55', moveDate: '08月10日 いつでも', status: '架電済' },
-  { id: '9', site: '引越し侍', name: '一之瀬 諒', phone: '080-6621-9034', from: '福岡県筑紫野市', to: '福岡県福岡市南区', count: '1人', receivedAt: '07/08 11:30', moveDate: '07月25日 午後', status: '未架電' },
-  { id: '10', site: 'ズバット', name: '柚木 沙耶', phone: '090-1180-7752', from: '福岡県福岡市城南区', to: '福岡県福岡市早良区', count: '2人', receivedAt: '07/09 13:18', moveDate: '08月01日 いつでも', status: '見送り' },
-  { id: '11', site: '引越し侍', name: '園田 敬三', phone: '090-9903-5561', from: '福岡県宗像市', to: '福岡県福岡市東区', count: '4人', receivedAt: '07/10 19:44', moveDate: '08月15日 午前中', status: '未架電' },
+  { id: '4', site: '引越し侍', name: 'サンプル 二郎', kana: 'サンプル ジロウ', phone: '090-0000-0004', email: 'sample04@example.com', from: '福岡県福岡市東区', to: '福岡県糟屋郡新宮町', count: '2人', receivedAt: '07/02 10:20', moveDate: '07月20日 午前中', status: '架電済' },
+  { id: '5', site: '価格.com', name: 'サンプル 三郎', kana: 'サンプル サブロウ', phone: '090-0000-0005', from: '福岡県福岡市南区', to: '福岡県春日市', count: '1人', receivedAt: '07/03 14:05', moveDate: '07月28日 いつでも', status: '未架電' },
+  { id: '6', site: '引越し侍', name: 'サンプル 桜', kana: 'サンプル サクラ', phone: '090-0000-0006', from: '福岡県福岡市早良区', to: '福岡県福岡市博多区', count: '3人', receivedAt: '07/05 09:12', moveDate: '08月03日 午後', status: '未架電' },
+  { id: '7', site: 'ズバット', name: 'サンプル 陽子', phone: '090-0000-0007', from: '福岡県大野城市', to: '福岡県福岡市中央区', count: '1人', receivedAt: '07/06 08:40', moveDate: '07月19日 午前中', status: '成約' },
+  { id: '8', site: '価格.com', name: 'サンプル 美咲', phone: '090-0000-0008', from: '福岡県福岡市西区', to: '福岡県糸島市', count: '2人', receivedAt: '07/07 16:55', moveDate: '08月10日 いつでも', status: '架電済' },
+  { id: '9', site: '引越し侍', name: 'サンプル 健太', phone: '090-0000-0009', from: '福岡県筑紫野市', to: '福岡県福岡市南区', count: '1人', receivedAt: '07/08 11:30', moveDate: '07月25日 午後', status: '未架電' },
+  { id: '10', site: 'ズバット', name: 'サンプル 楓', phone: '090-0000-0010', from: '福岡県福岡市城南区', to: '福岡県福岡市早良区', count: '2人', receivedAt: '07/09 13:18', moveDate: '08月01日 いつでも', status: '見送り' },
+  { id: '11', site: '引越し侍', name: 'サンプル 蓮', phone: '090-0000-0011', from: '福岡県宗像市', to: '福岡県福岡市東区', count: '4人', receivedAt: '07/10 19:44', moveDate: '08月15日 午前中', status: '未架電' },
 ]
 
 const modalOverlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }
@@ -144,6 +145,7 @@ export default function Leads({ user, switchTab }) {
   const [search, setSearch]     = useState('')
   const [dateFilter, setDateFilter] = useState({ type: 'all' }) // {type:'all'|'day'(date)|'month'(month)}
   const [filterStatus, setFilterStatus] = useState('')
+  const [page, setPage] = useState(0) // リード一覧のページ（1ページ50件）
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [detailItem, setDetailItem] = useState(null)
   const [convertLead, setConvertLead] = useState(null) // ステータス「成約」変更時の登録モーダル
@@ -385,6 +387,14 @@ export default function Leads({ user, switchTab }) {
 
   const countBy = (s) => items.filter(i => i.status === s).length
 
+  // ページング：直近50件ずつ表示（受付日時の新しい順）。以降は「次へ」で移動。
+  const PAGE_SIZE = 50
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, pageCount - 1)
+  const paged = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
+  // 検索・フィルタが変わったら1ページ目へ戻す
+  useEffect(() => { setPage(0) }, [search, filterStatus, dateFilter])
+
   return (
     <div>
       <div className="page-hdr"><h1>リード管理</h1><p>一括査定サイトから取得した新規リードを管理します</p></div>
@@ -449,7 +459,7 @@ export default function Leads({ user, switchTab }) {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr><td colSpan={12} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
-                ) : filtered.map(item => {
+                ) : paged.map(item => {
                   return (
                   <tr key={item.id} onClick={() => setDetailItem(item)} style={{ cursor: 'pointer' }}>
                     <td style={{ whiteSpace: 'nowrap' }}>{fmtReceived(item.receivedAt || item.requestedAt || '')}</td>
@@ -505,6 +515,19 @@ export default function Leads({ user, switchTab }) {
               </tbody>
             </table>
           </div>
+          {/* ページング：1ページ50件。以降は「次へ」で移動 */}
+          {filtered.length > PAGE_SIZE && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 16px', borderTop: '1px solid #F1F5F9', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 12, color: '#64748B' }}>
+                {filtered.length}件中 <b style={{ color: '#1E293B' }}>{safePage * PAGE_SIZE + 1}–{Math.min(filtered.length, safePage * PAGE_SIZE + PAGE_SIZE)}</b> 件を表示
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={safePage <= 0} style={{ opacity: safePage <= 0 ? 0.5 : 1 }}>‹ 前へ</button>
+                <span style={{ fontSize: 12, color: '#64748B', minWidth: 64, textAlign: 'center' }}>{safePage + 1} / {pageCount} ページ</span>
+                <button className="btn btn-outline btn-sm" onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} disabled={safePage >= pageCount - 1} style={{ opacity: safePage >= pageCount - 1 ? 0.5 : 1 }}>次へ ›</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

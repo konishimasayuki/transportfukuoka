@@ -308,7 +308,7 @@ function GmapKeySettings() {
 }
 
 // トラック（車両）設定：号車・クラス・人数を登録。配車ボードのフリート(/api/dispatch の _fleet)に反映。
-// 乗務員(班)はここでは登録しない（「乗務員設定」で登録し、配車ボードでラベル選択）。
+// 乗務員はここでは登録しない（「乗務員設定」で登録し、配車ボードでラベル選択）。
 function TruckSettings({ isDemo }) {
   const [list, setList] = useState(DEFAULT_FLEET)
   const [loading, setLoading] = useState(!isDemo)
@@ -395,8 +395,8 @@ function TruckSettings({ isDemo }) {
   )
 }
 
-// 乗務員(班)設定：ラベルを登録。配車ボードで各車両にドロップダウン割り当てする。
-// 一覧は /api/dispatch の _crew に保存（フリートと同じ設定領域）。
+// 乗務員設定：ラベルを登録。配車ボードで各車両にドロップダウン割り当てする。
+// 一覧は /api/dispatch の _crew に保存（フリートと同じ設定領域）。※「班」は使わず個人単位で登録。
 function CrewSettings({ isDemo }) {
   const [list, setList] = useState(DEFAULT_CREW)
   const [name, setName] = useState('')
@@ -432,11 +432,11 @@ function CrewSettings({ isDemo }) {
       <div className="card-head"><h3>👷 乗務員設定</h3>{msg && <span className="c-sub" style={{ color: '#15803D' }}>{msg}</span>}</div>
       <div className="card-body">
         <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10, lineHeight: 1.6 }}>
-          乗務員（班）を登録します。<b>配車ボード</b>の各車両にラベルとして割り当てできます（例：「田中 / 佐藤」「高橋班」）。
+          乗務員を登録します。<b>配車ボード</b>の各車両にラベルとして割り当てできます（例：「ドライバーA」）。
         </div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           <input value={name} onChange={e => setName(e.target.value)}
-            placeholder="例：田中 / 佐藤、高橋班"
+            placeholder="例：ドライバーA"
             style={{ flex: 1, padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
           <button className="btn btn-primary" onClick={add} disabled={busy || !name.trim()} style={{ opacity: !name.trim() ? .5 : 1, whiteSpace: 'nowrap' }}>登録</button>
         </div>
@@ -468,7 +468,8 @@ export default function Settings({ user }) {
 
       <div className="two-col">
         <div>
-          <BroadcastSender isDemo={isDemo} />
+          {/* デモでは非表示：通知メッセージ送信（実送信を伴う運用機能） */}
+          {!isDemo && <BroadcastSender isDemo={isDemo} />}
 
           <StaffSettings isDemo={isDemo} />
 
@@ -503,8 +504,11 @@ export default function Settings({ user }) {
 
           <CrewSettings isDemo={isDemo} />
 
-          <GmapKeySettings />
+          {/* デモでは非表示：Googleマップ設定（APIキー入力を伴う） */}
+          {!isDemo && <GmapKeySettings />}
 
+          {/* デモでは非表示：会社情報 */}
+          {!isDemo && (
           <div className="card">
             <div className="card-head"><h3>🏢 会社情報</h3></div>
             <div className="card-body">
@@ -514,7 +518,10 @@ export default function Settings({ user }) {
               <div style={{ marginTop:14, textAlign:'right' }}><button className="btn btn-primary">保存する</button></div>
             </div>
           </div>
+          )}
 
+          {/* デモでは非表示：CSVインポート */}
+          {!isDemo && (
           <div className="card">
             <div className="card-head"><h3>📊 CSVインポート</h3></div>
             <div className="card-body">
@@ -532,6 +539,7 @@ export default function Settings({ user }) {
               ))}
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

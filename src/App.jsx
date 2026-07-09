@@ -31,9 +31,9 @@ const TABS = {
 const USERS = {
   a: { id: 'a', name: 'デモユーザー', mode: 'demo' },
   b: { id: 'b', name: 'トランスポート福岡', mode: 'live' },
-  // 東部生コン(株)向けデモ：DB非依存(mode:'demo')・開発者(デバッグ)非表示・会社名ブランディング。
-  // 会社名以外は全て架空。
-  z: { id: 'z', name: '東部生コン株式会社', mode: 'demo', company: '東部生コン(株)', hideDev: true },
+  // 紹介デモ：DB非依存(mode:'demo')・開発者(デバッグ)非表示・ブランディング表示。
+  // 表示名・データはすべて架空（実在の企業・人物ではありません）。
+  z: { id: 'z', name: '引っ越し業者サポートシステム', mode: 'demo', company: '引っ越し業者サポートシステム', hideDev: true },
 }
 
 const STORAGE_KEY = 'tf_user'

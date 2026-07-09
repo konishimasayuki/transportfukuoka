@@ -34,12 +34,13 @@ function totalOfExp(ex) {
   return t
 }
 
+// すべて架空のサンプル（氏名は「サンプル＋名」で実在しないと一目でわかる形）。
 const DEMO_RECENT = [
-  { name: '田中 誠一', meta: '東区→博多区 / 2LDK / 6月15日', amount: '¥68,000', badge: 'bg', status: '成約済', color: '#1E5FA8', initial: '田', src: '引越し侍' },
-  { name: '山口 花子', meta: '南区→春日市 / 1K / 6月18日',   amount: '¥38,500', badge: 'bo', status: '見積済', color: '#0E8A7A', initial: '山', src: '価格.com' },
-  { name: '佐藤 健太', meta: '北九州→中央区 / 3LDK / 6月22日',amount: '¥124,000',badge: 'bb', status: '交渉中', color: '#7C3AED', initial: '佐', src: '比較ナビ' },
-  { name: '高橋 美咲', meta: '博多区→東区 / 2DK / 6月20日',  amount: '¥52,000', badge: 'bp', status: '連絡待', color: '#EA580C', initial: '高', src: '自社HP' },
-  { name: '中村 龍一', meta: '糸島市→西区 / 1LDK / 6月25日', amount: '¥45,000', badge: 'bg', status: '成約済', color: '#D97706', initial: '中', src: '引越し侍' },
+  { name: 'サンプル 太郎', meta: '東区→博多区 / 2LDK / 6月15日', amount: '¥68,000', badge: 'bg', status: '成約済', color: '#1E5FA8', initial: 'サ', src: '引越し侍' },
+  { name: 'サンプル 花子', meta: '南区→春日市 / 1K / 6月18日',   amount: '¥38,500', badge: 'bo', status: '見積済', color: '#0E8A7A', initial: 'サ', src: '価格.com' },
+  { name: 'サンプル 一郎', meta: '北九州→中央区 / 3LDK / 6月22日',amount: '¥124,000',badge: 'bb', status: '交渉中', color: '#7C3AED', initial: 'サ', src: '比較ナビ' },
+  { name: 'サンプル 二郎', meta: '博多区→東区 / 2DK / 6月20日',  amount: '¥52,000', badge: 'bp', status: '連絡待', color: '#EA580C', initial: 'サ', src: '自社HP' },
+  { name: 'サンプル 三郎', meta: '糸島市→西区 / 1LDK / 6月25日', amount: '¥45,000', badge: 'bg', status: '成約済', color: '#D97706', initial: 'サ', src: '引越し侍' },
 ]
 
 const DEMO_LEGEND = [
