@@ -106,6 +106,25 @@ export default function Login({ users, onLogin }) {
           </button>
         </div>
 
+        {/* デモモードのログイン情報（タップでそのままログイン） */}
+        <div
+          onClick={() => { if (users && users.z) onLogin(users.z) }}
+          role="button"
+          style={{
+            marginTop: 16, background: 'rgba(255,255,255,.06)',
+            border: '1px solid rgba(255,255,255,.14)', borderRadius: 12,
+            padding: '12px 16px', textAlign: 'center', cursor: 'pointer',
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.5)', letterSpacing: '.05em', marginBottom: 6 }}>デモモードでお試し</div>
+          <div style={{ fontSize: 14, color: '#fff', fontWeight: 700 }}>
+            ID：<span style={{ color: '#7FB3FF' }}>z</span>
+            <span style={{ margin: '0 10px', color: 'rgba(255,255,255,.3)' }}>/</span>
+            パスワード：<span style={{ color: '#7FB3FF' }}>z</span>
+          </div>
+          <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.4)', marginTop: 6 }}>👆 タップでそのままログイン</div>
+        </div>
+
         <div style={{ textAlign: 'center', marginTop: 16, fontSize: 11, color: 'rgba(255,255,255,.25)' }}>
           デモ版 v1.0 — MIAMIホールディングス株式会社
         </div>
