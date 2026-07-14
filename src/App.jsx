@@ -19,6 +19,9 @@ const TABS = {
   sales: Sales,
   adcost: AdCost,
   contracts: Contracts,
+  follow: Contracts,     // 追客（成約管理の絞り込みビュー）
+  aircon: Contracts,     // エアコン依頼
+  cardboard: Contracts,  // 段ボール依頼
   leads: Leads,
   call: Call,
   estimate: Estimate,
@@ -91,7 +94,7 @@ export default function App() {
       <div className="main">
         <Topbar activeTab={activeTab} onMenuClick={() => setSidebarOpen(true)} onRefresh={refresh} loading={loading} user={user} />
         <div className="content">
-          <ActiveTab user={user} switchTab={switchTab} view={safeTab === 'board' ? 'board' : 'month'} />
+          <ActiveTab user={user} switchTab={switchTab} view={safeTab === 'board' ? 'board' : 'month'} mode={['follow', 'aircon', 'cardboard'].includes(safeTab) ? safeTab : undefined} />
         </div>
       </div>
       <LeadNotifier user={user} switchTab={switchTab} />

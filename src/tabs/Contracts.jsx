@@ -6,17 +6,24 @@ import { shortArea, splitRoute } from '../lib/area'
 
 // すべて架空のサンプル（氏名は「サンプル＋名」で実在しないと一目でわかる形）。
 const DEMO_DATA = [
-  { id: '1', name: 'サンプル 太郎', src: 'bb', srcLabel: '引越し侍', date: '2025-06-15', route: '東区→博多区', amount: 68000, badge: 'bg', status: '成約済み' },
+  { id: '1', name: 'サンプル 太郎', src: 'bb', srcLabel: '引越し侍', date: '2025-06-15', route: '東区→博多区', amount: 68000, badge: 'bg', status: '成約済み', aircon: '未依頼', cardboard: '依頼済み' },
   { id: '2', name: 'サンプル 花子', src: 'bp', srcLabel: '比較ナビ',  date: '2025-06-22', route: '北九州→中央区', amount: 124000, badge: 'bb', status: '交渉中' },
-  { id: '3', name: 'サンプル 一郎', src: 'bg', srcLabel: '価格.com', date: '2025-06-18', route: '南区→春日市', amount: 38500, badge: 'bo', status: '見積済み' },
-  { id: '4', name: 'サンプル 二郎', src: 'bo', srcLabel: '自社HP',   date: '2025-06-20', route: '博多区→東区', amount: 52000, badge: 'bp', status: '連絡待ち' },
-  { id: '5', name: 'サンプル 三郎', src: 'bb', srcLabel: '引越し侍', date: '2025-06-25', route: '糸島市→西区', amount: 45000, badge: 'bg', status: '成約済み' },
-  { id: '6', name: 'サンプル 桜',   src: 'bg', srcLabel: '価格.com', date: '2025-07-02', route: '中央区→早良区', amount: 76000, badge: 'bb', status: '交渉中' },
+  { id: '3', name: 'サンプル 一郎', src: 'bg', srcLabel: '価格.com', date: '2025-06-18', route: '南区→春日市', amount: 38500, badge: 'bo', status: '見積済み', aircon: '依頼済み' },
+  { id: '4', name: 'サンプル 二郎', src: 'bo', srcLabel: '自社HP',   date: '2025-06-20', route: '博多区→東区', amount: 52000, badge: 'bp', status: '連絡待ち', cardboard: '未依頼' },
+  { id: '5', name: 'サンプル 三郎', src: 'bb', srcLabel: '引越し侍', date: '2025-06-25', route: '糸島市→西区', amount: 45000, badge: 'bg', status: '成約済み', aircon: '未依頼', cardboard: '未依頼' },
+  { id: '6', name: 'サンプル 桜',   src: 'bg', srcLabel: '価格.com', date: '2025-07-02', route: '中央区→早良区', amount: 76000, badge: 'bb', status: '要追客' },
   { id: '7', name: 'サンプル 陽子', src: 'bb', srcLabel: '引越し侍', date: '2025-06-30', route: '東区→粕屋町', amount: 58000, badge: 'br', status: '失注' },
 ]
 
 const STATUS_LIST  = ['成約済み', '交渉中', '見積済み', '連絡待ち', '要追客', '失注']
 const FLAG_OPTS    = ['必要なし', '未依頼', '依頼済み'] // エアコン／段ボールの手配状況（既定＝必要なし）
+// 成約管理を絞り込んだワークリストビュー（追客／エアコン依頼／段ボール依頼）。
+// 依頼タブは「必要なし以外（未依頼＋依頼済み）」を表示する。
+const MODE_META = {
+  follow:    { title: '追客',         sub: '追客が必要な成約（要追客）を管理します',                 match: (i) => i.status === '要追客' },
+  aircon:    { title: 'エアコン依頼',  sub: 'エアコンの取付・取外し手配を管理します（未依頼・依頼済み）', match: (i) => (i.aircon || '必要なし') !== '必要なし' },
+  cardboard: { title: '段ボール依頼',  sub: '段ボール配達の手配を管理します（未依頼・依頼済み）',       match: (i) => (i.cardboard || '必要なし') !== '必要なし' },
+}
 const SOURCE_LIST  = ['サムライ', 'ズバッと', '価格.com', 'SUUMO', '直電', 'チラシ', '企業紹介', 'その他']
 const STATUS_BADGE = { '成約済み': 'bg', '交渉中': 'bb', '見積済み': 'bo', '連絡待ち': 'bp', '要追客': 'by', '失注': 'br' }
 const SRC_BADGE    = { 'サムライ': 'bb', 'ズバッと': 'bo', '価格.com': 'bg', 'SUUMO': 'bp', '直電': 'by', 'チラシ': 'bk', '企業紹介': 'bk', 'その他': 'bk' }
@@ -68,8 +75,10 @@ function contractRoute(item) {
   return { short, full }
 }
 
-export default function Contracts({ user, switchTab }) {
+export default function Contracts({ user, switchTab, mode }) {
   const isDemo = user?.mode === 'demo'
+  const meta = MODE_META[mode] || null       // 依頼/追客ビューのメタ（null＝通常の成約管理）
+  const modeMatch = meta ? meta.match : () => true
   const [items, setItems]     = useState(isDemo ? DEMO_DATA : [])
   const [loading, setLoading] = useState(!isDemo)
   const [modal, setModal]     = useState(null)
@@ -235,17 +244,21 @@ export default function Contracts({ user, switchTab }) {
 
   const filtered = items.filter(i => {
     const q = search.toLowerCase()
-    return (!q || i.name.toLowerCase().includes(q) || (i.route||'').includes(q)) &&
+    return modeMatch(i) &&
+           (!q || i.name.toLowerCase().includes(q) || (i.route||'').includes(q)) &&
            (!filterStatus || i.status === filterStatus)
   }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))) // 引越し日の新しい順（上が最新）
 
   const countBy = (s) => items.filter(i => i.status === s).length
   const totalAmount = items.filter(i => i.status === '成約済み').reduce((s, i) => s + (i.amount || 0), 0)
+  // ワークリスト用の集計（対象＝mode一致の成約）
+  const modeItems = items.filter(modeMatch)
+  const flagCount = (field, val) => modeItems.filter(i => (i[field] || '必要なし') === val).length
 
   return (
     <div>
       <div className="page-hdr" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-        <div><h1>成約管理</h1><p>成約済み・交渉中・失注の案件を管理します</p></div>
+        <div><h1>{meta ? meta.title : '成約管理'}</h1><p>{meta ? meta.sub : '成約済み・交渉中・失注の案件を管理します'}</p></div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           <button className="btn btn-outline btn-sm" onClick={handleExport}>⬇ CSV出力</button>
           <button className="btn btn-outline btn-sm" onClick={() => fileRef.current && fileRef.current.click()} disabled={importing}>
@@ -255,12 +268,25 @@ export default function Contracts({ user, switchTab }) {
         </div>
       </div>
 
-      <div className="kpi-row kpi-4">
-        <div className="kpi-card c-green"><div className="kpi-label">成約済み</div><div className="kpi-val">{countBy('成約済み')}<span>件</span></div><div className="kpi-change up">¥{totalAmount.toLocaleString()}</div></div>
-        <div className="kpi-card c-blue"><div className="kpi-label">交渉中</div><div className="kpi-val">{countBy('交渉中')}<span>件</span></div></div>
-        <div className="kpi-card c-orange"><div className="kpi-label">連絡待ち</div><div className="kpi-val">{countBy('連絡待ち')}<span>件</span></div></div>
-        <div className="kpi-card c-red"><div className="kpi-label">失注</div><div className="kpi-val">{countBy('失注')}<span>件</span></div></div>
-      </div>
+      {mode === 'follow' ? (
+        <div className="kpi-row kpi-2">
+          <div className="kpi-card c-orange"><div className="kpi-label">追客対象（要追客）</div><div className="kpi-val">{modeItems.length}<span>件</span></div></div>
+          <div className="kpi-card c-green"><div className="kpi-label">成約済み（全体）</div><div className="kpi-val">{countBy('成約済み')}<span>件</span></div></div>
+        </div>
+      ) : (mode === 'aircon' || mode === 'cardboard') ? (
+        <div className="kpi-row kpi-3">
+          <div className="kpi-card c-blue"><div className="kpi-label">対象</div><div className="kpi-val">{modeItems.length}<span>件</span></div></div>
+          <div className="kpi-card c-orange"><div className="kpi-label">未依頼</div><div className="kpi-val">{flagCount(mode, '未依頼')}<span>件</span></div></div>
+          <div className="kpi-card c-green"><div className="kpi-label">依頼済み</div><div className="kpi-val">{flagCount(mode, '依頼済み')}<span>件</span></div></div>
+        </div>
+      ) : (
+        <div className="kpi-row kpi-4">
+          <div className="kpi-card c-green"><div className="kpi-label">成約済み</div><div className="kpi-val">{countBy('成約済み')}<span>件</span></div><div className="kpi-change up">¥{totalAmount.toLocaleString()}</div></div>
+          <div className="kpi-card c-blue"><div className="kpi-label">交渉中</div><div className="kpi-val">{countBy('交渉中')}<span>件</span></div></div>
+          <div className="kpi-card c-orange"><div className="kpi-label">連絡待ち</div><div className="kpi-val">{countBy('連絡待ち')}<span>件</span></div></div>
+          <div className="kpi-card c-red"><div className="kpi-label">失注</div><div className="kpi-val">{countBy('失注')}<span>件</span></div></div>
+        </div>
+      )}
 
       <div className="filter-row">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 顧客名・エリアで検索..." />
