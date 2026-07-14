@@ -5,7 +5,7 @@
 // - 永続化：/api/schedule（ライブ）。デモはサンプルをローカル表示。
 import { useState, useEffect, useMemo, useRef } from 'react'
 import DispatchBoard from '../components/DispatchBoard'
-import { DEMO_CONTRACTS, DEMO_SCHEDULE_EXTRA, DEMO_BOARD_CONTRACTS } from '../lib/demoData'
+import { DEMO_CONTRACTS, DEMO_SCHEDULE_EXTRA } from '../lib/demoData'
 
 const GENRES = ['引っ越し', '見積り', '段ボール配達']
 const GENRE_COLOR = { '引っ越し': '#1E5FA8', '見積り': '#EAB308', '段ボール配達': '#22C55E' }
@@ -48,7 +48,7 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
   const isDemo = user?.mode === 'demo'
   const now = new Date()
   const [items, setItems] = useState(isDemo ? [...SAMPLE, ...DEMO_SCHEDULE_EXTRA] : [])
-  const [contracts, setContracts] = useState(isDemo ? [...DEMO_CONTRACTS, ...DEMO_BOARD_CONTRACTS] : []) // 成約（カレンダー表示＋配車ボードの案件元）。デモは1/1の架空10件も含む
+  const [contracts, setContracts] = useState(isDemo ? DEMO_CONTRACTS : []) // 成約（カレンダー表示＋配車ボードの案件元）
   const [loading, setLoading] = useState(!isDemo)
   const [viewY, setViewY] = useState(now.getFullYear())
   const [viewM, setViewM] = useState(now.getMonth()) // 0-indexed
