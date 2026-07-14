@@ -3,13 +3,14 @@
 // - KPI（稼働率／確定・仮・未手配／売上見込／外注／重複アラート）
 // - ボードグリッド：1行=1車両、08:00–19:00の11列に各ジョブを絶対配置
 // - 未手配パネル：カード選択 → ボードの空き枠クリックで割当（時間重複は赤で検知）
-// - 配置済みカードは「未手配に戻す」／「ロック」できる（ロック中は戻す・車両削除の対象外）
+// - 配置済みカードは「未手配に戻す」、クリックで詳細モーダル（成約と同じ情報・編集可）
 // - 車両／乗務員の設定（追加・編集・削除）
 // - 外注枠は初期非表示。「外注枠を追加」で必要なときだけ追加する。
 // データはダミー配列（後で /api/schedule 等の実データ・型に差し替え可能）。
 // 車両は内部キー(key)で参照し、号車番号(id)を変更してもジョブの紐付けが壊れない設計。
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { DEFAULT_FLEET, DEFAULT_CREW } from '../lib/fleet'
+import ContractDetailModal, { EMPTY_CONTRACT } from './ContractDetailModal'
 
 const START = 8, END = 19, COLS = END - START // 08:00–19:00 = 11列
 const CAT_NAME = { move: '引っ越し', quote: '見積り', box: '段ボール配達' }
@@ -53,7 +54,7 @@ const contractToCard = (c) => {
   return { contractId: c.id, cat: 'move', name: (c.name || '') + ' 様', crew: (String(c.persons || '').replace(/[^\d]/g, '') || '2') + '名', need: '2t', from, to, whn: c.moveDateText || c.date || '', src: String(c.srcLabel || 'hp'), amt: Number(c.amount) || 0 }
 }
 
-export default function DispatchBoard({ filter, onToast, contracts = [], boardDate = new Date(), isDemo = false }) {
+export default function DispatchBoard({ filter, onToast, contracts = [], onUpdateContract, boardDate = new Date(), isDemo = false }) {
   const [vehicles, setVehicles] = useState(INIT_VEHICLES)
   const [jobs, setJobs] = useState([])          // その日の割当（/api/dispatch で日付別に保存）
   const [manualUn, setManualUn] = useState([])  // 成約以外の未手配カード（手動追加・非成約の戻し）。成約由来は下でderive
@@ -64,6 +65,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
   const [crewMap, setCrewMap] = useState({})     // その日の乗務員割当 { 車両key: ラベル }（日付別・他日と非共有）
   const [tip, setTip] = useState(null)       // ツールチップ { job, x, y }
   const [showVeh, setShowVeh] = useState(false)
+  const [jobDetail, setJobDetail] = useState(null) // クリックした配置済みジョブ（詳細モーダル表示用）
   const idRef = useRef(1000)                 // 新規ジョブのid採番
   const extRef = useRef(0)                   // 外注枠の連番
   const boardRef = useRef(null)              // 左ボードの高さ計測用
@@ -168,18 +170,18 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
     const clash = jobs.some(j => j.v === vKey && hour < (j.s + j.d) && (hour + dur) > j.s)
     const isExt = !!(vehOf(vKey) || {}).ext
     const id = 'j' + (++idRef.current)
-    setJobs(prev => [...prev, { id, contractId: u.contractId, v: vKey, cat: u.cat, name: u.name, crew: u.crew, from: u.from, to: u.to, s: hour, d: dur, st: clash ? 'conflict' : 'tentative', src: String(u.src || '').toUpperCase(), amt: u.amt || 0, extJob: isExt, locked: false }])
+    setJobs(prev => [...prev, { id, contractId: u.contractId, v: vKey, cat: u.cat, name: u.name, crew: u.crew, from: u.from, to: u.to, s: hour, d: dur, st: clash ? 'conflict' : 'tentative', src: String(u.src || '').toUpperCase(), amt: u.amt || 0, extJob: isExt }])
     // 成約由来カードはjobsのcontractIdでderive除外される。手動カード(manualUn)だけ実配列から取り除く。
     if (armed >= contractCardsAvail.length) { const mi = armed - contractCardsAvail.length; setManualUn(prev => prev.filter((_, i) => i !== mi)) }
     setArmed(null)
     toast(clash ? '割り当てました（時間重複あり・要確認）' : '割り当てました')
   }
 
-  // 配置済みカードを別の車両／時間へ移動（ドラッグ＆ドロップ）。ロック中は不可。時間が重なれば conflict。
+  // 配置済みカードを別の車両／時間へ移動（ドラッグ＆ドロップ）。時間が重なれば conflict。
   const moveJob = (id, vKey, hour) => {
     if (!id) return
     const j = jobs.find(x => x.id === id)
-    if (!j || j.locked) return
+    if (!j) return
     if (j.v === vKey && j.s === hour) return // 同じ位置なら何もしない
     const clash = jobs.some(o => o.id !== id && o.v === vKey && hour < (o.s + o.d) && (hour + j.d) > o.s)
     const isExt = !!(vehOf(vKey) || {}).ext
@@ -197,17 +199,46 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
     toast(val ? '乗務員を割り当てました' : '乗務員を未割当にしました')
   }
 
-  // 配置済みカードのロック切替
-  const toggleLock = (id) => setJobs(prev => prev.map(j => j.id === id ? { ...j, locked: !j.locked } : j))
-
-  // 配置済みカードを未手配一覧に戻す（ロック中は不可）
+  // 配置済みカードを未手配一覧に戻す
   const jobToUn = (j) => ({ contractId: j.contractId, cat: j.cat, name: j.name, crew: j.crew, need: (vehOf(j.v) || {}).cls || '—', from: j.from, to: j.to, whn: '本日 ' + fmt(j.s), src: String(j.src || 'hp').toLowerCase(), amt: j.amt || 0 })
   const returnJob = (id) => {
     const j = jobs.find(x => x.id === id)
-    if (!j || j.locked) return
+    if (!j) return
     setJobs(prev => prev.filter(x => x.id !== id))
     if (!j.contractId) setManualUn(prev => [jobToUn(j), ...prev]) // 成約由来はderiveで自動的に未手配へ戻る
     toast('未手配に戻しました')
+  }
+
+  // 配置済みジョブをクリック → 成約と同じ情報を出す詳細モーダルを開く（編集可）。
+  const openJobDetail = (j) => setJobDetail(j)
+  // 成約由来のジョブなら対応する成約レコード、そうでなければジョブ自身の情報から仮の成約風データを作る。
+  const jobDetailItem = useMemo(() => {
+    if (!jobDetail) return null
+    if (jobDetail.contractId) {
+      const c = contracts.find(c => c.id === jobDetail.contractId)
+      if (c) return c
+    }
+    return {
+      ...EMPTY_CONTRACT, id: jobDetail.id, name: jobDetail.name,
+      srcLabel: SRC_TXT[String(jobDetail.src || '').toLowerCase()] || jobDetail.src || '',
+      fromAddress: jobDetail.from, toAddress: jobDetail.to,
+      route: [jobDetail.from, jobDetail.to].filter(s => s && s !== '—').join(' → '),
+      persons: jobDetail.crew, amount: jobDetail.amt || 0,
+      date: boardKey, status: '成約済み',
+    }
+  }, [jobDetail, contracts, boardKey])
+  // 詳細モーダルの保存：成約由来なら /api/contracts を更新（親経由）し、ボード上のジョブ表示も同期。
+  // 成約由来でなければ（手動追加のジョブ）ジョブ自身の情報を直接更新する。
+  const saveJobDetail = async (payload) => {
+    if (!jobDetail) return
+    if (jobDetail.contractId && onUpdateContract) {
+      await onUpdateContract(jobDetail.contractId, payload)
+    }
+    setJobs(prev => prev.map(j => j.id === jobDetail.id
+      ? { ...j, name: payload.name, from: payload.fromAddress || j.from, to: payload.toAddress || j.to, amt: Number(payload.amount) || 0 }
+      : j))
+    setJobDetail(null)
+    toast('保存しました')
   }
 
   // 成約・リード由来でない未手配カード(manualUn)の削除。成約由来はderive元なのでここでは消せない。
@@ -224,11 +255,10 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
     toast('外注枠を追加しました')
   }
 
-  // 車両設定モーダルからの反映。削除された車両のジョブはロック中なら中止、それ以外は未手配へ戻す。
+  // 車両設定モーダルからの反映。削除された車両のジョブは未手配へ戻す。
   const applyVehicles = (draft) => {
     const keys = new Set(draft.map(v => v.key))
     const orphaned = jobs.filter(j => !keys.has(j.v))
-    if (orphaned.some(j => j.locked)) { toast('ロック中の予定がある車両は削除できません'); return false }
     if (orphaned.length) {
       const manualOrphans = orphaned.filter(j => !j.contractId).map(jobToUn) // 成約由来はderiveで戻る
       if (manualOrphans.length) setManualUn(prev => [...manualOrphans, ...prev])
@@ -346,18 +376,17 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
                         onDragOver={(e) => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } }}
                         onDrop={(e) => { e.preventDefault(); const id = dragId || e.dataTransfer.getData('text/plain'); moveJob(id, v.key, START + i); setDragId(null) }} />
                     ))}
-                    {/* ジョブブロック（ロック中以外はドラッグで他車両へ移動可） */}
+                    {/* ジョブブロック（ドラッグで他車両へ移動可・クリックで詳細モーダル） */}
                     {jobs.filter(j => j.v === v.key && show(j.cat)).map((j) => (
-                      <div key={j.id} className={jobClass(j) + (j.locked ? ' locked' : '') + (dragId === j.id ? ' dragging' : '')}
-                        draggable={!j.locked}
+                      <div key={j.id} className={jobClass(j) + (dragId === j.id ? ' dragging' : '')}
+                        draggable
                         onDragStart={(e) => { setTip(null); setDragId(j.id); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', j.id) } catch {} }}
                         onDragEnd={() => setDragId(null)}
-                        style={{ left: pctL(j.s) + '%', width: `calc(${pctW(j.d)}% - 6px)` }}
+                        style={{ left: pctL(j.s) + '%', width: `calc(${pctW(j.d)}% - 6px)`, cursor: 'pointer' }}
+                        onClick={(e) => { e.stopPropagation(); openJobDetail(j) }}
                         onMouseMove={(e) => moveTip(e, j)} onMouseLeave={() => setTip(null)}>
-                        {j.locked && <span className="db-lockbadge">🔒</span>}
                         <div className="db-acts">
-                          <button title={j.locked ? 'ロック解除' : 'ロック'} onClick={(e) => { e.stopPropagation(); toggleLock(j.id) }}>{j.locked ? '🔓' : '🔒'}</button>
-                          {!j.locked && <button title="未手配に戻す" onClick={(e) => { e.stopPropagation(); returnJob(j.id) }}>↩</button>}
+                          <button title="未手配に戻す" onClick={(e) => { e.stopPropagation(); returnJob(j.id) }}>↩</button>
                         </div>
                         <div className="jt">
                           {j.st === 'conflict' && <span title="時間重複の疑い">⚠ </span>}
@@ -365,7 +394,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
                           {j.st === 'tentative' && <span className="db-tag">仮</span>}
                           {j.extJob && <span className="db-tag">外注</span>}
                         </div>
-                        <div className="jm">{j.from}{j.to && j.to !== '—' ? '→' + j.to : ''} · {CAT_NAME[j.cat]}</div>
+                        <div className="jm"><b>S</b> {j.from}{j.to && j.to !== '—' ? <> → <b>G</b> {j.to}</> : ''} · {CAT_NAME[j.cat]}</div>
                         <div className="jtime">{fmt(j.s)}–{fmt(j.s + j.d)}</div>
                       </div>
                     ))}
@@ -415,8 +444,8 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
       {/* ツールチップ */}
       {tip && (
         <div className="db-tip" style={tipStyle()}>
-          <b>{tip.job.name}</b> · {CAT_NAME[tip.job.cat]}{tip.job.extJob ? '（外注）' : ''}{tip.job.locked ? ' 🔒' : ''}
-          <div className="tr"><span>区間</span><span>{tip.job.from}{tip.job.to && tip.job.to !== '—' ? ' → ' + tip.job.to : ''}</span></div>
+          <b>{tip.job.name}</b> · {CAT_NAME[tip.job.cat]}{tip.job.extJob ? '（外注）' : ''}
+          <div className="tr"><span>区間</span><span>S {tip.job.from}{tip.job.to && tip.job.to !== '—' ? ' → G ' + tip.job.to : ''}</span></div>
           <div className="tr"><span>時間</span><span>{fmt(tip.job.s)}–{fmt(tip.job.s + tip.job.d)}（{tip.job.d}h）</span></div>
           <div className="tr"><span>作業員</span><span>{tip.job.crew}</span></div>
           <div className="tr"><span>状態</span><span>{{ confirmed: '確定', tentative: '仮予約', conflict: '⚠ 時間重複の疑い' }[tip.job.st]}</span></div>
@@ -426,6 +455,10 @@ export default function DispatchBoard({ filter, onToast, contracts = [], boardDa
 
       {showVeh && (
         <VehicleModal vehicles={vehicles} jobs={jobs} onClose={() => setShowVeh(false)} onApply={applyVehicles} />
+      )}
+
+      {jobDetailItem && (
+        <ContractDetailModal item={jobDetailItem} isNew={false} onClose={() => setJobDetail(null)} onSave={saveJobDetail} />
       )}
     </div>
   )
@@ -465,13 +498,20 @@ const gmapUrl = (names) => {
 }
 
 // 各車両の停車地列（from→to・時刻順、連続重複を除去）を作る。両モード共通。
+// stops: 停車地点の並び。legs: stops[i]→stops[i+1] の区間種別（'job'=案件の搬送区間・実線／'move'=手配間の移動区間・点線）
 function computeVehicleRoutes(vehicles, jobs, show) {
   return vehicles.map((v, idx) => {
     const vj = jobs.filter(j => j.v === v.key && show(j.cat)).sort((a, b) => a.s - b.s)
-    const raw = []
-    vj.forEach(j => { raw.push(j.from); if (j.to && j.to !== '—') raw.push(j.to) })
-    const stops = raw.filter((s, i) => i === 0 || s !== raw[i - 1])
-    return { v, color: ROUTE_COLORS[idx % ROUTE_COLORS.length], stops }
+    const stops = []
+    const legs = []
+    vj.forEach(j => {
+      const from = j.from
+      const to = (j.to && j.to !== '—') ? j.to : null
+      if (stops.length === 0) stops.push(from)
+      else if (stops[stops.length - 1] !== from) { legs.push('move'); stops.push(from) }
+      if (to && to !== stops[stops.length - 1]) { legs.push('job'); stops.push(to) }
+    })
+    return { v, color: ROUTE_COLORS[idx % ROUTE_COLORS.length], stops, legs }
   }).filter(r => r.stops.length > 0)
 }
 
@@ -536,7 +576,17 @@ function SchematicMap({ routes }) {
   const W = 760, H = 360, pad = 46
   const [detail, setDetail] = useState(null)
   const g = useMemo(() => {
-    const withC = routes.map(r => ({ ...r, pts: r.stops.map(n => ({ name: n, c: coordOf(n) })).filter(x => x.c) })).filter(r => r.pts.length > 0)
+    // pts は座標が判る停車地のみ（未知地名は除外）。origIndex で元の stops/legs 上の位置を保持し、
+    // 隣接する2点が元々隣り合っていた場合のみ legs の種別（'job'=実線／'move'=点線）を引き継ぐ。
+    const withC = routes.map(r => {
+      const pts = []
+      r.stops.forEach((n, i) => {
+        const c = coordOf(n)
+        if (!c) return
+        pts.push({ name: n, c, origIndex: i })
+      })
+      return { ...r, pts }
+    }).filter(r => r.pts.length > 0)
     const all = withC.flatMap(r => r.pts.map(p => p.c))
     if (!all.length) return null
     const xs = all.map(p => p[0]), ys = all.map(p => p[1])
@@ -573,21 +623,31 @@ function SchematicMap({ routes }) {
             {/* 道路網：グレーの縁取り(下)→白(上)で“道路らしさ” */}
             {roads.map((rd, i) => <path key={'rc' + i} d={rd} fill="none" stroke="#DADCE0" strokeWidth={i === 4 ? 8.5 : 6.5} strokeLinecap="round" opacity="0.5" />)}
             {roads.map((rd, i) => <path key={'rw' + i} d={rd} fill="none" stroke="#FFFFFF" strokeWidth={i === 4 ? 6.5 : 4.5} strokeLinecap="round" opacity="0.9" />)}
-            {/* ルート（白casing → 車両色。Googleの経路ラインに近づける） */}
+            {/* ルート（白casing → 車両色。Googleの経路ラインに近づける）。
+                案件の搬送区間(job)は実線、手配間の移動区間(move)は点線で区別する。 */}
             {g.withC.map((r, ri) => {
               const pts = r.pts.map(s => g.proj(s.c))
-              const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ')
+              const onClickDetail = () => setDetail({ color: r.color, label: r.v.ext ? '外注' : '#' + r.v.id, cls: r.v.cls, stops: r.stops, fromAddr: r.stops[0], toAddr: r.stops[r.stops.length - 1] })
               return (
                 <g key={ri}>
-                  {pts.length > 1 && <path d={d} fill="none" stroke="#fff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />}
-                  {pts.length > 1 && <path d={d} fill="none" stroke={r.color} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />}
-                  {/* 透明な太い当たり判定パス：線をタップで詳細（区間・出発/到着）を表示 */}
-                  {pts.length > 1 && (
-                    <path d={d} fill="none" stroke="transparent" strokeWidth="18" strokeLinecap="round" style={{ cursor: 'pointer' }}
-                      onClick={() => setDetail({ color: r.color, label: r.v.ext ? '外注' : '#' + r.v.id, cls: r.v.cls, stops: r.stops, fromAddr: r.stops[0], toAddr: r.stops[r.stops.length - 1] })}>
-                      <title>タップでルート詳細</title>
-                    </path>
-                  )}
+                  {pts.slice(1).map((p, i) => {
+                    const a = pts[i], b = p
+                    const prev = r.pts[i], cur = r.pts[i + 1]
+                    // 隣接する2点が元々連続していた場合のみ legs の種別を引き継ぐ（間引かれていれば移動区間扱い）
+                    const isMove = cur.origIndex !== prev.origIndex + 1 || r.legs[cur.origIndex - 1] === 'move'
+                    const d = `M${a[0].toFixed(1)} ${a[1].toFixed(1)} L${b[0].toFixed(1)} ${b[1].toFixed(1)}`
+                    const dash = isMove ? { strokeDasharray: '2 7' } : {}
+                    return (
+                      <g key={i}>
+                        <path d={d} fill="none" stroke="#fff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d={d} fill="none" stroke={r.color} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" style={dash} />
+                        {/* 透明な太い当たり判定パス：線をタップで詳細（区間・出発/到着）を表示 */}
+                        <path d={d} fill="none" stroke="transparent" strokeWidth="18" strokeLinecap="round" style={{ cursor: 'pointer' }} onClick={onClickDetail}>
+                          <title>タップでルート詳細</title>
+                        </path>
+                      </g>
+                    )
+                  })}
                   {pts.map((p, pi) => (
                     <circle key={pi} cx={p[0]} cy={p[1]} r={pi === 0 ? 6 : 5}
                       fill={pi === 0 ? r.color : '#fff'} stroke={r.color} strokeWidth="2.5" />
@@ -673,6 +733,14 @@ function GoogleRouteMap({ routes }) {
 
     const pin = (pos, color, scale) => { const m = new g.maps.Marker({ position: pos, map, icon: { path: g.maps.SymbolPath.CIRCLE, scale, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 1.8 } }); overlays.current.push(m); bounds.extend(pos) }
 
+    // 元の停車順(names)における stopA→stopB が「案件の搬送区間(job)」か「手配間の移動区間(move)」かを判定。
+    // optimizeWaypoints で訪問順が入れ替わった場合も、名前が元々隣接していたかどうかで判定する（隣接しなければ移動区間扱い）。
+    const legTypeBetween = (names, legTypesOrig, a, b) => {
+      const i = names.indexOf(a)
+      if (i >= 0 && names[i + 1] === b) return legTypesOrig[i]
+      return 'move'
+    }
+
     const draw = (r) => new Promise((resolve) => {
       const names = r.stops
       const place = (result) => {
@@ -682,15 +750,10 @@ function GoogleRouteMap({ routes }) {
         if (ai >= altCount) { ai = 0; altRef.current[r.v.key] = 0 }
         resultRef.current[r.v.key] = { result, altCount }
         const route0 = result.routes[ai]
-        const path = route0.overview_path
-        // 白casing → 車両色 の2本重ねで“地図の経路ライン”らしく。色線はクリックで詳細を出す。
-        const casing = new g.maps.Polyline({ map, path, strokeColor: '#fff', strokeWeight: 8, strokeOpacity: 0.95, zIndex: 1 })
-        const line = new g.maps.Polyline({ map, path, strokeColor: r.color, strokeWeight: 5, strokeOpacity: 0.9, zIndex: 2, clickable: true })
-        overlays.current.push(casing, line)
         const legs = route0.legs
-        legs.forEach((leg, i) => { if (i === 0) pin(leg.start_location, r.color, 9); pin(leg.end_location, r.color, 7) })
-        path.forEach(p => bounds.extend(p))
-        try { map.fitBounds(bounds) } catch {}
+        // optimizeWaypoints で経由地が並び替えられた場合、実際に訪問した順の地名列を復元する。
+        const wpOrder = route0.waypoint_order
+        const orderedNames = wpOrder ? [names[0], ...wpOrder.map(i => names[1 + i]), names[names.length - 1]] : names
         const distM = legs.reduce((a, l) => a + ((l.distance && l.distance.value) || 0), 0)
         const durS = legs.reduce((a, l) => a + ((l.duration && l.duration.value) || 0), 0)
         const info = {
@@ -703,7 +766,22 @@ function GoogleRouteMap({ routes }) {
           duration: Math.max(1, Math.round(durS / 60)) + ' 分',
           altIndex: ai, altCount,
         }
-        g.maps.event.addListener(line, 'click', () => setDetail(info))
+        // 案件区間(job)は実線、移動区間(move)は点線（casingは共通の白フチ）。
+        legs.forEach((leg, i) => {
+          const type = legTypeBetween(names, r.legs, orderedNames[i], orderedNames[i + 1])
+          const legPath = leg.steps.flatMap(s => s.path)
+          const casing = new g.maps.Polyline({ map, path: legPath, strokeColor: '#fff', strokeWeight: 8, strokeOpacity: 0.95, zIndex: 1 })
+          const lineOpts = type === 'move'
+            ? { map, path: legPath, strokeOpacity: 0, zIndex: 2, clickable: true, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: r.color, scale: 3.2 }, offset: '0', repeat: '11px' }] }
+            : { map, path: legPath, strokeColor: r.color, strokeWeight: 5, strokeOpacity: 0.9, zIndex: 2, clickable: true }
+          const line = new g.maps.Polyline(lineOpts)
+          overlays.current.push(casing, line)
+          g.maps.event.addListener(line, 'click', () => setDetail(info))
+          if (i === 0) pin(leg.start_location, r.color, 9)
+          pin(leg.end_location, r.color, 7)
+        })
+        route0.overview_path.forEach(p => bounds.extend(p))
+        try { map.fitBounds(bounds) } catch {}
         resolve()
       }
       // 経路オプション（高速/有料の回避）ごとにキャッシュを分ける
@@ -828,14 +906,10 @@ function VehicleModal({ vehicles, jobs, onClose, onApply }) {
   const [draft, setDraft] = useState(() => vehicles.map(v => ({ ...v })))
   const nextKey = useRef(1)
   const jobCount = (key) => jobs.filter(j => j.v === key).length
-  const lockedCount = (key) => jobs.filter(j => j.v === key && j.locked).length
 
   const setField = (key, field, val) => setDraft(prev => prev.map(v => v.key === key ? { ...v, [field]: field === 'n' ? (parseInt(val, 10) || 0) : val } : v))
   const addRow = () => setDraft(prev => [...prev, { key: 'new' + (nextKey.current++) + '_' + Date.now(), id: '', cls: '2t', crew: '', n: 2 }])
-  const removeRow = (key) => {
-    if (lockedCount(key) > 0) { alert('この車両にはロック中の予定があります。先にロック解除してください。'); return }
-    setDraft(prev => prev.filter(v => v.key !== key))
-  }
+  const removeRow = (key) => setDraft(prev => prev.filter(v => v.key !== key))
 
   const save = () => {
     // 号車が空の行は除外（誤って空行を残しても落とす）
@@ -874,9 +948,9 @@ function VehicleModal({ vehicles, jobs, onClose, onApply }) {
                     </select>
                   </td>
                   <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9', textAlign: 'center' }}>
-                    <button title={lockedCount(v.key) ? 'ロック中の予定があり削除不可' : (jobCount(v.key) ? '削除（配置済みは未手配へ戻る）' : '削除')}
+                    <button title={jobCount(v.key) ? '削除（配置済みは未手配へ戻る）' : '削除'}
                       onClick={() => removeRow(v.key)}
-                      style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 7, width: 28, height: 28, cursor: 'pointer', fontSize: 13, opacity: lockedCount(v.key) ? 0.4 : 1 }}>×</button>
+                      style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 7, width: 28, height: 28, cursor: 'pointer', fontSize: 13 }}>×</button>
                   </td>
                 </tr>
               ))}

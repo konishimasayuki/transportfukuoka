@@ -327,14 +327,11 @@ tr:hover td { background: var(--bg); }
 .db-job.conflict { background: #FEE2E2; border-left-color: var(--red); color: #B91C1C; animation: dbpulse 2s infinite; }
 @keyframes dbpulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } 50% { box-shadow: 0 0 0 3px rgba(239,68,68,.18); } }
 .db-tag { font-size: 8px; font-weight: 700; border-radius: 4px; padding: 1px 5px; background: rgba(255,255,255,.65); margin-left: 4px; }
-/* 配置済みカードの操作（ロック／未手配へ戻す）— ホバー時のみ表示 */
+/* 配置済みカードの操作（未手配へ戻す）— ホバー時のみ表示 */
 .db-job .db-acts { position: absolute; top: 3px; right: 3px; display: flex; gap: 3px; opacity: 0; transition: opacity .12s; z-index: 2; }
 .db-job:hover .db-acts { opacity: 1; }
 .db-acts button { width: 18px; height: 18px; border-radius: 5px; border: none; background: rgba(255,255,255,.9); box-shadow: 0 1px 3px rgba(0,0,0,.25); cursor: pointer; font-size: 10px; line-height: 1; display: grid; place-items: center; padding: 0; font-family: inherit; }
 .db-acts button:hover { background: #fff; }
-.db-lockbadge { position: absolute; top: 3px; right: 4px; font-size: 10px; opacity: .8; }
-.db-job:hover .db-lockbadge { display: none; }
-.db-job.locked { box-shadow: 0 0 0 2px rgba(30,95,168,.35), 0 1px 4px rgba(0,0,0,.06); }
 .db-job[draggable="true"] { cursor: grab; }
 .db-job.dragging { opacity: .45; cursor: grabbing; }
 .db-gmap-toggle { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 5px; border-radius: 999px; border: 1px solid var(--border); background: #F1F5F9; cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 700; color: #64748B; transition: background .14s, border-color .14s, color .14s; }

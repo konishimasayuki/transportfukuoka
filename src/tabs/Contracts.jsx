@@ -3,29 +3,26 @@ import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { SourceTag } from '../lib/source'
 import { shortArea, splitRoute } from '../lib/area'
+import ContractDetailModal, { STATUS_LIST, STATUS_BADGE, SOURCE_LIST, AIRCON_OPTS, CARDBOARD_OPTS, EMPTY_CONTRACT } from '../components/ContractDetailModal'
 
 // すべて架空のサンプル（氏名は「サンプル＋名」で実在しないと一目でわかる形）。
 const DEMO_DATA = [
-  { id: '1', name: 'サンプル 太郎', src: 'bb', srcLabel: '引越し侍', date: '2025-06-15', route: '東区→博多区', amount: 68000, badge: 'bg', status: '成約済み', aircon: '未依頼', cardboard: '依頼済み' },
+  { id: '1', name: 'サンプル 太郎', src: 'bb', srcLabel: '引越し侍', date: '2025-06-15', route: '東区→博多区', amount: 68000, badge: 'bg', status: '成約済み', aircon: '未依頼', cardboard: '要配達' },
   { id: '2', name: 'サンプル 花子', src: 'bp', srcLabel: '比較ナビ',  date: '2025-06-22', route: '北九州→中央区', amount: 124000, badge: 'bb', status: '交渉中' },
   { id: '3', name: 'サンプル 一郎', src: 'bg', srcLabel: '価格.com', date: '2025-06-18', route: '南区→春日市', amount: 38500, badge: 'bo', status: '見積済み', aircon: '依頼済み' },
-  { id: '4', name: 'サンプル 二郎', src: 'bo', srcLabel: '自社HP',   date: '2025-06-20', route: '博多区→東区', amount: 52000, badge: 'bp', status: '連絡待ち', cardboard: '未依頼' },
-  { id: '5', name: 'サンプル 三郎', src: 'bb', srcLabel: '引越し侍', date: '2025-06-25', route: '糸島市→西区', amount: 45000, badge: 'bg', status: '成約済み', aircon: '未依頼', cardboard: '未依頼' },
+  { id: '4', name: 'サンプル 二郎', src: 'bo', srcLabel: '自社HP',   date: '2025-06-20', route: '博多区→東区', amount: 52000, badge: 'bp', status: '連絡待ち', cardboard: '要配達' },
+  { id: '5', name: 'サンプル 三郎', src: 'bb', srcLabel: '引越し侍', date: '2025-06-25', route: '糸島市→西区', amount: 45000, badge: 'bg', status: '成約済み', aircon: '未依頼' },
   { id: '6', name: 'サンプル 桜',   src: 'bg', srcLabel: '価格.com', date: '2025-07-02', route: '中央区→早良区', amount: 76000, badge: 'bb', status: '要追客' },
   { id: '7', name: 'サンプル 陽子', src: 'bb', srcLabel: '引越し侍', date: '2025-06-30', route: '東区→粕屋町', amount: 58000, badge: 'br', status: '失注' },
 ]
 
-const STATUS_LIST  = ['成約済み', '交渉中', '見積済み', '連絡待ち', '要追客', '失注']
-const FLAG_OPTS    = ['必要なし', '未依頼', '依頼済み'] // エアコン／段ボールの手配状況（既定＝必要なし）
-// 成約管理を絞り込んだワークリストビュー（追客／エアコン依頼／段ボール依頼）。
-// 依頼タブは「必要なし以外（未依頼＋依頼済み）」を表示する。
+// 成約管理を絞り込んだワークリストビュー（追客／エアコン依頼／段ボール配達）。
+// 依頼タブは「必要なし以外（未依頼＋依頼済み、または要配達）」を表示する。
 const MODE_META = {
   follow:    { title: '追客',         sub: '追客が必要な成約（要追客）を管理します',                 match: (i) => i.status === '要追客' },
   aircon:    { title: 'エアコン依頼',  sub: 'エアコンの取付・取外し手配を管理します（未依頼・依頼済み）', match: (i) => (i.aircon || '必要なし') !== '必要なし' },
-  cardboard: { title: '段ボール依頼',  sub: '段ボール配達の手配を管理します（未依頼・依頼済み）',       match: (i) => (i.cardboard || '必要なし') !== '必要なし' },
+  cardboard: { title: '段ボール配達',  sub: '段ボール配達が必要な成約を管理します（要配達）',           match: (i) => (i.cardboard || '必要なし') !== '必要なし' },
 }
-const SOURCE_LIST  = ['サムライ', 'ズバッと', '価格.com', 'SUUMO', '直電', 'チラシ', '企業紹介', 'その他']
-const STATUS_BADGE = { '成約済み': 'bg', '交渉中': 'bb', '見積済み': 'bo', '連絡待ち': 'bp', '要追客': 'by', '失注': 'br' }
 const SRC_BADGE    = { 'サムライ': 'bb', 'ズバッと': 'bo', '価格.com': 'bg', 'SUUMO': 'bp', '直電': 'by', 'チラシ': 'bk', '企業紹介': 'bk', 'その他': 'bk' }
 
 // CSV入出力の列定義（ラベルは日本語ヘッダ。インポート時もこのラベルでキー対応）
@@ -48,21 +45,8 @@ const CSV_COLUMNS = [
   { key: 'memo', label: 'メモ' },
 ]
 
-const EMPTY_FORM = {
-  name: '', kana: '', phone: '', email: '',
-  srcLabel: 'サムライ', salesDate: '', date: '', moveDateText: '', persons: '',
-  fromAddress: '', toAddress: '', route: '',
-  amount: '', status: '交渉中',
-  staff: '', memo: '',
-}
-
 const modalOverlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }
 const modalBox     = { background: '#fff', borderRadius: 14, width: '100%', maxWidth: 480, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
-const modalHead    = (color) => ({ padding: '16px 20px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: color, borderRadius: '14px 14px 0 0' })
-const inputStyle   = { width: '100%', padding: '9px 12px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', color: '#1E293B' }
-const formRow      = { marginBottom: 14 }
-const formLabel    = { fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 5, display: 'block' }
-const twoCol       = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }
 
 // 成約の区間を「短縮エリア → 短縮エリア」で表示（リード管理と同じ体裁）。
 // 住所(fromAddress/toAddress)があれば優先、無ければ route 文字列を分解して短縮する。
@@ -81,10 +65,8 @@ export default function Contracts({ user, switchTab, mode }) {
   const modeMatch = meta ? meta.match : () => true
   const [items, setItems]     = useState(isDemo ? DEMO_DATA : [])
   const [loading, setLoading] = useState(!isDemo)
-  const [modal, setModal]     = useState(null)
-  const [form, setForm]       = useState(EMPTY_FORM)
-  const [editId, setEditId]   = useState(null)
-  const [saving, setSaving]   = useState(false)
+  const [modalItem, setModalItem] = useState(null) // 開いている成約詳細モーダルの対象（null＝非表示）
+  const [isNewModal, setIsNewModal] = useState(false)
   const [search, setSearch]   = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState(null)
@@ -109,9 +91,8 @@ export default function Contracts({ user, switchTab, mode }) {
     try { p = JSON.parse(raw) } catch { return }
     try { sessionStorage.removeItem('tf_contract_prefill') } catch {}
     if (!p) return
-    setForm({ ...EMPTY_FORM, ...p })
-    setEditId(null)
-    setModal('add')
+    setModalItem({ ...EMPTY_CONTRACT, ...p })
+    setIsNewModal(true)
   }, [])
 
   const fetchItems = async () => {
@@ -124,27 +105,27 @@ export default function Contracts({ user, switchTab, mode }) {
     finally { setLoading(false) }
   }
 
-  const openAdd  = () => { setForm(EMPTY_FORM); setEditId(null); setModal('add') }
-  const openEdit = (item) => { setForm({ ...item, amount: String(item.amount) }); setEditId(item.id); setModal('edit') }
-  const closeModal = () => { setModal(null); setForm(EMPTY_FORM); setEditId(null) }
-  const f = (k) => (v) => setForm(prev => ({ ...prev, [k]: v }))
+  const openAdd  = () => { setModalItem({ ...EMPTY_CONTRACT }); setIsNewModal(true) }
+  const openEdit = (item) => { setModalItem(item); setIsNewModal(false) }
+  const closeModal = () => { setModalItem(null); setIsNewModal(false) }
 
-  const handleSave = async () => {
-    if (!form.name) return
-    setSaving(true)
-    const payload = { ...form, amount: Number(form.amount) || 0 }
-    if (isDemo) {
-      if (modal === 'add') setItems(prev => [{ ...payload, id: Date.now().toString() }, ...prev])
-      else setItems(prev => prev.map(i => i.id === editId ? { ...payload, id: editId } : i))
-      setSaving(false); closeModal(); return
+  // ContractDetailModal からの保存（新規／編集を統一）
+  const handleModalSave = async (payload) => {
+    if (isNewModal) {
+      const newItem = { ...payload, id: Date.now().toString() }
+      setItems(prev => [newItem, ...prev])
+      if (!isDemo) {
+        try { await fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newItem) }); await fetchItems() }
+        catch (e) { console.error(e) }
+      }
+    } else {
+      const id = modalItem.id
+      setItems(prev => prev.map(i => i.id === id ? { ...payload, id } : i))
+      if (!isDemo) {
+        try { await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, id }) }); await fetchItems() }
+        catch (e) { console.error(e) }
+      }
     }
-    try {
-      const method = modal === 'add' ? 'POST' : 'PUT'
-      const body = modal === 'add' ? { ...payload, id: Date.now().toString() } : { ...payload, id: editId }
-      await fetch('/api/contracts', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      await fetchItems(); closeModal()
-    } catch (e) { console.error(e) }
-    setSaving(false)
   }
 
   const handleDelete = async (id) => {
@@ -155,6 +136,7 @@ export default function Contracts({ user, switchTab, mode }) {
     } catch (e) { console.error(e) }
     setDeleteConfirm(null)
   }
+  const handleModalDelete = () => { if (modalItem) { closeModal(); setDeleteConfirm(modalItem.id) } }
 
   // 一覧から担当者をインライン変更（全項目を保持して保存）
   const updateContractStaff = async (item, staff) => {
@@ -182,14 +164,14 @@ export default function Contracts({ user, switchTab, mode }) {
       await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) })
     } catch (e) { console.error(e) }
   }
-  // 手配状況プルダウン（必要なし＝グレー／未依頼＝オレンジ／依頼済み＝グリーン）。既定は「必要なし」。
-  const flagSelect = (item, field) => {
+  // 手配状況プルダウン（必要なし＝グレー／未依頼・要配達＝オレンジ／依頼済み＝グリーン）。既定は「必要なし」。
+  const flagSelect = (item, field, opts) => {
     const val = item[field] || '必要なし'
-    const color = val === '依頼済み' ? '#15803D' : val === '未依頼' ? '#C2410C' : '#94A3B8'
+    const color = (val === '依頼済み') ? '#15803D' : (val === '未依頼' || val === '要配達') ? '#C2410C' : '#94A3B8'
     return (
       <select value={val} onChange={e => updateContractField(item, field, e.target.value)}
         style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 6px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', background: '#fff', color, fontWeight: 700 }}>
-        {FLAG_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
+        {opts.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
     )
   }
@@ -326,8 +308,8 @@ export default function Contracts({ user, switchTab, mode }) {
                       <div style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractRoute(item).short}</div>
                     </td>
                     <td>¥{(item.amount||0).toLocaleString()}</td>
-                    <td>{flagSelect(item, 'aircon')}</td>
-                    <td>{flagSelect(item, 'cardboard')}</td>
+                    <td>{flagSelect(item, 'aircon', AIRCON_OPTS)}</td>
+                    <td>{flagSelect(item, 'cardboard', CARDBOARD_OPTS)}</td>
                     <td>{ttCheckbox(item)}</td>
                     <td>
                       <select value={item.status || ''} onChange={e => updateContractStatus(item, e.target.value)}
@@ -362,108 +344,15 @@ export default function Contracts({ user, switchTab, mode }) {
         </div>
       )}
 
-      {/* 追加・編集モーダル */}
-      {modal && (
-        <div style={modalOverlay} onClick={e => e.target === e.currentTarget && closeModal()}>
-          <div style={modalBox}>
-            <div style={modalHead(modal === 'add' ? '#16A34A' : '#0E8A7A')}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{modal === 'add' ? '➕ 新規追加' : '✏️ 編集'}</span>
-              <button onClick={closeModal} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.7)', fontSize: 20, cursor: 'pointer' }}>×</button>
-            </div>
-            <div style={{ padding: 20 }}>
-              <div style={twoCol}>
-                <div>
-                  <label style={formLabel}>顧客名 *</label>
-                  <input style={inputStyle} value={form.name} onChange={e => f('name')(e.target.value)} placeholder="例：サンプル 太郎" />
-                </div>
-                <div>
-                  <label style={formLabel}>フリガナ</label>
-                  <input style={inputStyle} value={form.kana || ''} onChange={e => f('kana')(e.target.value)} placeholder="例：タナカ セイイチ" />
-                </div>
-              </div>
-              <div style={twoCol}>
-                <div>
-                  <label style={formLabel}>電話</label>
-                  <input style={inputStyle} value={form.phone || ''} onChange={e => f('phone')(e.target.value)} placeholder="090-…" />
-                </div>
-                <div>
-                  <label style={formLabel}>メール</label>
-                  <input style={inputStyle} value={form.email || ''} onChange={e => f('email')(e.target.value)} placeholder="example@…" />
-                </div>
-              </div>
-              <div style={twoCol}>
-                <div>
-                  <label style={formLabel}>流入元</label>
-                  <select style={inputStyle} value={form.srcLabel} onChange={e => f('srcLabel')(e.target.value)}>
-                    {SOURCE_LIST.map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={formLabel}>引越し日（＝配車日・配車ボードに反映）</label>
-                  <input type="date" style={inputStyle} value={form.date} onChange={e => f('date')(e.target.value)} />
-                </div>
-              </div>
-              <div style={twoCol}>
-                <div>
-                  <label style={formLabel}>売上登録日</label>
-                  <input type="date" style={inputStyle} value={form.salesDate || ''} onChange={e => f('salesDate')(e.target.value)} />
-                </div>
-                <div>
-                  <label style={formLabel}>希望日（自由記入）</label>
-                  <input style={inputStyle} value={form.moveDateText || ''} onChange={e => f('moveDateText')(e.target.value)} placeholder="例：7月中旬 平日" />
-                </div>
-                <div>
-                  <label style={formLabel}>引越し人数</label>
-                  <input style={inputStyle} value={form.persons || ''} onChange={e => f('persons')(e.target.value)} placeholder="例：2人" />
-                </div>
-              </div>
-              <div style={twoCol}>
-                <div>
-                  <label style={formLabel}>引越し元（住所）</label>
-                  <input style={inputStyle} value={form.fromAddress || ''} onChange={e => f('fromAddress')(e.target.value)} placeholder="福岡市東区…" />
-                </div>
-                <div>
-                  <label style={formLabel}>引越し先（住所）</label>
-                  <input style={inputStyle} value={form.toAddress || ''} onChange={e => f('toAddress')(e.target.value)} placeholder="福岡市博多区…" />
-                </div>
-              </div>
-              <div style={formRow}>
-                <label style={formLabel}>区間（短縮表示）</label>
-                <input style={inputStyle} value={form.route} onChange={e => f('route')(e.target.value)} placeholder="例：東区→博多区" />
-              </div>
-              <div style={twoCol}>
-                <div>
-                  <label style={formLabel}>見積金額（円）</label>
-                  <input type="number" style={inputStyle} value={form.amount} onChange={e => f('amount')(e.target.value)} placeholder="例：68000" />
-                </div>
-                <div>
-                  <label style={formLabel}>ステータス</label>
-                  <select style={inputStyle} value={form.status} onChange={e => f('status')(e.target.value)}>
-                    {STATUS_LIST.map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div style={formRow}>
-                <label style={formLabel}>担当者</label>
-                <select style={inputStyle} value={form.staff || ''} onChange={e => f('staff')(e.target.value)}>
-                  <option value="">（未選択）</option>
-                  {staffList.map(s => <option key={s} value={s}>{s}</option>)}
-                  {form.staff && !staffList.includes(form.staff) && <option value={form.staff}>{form.staff}</option>}
-                </select>
-              </div>
-              <div style={formRow}>
-                <label style={formLabel}>メモ</label>
-                <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 60 }} value={form.memo || ''} onChange={e => f('memo')(e.target.value)} placeholder="備考など" />
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button className="btn btn-outline" onClick={closeModal}>キャンセル</button>
-                <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.name} style={{ opacity: !form.name ? .5 : 1 }}>
-                  {saving ? '保存中...' : modal === 'add' ? '追加する' : '保存する'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* 成約詳細モーダル（新規追加／編集を統一。リード管理と同じレイアウト） */}
+      {modalItem && (
+        <ContractDetailModal
+          item={modalItem}
+          isNew={isNewModal}
+          onClose={closeModal}
+          onSave={handleModalSave}
+          onDelete={!isNewModal ? handleModalDelete : undefined}
+        />
       )}
 
       {/* 削除確認 */}

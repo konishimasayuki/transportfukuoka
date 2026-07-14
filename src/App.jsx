@@ -22,7 +22,7 @@ const TABS = {
   contracts: Contracts,
   follow: Contracts,     // 追客（成約管理の絞り込みビュー）
   aircon: Contracts,     // エアコン依頼
-  cardboard: Contracts,  // 段ボール依頼
+  cardboard: Contracts,  // 段ボール配達
   leads: Leads,
   call: Call,
   estimate: Estimate,

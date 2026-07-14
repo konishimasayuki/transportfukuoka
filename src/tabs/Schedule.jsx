@@ -87,6 +87,15 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
   // 引越し日(＝配車日)でその日の成約を返す（配車ボードと基準日を統一。売上登録日では表示しない）
   const contractsOn = (dateStr) => contracts.filter(c => c.date === dateStr)
 
+  // 配車ボードから成約を更新（ジョブクリック→詳細モーダルでの編集を保存）
+  const updateContract = async (id, payload) => {
+    setContracts(prev => prev.map(c => c.id === id ? { ...c, ...payload, id } : c))
+    if (isDemo) return
+    try {
+      await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, id }) })
+    } catch (e) { console.error(e) }
+  }
+
   const toggleGenre = (g) => {
     setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
   }
@@ -207,7 +216,7 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
       )}
 
       {/* ============ 配車ボード（フィルターなし＝全件表示） ============ */}
-      {view === 'board' && <DispatchBoard onToast={showToast} contracts={contracts} boardDate={boardDate} isDemo={isDemo} />}
+      {view === 'board' && <DispatchBoard onToast={showToast} contracts={contracts} onUpdateContract={updateContract} boardDate={boardDate} isDemo={isDemo} />}
 
       {/* ============ 月カレンダー（既存）============ */}
       {view === 'month' && (loading ? (
