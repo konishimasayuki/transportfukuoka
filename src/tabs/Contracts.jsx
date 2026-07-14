@@ -15,9 +15,10 @@ const DEMO_DATA = [
   { id: '7', name: 'サンプル 陽子', src: 'bb', srcLabel: '引越し侍', date: '2025-06-30', route: '東区→粕屋町', amount: 58000, badge: 'br', status: '失注' },
 ]
 
-const STATUS_LIST  = ['成約済み', '交渉中', '見積済み', '連絡待ち', '失注']
+const STATUS_LIST  = ['成約済み', '交渉中', '見積済み', '連絡待ち', '要追客', '失注']
+const FLAG_OPTS    = ['必要なし', '未依頼', '依頼済み'] // エアコン／段ボールの手配状況（既定＝必要なし）
 const SOURCE_LIST  = ['サムライ', 'ズバッと', '価格.com', 'SUUMO', '直電', 'チラシ', '企業紹介', 'その他']
-const STATUS_BADGE = { '成約済み': 'bg', '交渉中': 'bb', '見積済み': 'bo', '連絡待ち': 'bp', '失注': 'br' }
+const STATUS_BADGE = { '成約済み': 'bg', '交渉中': 'bb', '見積済み': 'bo', '連絡待ち': 'bp', '要追客': 'by', '失注': 'br' }
 const SRC_BADGE    = { 'サムライ': 'bb', 'ズバッと': 'bo', '価格.com': 'bg', 'SUUMO': 'bp', '直電': 'by', 'チラシ': 'bk', '企業紹介': 'bk', 'その他': 'bk' }
 
 // CSV入出力の列定義（ラベルは日本語ヘッダ。インポート時もこのラベルでキー対応）
@@ -163,29 +164,24 @@ export default function Contracts({ user, switchTab }) {
     } catch (e) { console.error(e) }
   }
 
-  // エアコン/段ボールの要否トグル（デフォルト＝必要なし、押すと必要あり）。全項目を保持して保存。
-  const toggleContractFlag = async (item, field) => {
-    const updated = { ...item, [field]: !item[field] }
+  // エアコン/段ボールの手配状況（必要なし／未依頼／依頼済み）。全項目を保持して保存。
+  const updateContractField = async (item, field, value) => {
+    const updated = { ...item, [field]: value }
     setItems(prev => prev.map(i => i.id === item.id ? updated : i))
     if (isDemo) return
     try {
       await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) })
     } catch (e) { console.error(e) }
   }
-  // 「必要あり/必要なし」トグルボタン
-  const flagBtn = (item, field) => {
-    const on = !!item[field]
+  // 手配状況プルダウン（必要なし＝グレー／未依頼＝オレンジ／依頼済み＝グリーン）。既定は「必要なし」。
+  const flagSelect = (item, field) => {
+    const val = item[field] || '必要なし'
+    const color = val === '依頼済み' ? '#15803D' : val === '未依頼' ? '#C2410C' : '#94A3B8'
     return (
-      <button onClick={() => toggleContractFlag(item, field)} title="クリックで切替"
-        style={{
-          cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, borderRadius: 6,
-          padding: '4px 10px', whiteSpace: 'nowrap',
-          border: `1px solid ${on ? '#1E5FA8' : '#E2E8F0'}`,
-          background: on ? '#EFF6FF' : '#F8FAFC',
-          color: on ? '#1E5FA8' : '#94A3B8',
-        }}>
-        {on ? '必要あり' : '必要なし'}
-      </button>
+      <select value={val} onChange={e => updateContractField(item, field, e.target.value)}
+        style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 6px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', background: '#fff', color, fontWeight: 700 }}>
+        {FLAG_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
     )
   }
 
@@ -241,7 +237,7 @@ export default function Contracts({ user, switchTab }) {
     const q = search.toLowerCase()
     return (!q || i.name.toLowerCase().includes(q) || (i.route||'').includes(q)) &&
            (!filterStatus || i.status === filterStatus)
-  })
+  }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))) // 引越し日の新しい順（上が最新）
 
   const countBy = (s) => items.filter(i => i.status === s).length
   const totalAmount = items.filter(i => i.status === '成約済み').reduce((s, i) => s + (i.amount || 0), 0)
@@ -282,23 +278,22 @@ export default function Contracts({ user, switchTab }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>顧客名</th><th>流入元</th><th>売上登録日</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>エアコン</th><th>段ボール</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
+                <tr><th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>エアコン</th><th>段ボール</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
+                  <tr><td colSpan={10} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id}>
                     <td><b>{item.name}</b></td>
                     <td><SourceTag label={item.srcLabel} /></td>
-                    <td>{item.salesDate || '—'}</td>
                     <td>{item.date}</td>
                     <td title={contractRoute(item).full}>
                       <div style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractRoute(item).short}</div>
                     </td>
                     <td>¥{(item.amount||0).toLocaleString()}</td>
-                    <td>{flagBtn(item, 'aircon')}</td>
-                    <td>{flagBtn(item, 'cardboard')}</td>
+                    <td>{flagSelect(item, 'aircon')}</td>
+                    <td>{flagSelect(item, 'cardboard')}</td>
                     <td>
                       <select value={item.status || ''} onChange={e => updateContractStatus(item, e.target.value)}
                         className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}

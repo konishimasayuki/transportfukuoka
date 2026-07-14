@@ -28,11 +28,18 @@ function daysInMonthOf(monthKey) {
   return new Date(y, m, 0).getDate()
 }
 
+// 保存・自動算出は単身/家族/価格/ズバッとの4キーのまま（単価が異なるため内部では分離）。
 const DAILY_FIELDS = [
   { key: 'samurai_single', label: 'サムライ単身' },
   { key: 'samurai_family', label: 'サムライ家族' },
   { key: 'kakaku',         label: '価格.com' },
   { key: 'zubatto',        label: 'ズバッと' },
+]
+// 画面表示・入力の3列（引越し侍＝サムライ単身+家族を合算表示）。表示順：引越し侍→ズバッと→価格.com
+const DISPLAY_FIELDS = [
+  { key: 'samurai', label: '引越し侍', parts: ['samurai_single', 'samurai_family'], inputKey: 'samurai_single' },
+  { key: 'zubatto', label: 'ズバッと', parts: ['zubatto'], inputKey: 'zubatto' },
+  { key: 'kakaku',  label: '価格.com', parts: ['kakaku'],  inputKey: 'kakaku' },
 ]
 const MONTHLY_FIELDS = [
   { key: 'suumo',    label: 'SUUMO' },
@@ -142,8 +149,25 @@ export default function AdCost({ user }) {
     return { byKey, dailyGrand, monthlyTotal, grand: dailyGrand + monthlyTotal }
   }, [draftExp, selMonth, autoByMonthDay, isDemo])
 
+  // 表示グループ（引越し侍=単身+家族）ごとの金額・件数。自動月は件数付き（count!=null）。
+  const groupVal = (day) => {
+    const v = dayVals(day)
+    return {
+      samurai: { amount: v.samurai_single + v.samurai_family, count: v.auto ? (v.auto.counts.samurai_single + v.auto.counts.samurai_family) : null },
+      zubatto: { amount: v.zubatto, count: v.auto ? v.auto.counts.zubatto : null },
+      kakaku:  { amount: v.kakaku,  count: v.auto ? v.auto.counts.kakaku : null },
+      auto: v.auto,
+    }
+  }
+  // 表示グループごとの月合計（KPI・フッター用）。内部4キーの合算。
+  const groupSums = { samurai: sums.byKey.samurai_single + sums.byKey.samurai_family, zubatto: sums.byKey.zubatto, kakaku: sums.byKey.kakaku }
+
   const setDaily = (day, key, value) => {
     setDraftExp(p => ({ ...p, daily: { ...p.daily, [day]: { ...(p.daily[day] || {}), [key]: value } } }))
+  }
+  // 手動月の「引越し侍」入力：合算値を単身キーに保存し家族は0に（表示＝入力を一致させる）
+  const setSamurai = (day, value) => {
+    setDraftExp(p => ({ ...p, daily: { ...p.daily, [day]: { ...(p.daily[day] || {}), samurai_single: value, samurai_family: 0 } } }))
   }
   const setMonthly = (key, value) => {
     setDraftExp(p => ({ ...p, monthly: { ...p.monthly, [key]: value } }))
@@ -225,10 +249,10 @@ export default function AdCost({ user }) {
               <div className="kpi-val">{yen(sums.grand)}</div>
               <div className="kpi-change">日別 {yen(sums.dailyGrand)} ＋ 月別 {yen(sums.monthlyTotal)}</div>
             </div>
-            {DAILY_FIELDS.slice(0, 3).map((f, i) => (
+            {DISPLAY_FIELDS.map((f, i) => (
               <div key={f.key} className={`kpi-card ${['c-teal', 'c-orange', 'c-green'][i]}`}>
                 <div className="kpi-label">{f.label}</div>
-                <div className="kpi-val">{yen(sums.byKey[f.key])}</div>
+                <div className="kpi-val">{yen(groupSums[f.key])}</div>
               </div>
             ))}
           </div>
@@ -309,7 +333,7 @@ export default function AdCost({ user }) {
                   <thead>
                     <tr>
                       <th style={{ ...thCell, textAlign: 'left' }}>日付</th>
-                      {DAILY_FIELDS.map(f => <th key={f.key} style={thCell}>{f.label}</th>)}
+                      {DISPLAY_FIELDS.map(f => <th key={f.key} style={thCell}>{f.label}</th>)}
                       <th style={thCell}>日合計</th>
                     </tr>
                   </thead>
@@ -317,6 +341,7 @@ export default function AdCost({ user }) {
                     {rowsToShow.map(day => {
                       const row = draftExp.daily[day] || {}
                       const v = dayVals(day)
+                      const grp = groupVal(day)
                       const rowTotal = DAILY_FIELDS.reduce((s, f) => s + v[f.key], 0)
                       const isToday = day === todayDD
                       return (
@@ -324,22 +349,24 @@ export default function AdCost({ user }) {
                           <td style={{ ...cellTd, fontWeight: isToday ? 800 : 400, color: isToday ? '#1E5FA8' : '#1E293B', whiteSpace: 'nowrap' }}>
                             {Number(day)}日{isToday ? ' （今日）' : ''}
                           </td>
-                          {DAILY_FIELDS.map(f => {
-                            // 自動算出列は読み取り専用で件数も表示（各サイト・単価で別々に算出）
-                            if (v.auto && AUTO_KEYS.includes(f.key)) {
-                              const cnt = v.auto.counts[f.key] || 0
-                              const unit = AUTO_UNIT[f.key]
+                          {DISPLAY_FIELDS.map(f => {
+                            const g = grp[f.key]
+                            // 自動算出：読み取り専用で件数も表示（引越し侍は単身+家族の合算）
+                            if (grp.auto) {
                               return (
-                                <td key={f.key} style={{ ...cellTd, textAlign: 'right' }} title={`${cnt}件 × ¥${unit}`}>
-                                  <div style={{ color: v[f.key] > 0 ? '#334155' : '#CBD5E1', fontWeight: 600 }}>{v[f.key] > 0 ? yen(v[f.key]) : '—'}</div>
-                                  {cnt > 0 && <div style={{ fontSize: 9, color: '#94A3B8' }}>{cnt}件</div>}
+                                <td key={f.key} style={{ ...cellTd, textAlign: 'right' }} title={g.count != null ? `${g.count}件` : ''}>
+                                  <div style={{ color: g.amount > 0 ? '#334155' : '#CBD5E1', fontWeight: 600 }}>{g.amount > 0 ? yen(g.amount) : '—'}</div>
+                                  {g.count > 0 && <div style={{ fontSize: 9, color: '#94A3B8' }}>{g.count}件</div>}
                                 </td>
                               )
                             }
+                            // 手動入力：引越し侍は合算値を単身キーへ保存、他は各キーへ
+                            const inputVal = f.key === 'samurai' ? ((num(row.samurai_single) + num(row.samurai_family)) || '') : (row[f.inputKey] ?? '')
                             return (
                               <td key={f.key} style={{ ...cellTd, textAlign: 'right' }}>
                                 <input type="number" min={0} inputMode="numeric"
-                                  value={row[f.key] ?? ''} onChange={e => setDaily(day, f.key, e.target.value)}
+                                  value={inputVal}
+                                  onChange={e => f.key === 'samurai' ? setSamurai(day, e.target.value) : setDaily(day, f.inputKey, e.target.value)}
                                   style={inputCell} />
                               </td>
                             )
@@ -354,8 +381,8 @@ export default function AdCost({ user }) {
                   <tfoot>
                     <tr style={{ background: '#F1F5FB', color: '#1E5FA8', fontWeight: 800, borderTop: '2px solid #1E5FA8' }}>
                       <td style={{ ...cellTd, padding: '8px' }}>合計（月）</td>
-                      {DAILY_FIELDS.map(f => (
-                        <td key={f.key} style={{ ...cellTd, padding: '8px', textAlign: 'right' }}>{yen(sums.byKey[f.key])}</td>
+                      {DISPLAY_FIELDS.map(f => (
+                        <td key={f.key} style={{ ...cellTd, padding: '8px', textAlign: 'right' }}>{yen(groupSums[f.key])}</td>
                       ))}
                       <td style={{ ...cellTd, padding: '8px', textAlign: 'right' }}>{yen(sums.dailyGrand)}</td>
                     </tr>
