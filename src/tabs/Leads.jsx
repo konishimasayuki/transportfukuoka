@@ -48,8 +48,8 @@ function parseLeadMoveDate(raw) {
   return { date: `${y}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`, ap }
 }
 
-const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
-const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
+const STATUS_LIST  = ['未架電', '架電済', '留守', '要追客', '成約', '見送り']
+const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
 
 // CSV入出力の列定義
 const CSV_COLUMNS = [

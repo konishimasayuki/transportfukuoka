@@ -5,8 +5,8 @@
 import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 
-const STATUS_LIST  = ['未架電', '架電済', '留守', '成約', '見送り']
-const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '成約': 'bg', '見送り': 'bk' }
+const STATUS_LIST  = ['未架電', '架電済', '留守', '要追客', '成約', '見送り']
+const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
 const YN = ['', 'あり', 'なし']
 
 // 家財のカテゴリ分け（追加候補プルダウンと表示の両方で使用）

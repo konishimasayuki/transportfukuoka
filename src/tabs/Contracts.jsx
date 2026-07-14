@@ -193,6 +193,14 @@ export default function Contracts({ user, switchTab, mode }) {
       </select>
     )
   }
+  // タイムツリー登録チェック（TimeTreeカレンダーに登録済みかを記録）
+  const ttCheckbox = (item) => (
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: item.timetree ? '#0E8A7A' : '#94A3B8', whiteSpace: 'nowrap' }} title="TimeTreeに登録済みかを記録">
+      <input type="checkbox" checked={!!item.timetree} onChange={() => updateContractField(item, 'timetree', !item.timetree)}
+        style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0E8A7A' }} />
+      {item.timetree ? '登録済' : '未登録'}
+    </label>
+  )
 
   // CSVエクスポート（現在の一覧をすべて）
   const handleExport = () => {
@@ -304,11 +312,11 @@ export default function Contracts({ user, switchTab, mode }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>エアコン</th><th>段ボール</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
+                <tr><th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>エアコン</th><th>段ボール</th><th>タイムツリー</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={10} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
+                  <tr><td colSpan={11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id}>
                     <td><b>{item.name}</b></td>
@@ -320,6 +328,7 @@ export default function Contracts({ user, switchTab, mode }) {
                     <td>¥{(item.amount||0).toLocaleString()}</td>
                     <td>{flagSelect(item, 'aircon')}</td>
                     <td>{flagSelect(item, 'cardboard')}</td>
+                    <td>{ttCheckbox(item)}</td>
                     <td>
                       <select value={item.status || ''} onChange={e => updateContractStatus(item, e.target.value)}
                         className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}
