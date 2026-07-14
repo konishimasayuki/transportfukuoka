@@ -10,6 +10,7 @@ const TITLES = {
   board:     '配車ボード',
   settings:  '設定',
   debug:     'デバッグ（架電テスト）',
+  debugreq:  'デバッグ依頼',
 }
 
 export default function Topbar({ activeTab, onMenuClick, onRefresh, loading, user }) {
