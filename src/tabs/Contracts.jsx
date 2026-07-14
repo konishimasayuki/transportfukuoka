@@ -207,7 +207,7 @@ export default function Contracts({ user, mode }) {
     name: lead.name || '（名前なし）', srcLabel: lead.site || '',
     date: lead.moveDate || lead.moveDateDetail || '',
     fromAddress: lead.from || lead.fromAddress || '', toAddress: lead.to || lead.toAddress || '', route: '',
-    amount: lead.amount || 0, status: '要追客', staff: lead.staff || '',
+    amount: lead.amount || 0, status: lead.status || '要追客', staff: lead.staff || '',
   })
   // リード由来行の担当者をインライン変更（/api/inbound を更新）
   const updateLeadStaff = async (row, staff) => {
@@ -215,6 +215,18 @@ export default function Contracts({ user, mode }) {
     if (isDemo) return
     try {
       await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: row._lead.key || row._lead.phone, phone: row._lead.phone, staff }) })
+    } catch (e) { console.error(e) }
+  }
+  // リード由来行のステータスをインライン変更（成約管理と同じステータス一覧を使用。要追客を選び直すと一覧から外れる）
+  const updateLeadStatus = async (row, status) => {
+    setFollowLeads(prev => prev.map(l => l.id === row._lead.id ? { ...l, status } : l))
+    if (isDemo) {
+      const idx = DEMO_LEADS.findIndex(l => l.id === row._lead.id)
+      if (idx !== -1) DEMO_LEADS[idx] = { ...DEMO_LEADS[idx], status }
+      return
+    }
+    try {
+      await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: row._lead.key || row._lead.phone, phone: row._lead.phone, status }) })
     } catch (e) { console.error(e) }
   }
   // リード詳細モーダル（リード管理と同じ）からの保存
@@ -346,19 +358,16 @@ export default function Contracts({ user, mode }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>エアコン</th><th>段ボール</th><th>タイムツリー</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
+                <tr><th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>エアコン</th><th>段ボール</th><th>タイムツリー</th><th>ステータス</th><th>担当者</th>{mode !== 'follow' && <th>操作</th>}</tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
+                  <tr><td colSpan={mode === 'follow' ? 10 : 11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id}
                     onClick={() => item._isLead && setLeadDetailItem(item._lead)}
                     style={item._isLead ? { cursor: 'pointer' } : undefined}>
-                    <td>
-                      <b>{item.name}</b>
-                      {item._isLead && <span className="badge bk" style={{ marginLeft: 6, fontSize: 10 }}>未成約</span>}
-                    </td>
+                    <td><b>{item.name}</b></td>
                     <td><SourceTag label={item.srcLabel} /></td>
                     <td>{item.date}</td>
                     <td title={contractRoute(item).full}>
@@ -370,7 +379,12 @@ export default function Contracts({ user, mode }) {
                     <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : ttCheckbox(item)}</td>
                     <td>
                       {item._isLead ? (
-                        <span className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}>{item.status}</span>
+                        <select value={item.status || ''} onClick={e => e.stopPropagation()} onChange={e => updateLeadStatus(item, e.target.value)}
+                          className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}
+                          style={{ border: 'none', fontFamily: 'inherit', cursor: 'pointer', fontWeight: 700 }}>
+                          {STATUS_LIST.filter(s => s !== '要追客').map(s => <option key={s} value={s}>{s}</option>)}
+                          {item.status && !STATUS_LIST.filter(s => s !== '要追客').includes(item.status) && <option value={item.status}>{item.status}</option>}
+                        </select>
                       ) : (
                         <select value={item.status || ''} onChange={e => updateContractStatus(item, e.target.value)}
                           className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}
@@ -392,16 +406,14 @@ export default function Contracts({ user, mode }) {
                         {item.staff && !staffList.includes(item.staff) && <option value={item.staff}>{item.staff}</option>}
                       </select>
                     </td>
-                    <td>
-                      {item._isLead ? (
-                        <span style={{ color: '#94A3B8', fontSize: 14 }} title="クリックで詳細を表示">›</span>
-                      ) : (
+                    {mode !== 'follow' && (
+                      <td>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button className="btn btn-outline btn-sm" onClick={() => openEdit(item)}>編集</button>
                           <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={() => setDeleteConfirm(item.id)}>削除</button>
                         </div>
-                      )}
-                    </td>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
