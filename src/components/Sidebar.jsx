@@ -12,14 +12,15 @@ const NAV_ITEMS = [
   { tab: 'schedule',  icon: '📅', label: '月カレンダー', isNew: true },
   { tab: 'board',     icon: '🚚', label: '配車ボード', isNew: true },
   { tab: 'settings',  icon: '⚙️', label: '設定' },
-  { tab: 'debug',     icon: '🧪', label: 'デバッグ' },
+  { tab: 'debug',     icon: '🧪', label: 'デバッグ', dev: true },
+  { tab: 'debugreq',  icon: '🐛', label: 'デバッグ依頼', dev: true },
 ]
 
 export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout }) {
-  // 会社名ブランディング（未指定はトランスポート福岡）／開発者向けタブ(debug)はデモ・hideDevで非表示
+  // 会社名ブランディング（未指定はトランスポート福岡）／開発者向けタブ(dev)はデモ・hideDevで非表示
   const companyName = user?.company || 'トランスポート福岡'
   const hideDev = user?.hideDev || user?.mode === 'demo'
-  const navItems = NAV_ITEMS.filter(item => !(hideDev && item.tab === 'debug'))
+  const navItems = NAV_ITEMS.filter(item => !(hideDev && item.dev))
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="sidebar-logo">

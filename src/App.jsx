@@ -13,6 +13,7 @@ import Estimate from './tabs/Estimate'
 import Schedule from './tabs/Schedule'
 import Settings from './tabs/Settings'
 import Debug from './tabs/Debug'
+import DebugRequest from './tabs/DebugRequest'
 
 const TABS = {
   dashboard: Dashboard,
@@ -29,6 +30,7 @@ const TABS = {
   board: Schedule, // 配車ボード（Schedule と同一コンポーネント：view で切替、state は保持される）
   settings: Settings,
   debug: Debug,
+  debugreq: DebugRequest,
 }
 
 const USERS = {
@@ -79,8 +81,9 @@ export default function App() {
 
   if (!user) return <Login users={USERS} onLogin={handleLogin} />
 
-  // 開発者(デバッグ)非表示ユーザー（デモ含む）は debug に入れない（ガード）
-  const safeTab = ((user.hideDev || user.mode === 'demo') && activeTab === 'debug') ? 'dashboard' : activeTab
+  // 開発者(デバッグ)非表示ユーザー（デモ含む）は debug / debugreq に入れない（ガード）
+  const isDevTab = activeTab === 'debug' || activeTab === 'debugreq'
+  const safeTab = ((user.hideDev || user.mode === 'demo') && isDevTab) ? 'dashboard' : activeTab
   const ActiveTab = TABS[safeTab] || Dashboard
 
   return (
