@@ -27,8 +27,16 @@ const sectionBar = {
 }
 const inp = { padding: '6px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff', width: '100%' }
 
+// 手配状況（エアコン・段ボール）の色分けプルダウン。成約一覧の表示と同じ配色・幅で統一する。
+function flagColors(val) {
+  const bg = (val === '依頼済み') ? '#F0FDF4' : (val === '未依頼' || val === '要配達') ? '#FFF7ED' : '#F8FAFC'
+  const color = (val === '依頼済み') ? '#15803D' : (val === '未依頼' || val === '要配達') ? '#C2410C' : '#94A3B8'
+  const border = (val === '依頼済み') ? '#BBF7D0' : (val === '未依頼' || val === '要配達') ? '#FED7AA' : '#E2E8F0'
+  return { bg, color, border }
+}
+
 // 編集／閲覧共通のフィールド行（LeadDetailModalと同じ体裁）
-function Row({ label, value, edit, onChange, type = 'text', options, placeholder, wide }) {
+function Row({ label, value, edit, onChange, type = 'text', options, placeholder, wide, flagStyle }) {
   if (!edit && (value == null || value === '')) return null
   return (
     <div style={{ display: 'flex', fontSize: 13, borderBottom: '1px solid #F1F5F9', gridColumn: wide ? '1 / -1' : 'auto' }}>
@@ -36,12 +44,21 @@ function Row({ label, value, edit, onChange, type = 'text', options, placeholder
       <div style={{ padding: '6px 10px', wordBreak: 'break-all', flex: 1 }}>
         {edit ? (
           options ? (
-            <select value={value ?? ''} onChange={e => onChange(e.target.value)} style={inp}>
-              {options.map(o => <option key={o} value={o}>{o || '—'}</option>)}
-            </select>
+            flagStyle ? (
+              <select value={value ?? ''} onChange={e => onChange(e.target.value)}
+                style={{ border: `1px solid ${flagColors(value).border}`, borderRadius: 6, padding: '3px 6px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', background: flagColors(value).bg, color: flagColors(value).color, fontWeight: 700, width: 96, textAlign: 'center', textAlignLast: 'center' }}>
+                {options.map(o => <option key={o} value={o}>{o || '—'}</option>)}
+              </select>
+            ) : (
+              <select value={value ?? ''} onChange={e => onChange(e.target.value)} style={inp}>
+                {options.map(o => <option key={o} value={o}>{o || '—'}</option>)}
+              </select>
+            )
           ) : (
             <input type={type} value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder={placeholder || ''} style={inp} />
           )
+        ) : flagStyle ? (
+          <span style={{ display: 'inline-block', border: `1px solid ${flagColors(value).border}`, borderRadius: 6, padding: '3px 6px', fontSize: 12, background: flagColors(value).bg, color: flagColors(value).color, fontWeight: 700, width: 96, textAlign: 'center' }}>{value}</span>
         ) : (
           <div style={{ color: '#1E293B', fontWeight: 600, padding: '2px 0' }}>{value}</div>
         )}
@@ -146,8 +163,8 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
         {/* 手配状況 */}
         <div style={sectionBar}>手配状況</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid #EEF2F7' }}>
-          <Row label="エアコン" edit={edit} value={v('aircon') || '必要なし'} onChange={x => setField('aircon', x)} options={AIRCON_OPTS} />
-          <Row label="段ボール" edit={edit} value={v('cardboard') || '必要なし'} onChange={x => setField('cardboard', x)} options={CARDBOARD_OPTS} />
+          <Row label="エアコン" edit={edit} value={v('aircon') || '必要なし'} onChange={x => setField('aircon', x)} options={AIRCON_OPTS} flagStyle />
+          <Row label="段ボール" edit={edit} value={v('cardboard') || '必要なし'} onChange={x => setField('cardboard', x)} options={CARDBOARD_OPTS} flagStyle />
           <div style={{ display: 'flex', fontSize: 13, gridColumn: '1 / -1' }}>
             <div style={{ width: 110, flexShrink: 0, color: '#64748B', fontWeight: 600, background: '#F8FAFC', padding: '8px 10px' }}>タイムツリー</div>
             <div style={{ padding: '8px 10px' }}>

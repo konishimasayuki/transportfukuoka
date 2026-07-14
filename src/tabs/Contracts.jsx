@@ -176,12 +176,15 @@ export default function Contracts({ user, switchTab, mode }) {
     } catch (e) { console.error(e) }
   }
   // 手配状況プルダウン（必要なし＝グレー／未依頼・要配達＝オレンジ／依頼済み＝グリーン）。既定は「必要なし」。
+  // エアコン・段ボールで選択肢の文字数が異なっても幅が揃うよう固定幅・中央寄せにしてデザインを統一する。
   const flagSelect = (item, field, opts) => {
     const val = item[field] || '必要なし'
+    const bg = (val === '依頼済み') ? '#F0FDF4' : (val === '未依頼' || val === '要配達') ? '#FFF7ED' : '#F8FAFC'
     const color = (val === '依頼済み') ? '#15803D' : (val === '未依頼' || val === '要配達') ? '#C2410C' : '#94A3B8'
+    const border = (val === '依頼済み') ? '#BBF7D0' : (val === '未依頼' || val === '要配達') ? '#FED7AA' : '#E2E8F0'
     return (
       <select value={val} onChange={e => updateContractField(item, field, e.target.value)}
-        style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 6px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', background: '#fff', color, fontWeight: 700 }}>
+        style={{ border: `1px solid ${border}`, borderRadius: 6, padding: '3px 6px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', background: bg, color, fontWeight: 700, width: 96, textAlign: 'center', textAlignLast: 'center' }}>
         {opts.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
     )
@@ -194,6 +197,24 @@ export default function Contracts({ user, switchTab, mode }) {
       {item.timetree ? '登録済' : '未登録'}
     </label>
   )
+
+  // 追客タブ：未成約リード（status==='要追客'）を成約行と同じ形に変換して一覧に混ぜて表示する。
+  // 成約前のためエアコン/段ボール/タイムツリーは対象外（「—」表示）。編集・削除はリード管理へ誘導する。
+  const leadToRow = (lead) => ({
+    id: 'lead:' + lead.id, _isLead: true, _lead: lead,
+    name: lead.name || '（名前なし）', srcLabel: lead.site || '',
+    date: lead.moveDate || lead.moveDateDetail || '',
+    fromAddress: lead.from || lead.fromAddress || '', toAddress: lead.to || lead.toAddress || '', route: '',
+    amount: lead.amount || 0, status: '要追客', staff: lead.staff || '',
+  })
+  // リード由来行の担当者をインライン変更（/api/inbound を更新）
+  const updateLeadStaff = async (row, staff) => {
+    setFollowLeads(prev => prev.map(l => l.id === row._lead.id ? { ...l, staff } : l))
+    if (isDemo) return
+    try {
+      await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: row._lead.key || row._lead.phone, phone: row._lead.phone, staff }) })
+    } catch (e) { console.error(e) }
+  }
 
   // CSVエクスポート（現在の一覧をすべて）
   const handleExport = () => {
@@ -243,17 +264,21 @@ export default function Contracts({ user, switchTab, mode }) {
     setImporting(false)
   }
 
-  const filtered = items.filter(i => {
+  // 追客タブは成約由来（要追客）＋リード由来（未成約・要追客）を1つの一覧に統合する
+  const leadRows = mode === 'follow' ? followLeads.map(leadToRow) : []
+  const combined = mode === 'follow' ? [...items, ...leadRows] : items
+
+  const filtered = combined.filter(i => {
     const q = search.toLowerCase()
     return modeMatch(i) &&
-           (!q || i.name.toLowerCase().includes(q) || (i.route||'').includes(q)) &&
+           (!q || i.name.toLowerCase().includes(q) || (i.route||'').includes(q) || (i.fromAddress||'').includes(q) || (i.toAddress||'').includes(q)) &&
            (!filterStatus || i.status === filterStatus)
   }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))) // 引越し日の新しい順（上が最新）
 
   const countBy = (s) => items.filter(i => i.status === s).length
   const totalAmount = items.filter(i => i.status === '成約済み').reduce((s, i) => s + (i.amount || 0), 0)
-  // ワークリスト用の集計（対象＝mode一致の成約）
-  const modeItems = items.filter(modeMatch)
+  // ワークリスト用の集計（対象＝mode一致。追客タブは成約＋リードの合計）
+  const modeItems = combined.filter(modeMatch)
   const flagCount = (field, val) => modeItems.filter(i => (i[field] || '必要なし') === val).length
 
   return (
@@ -271,8 +296,8 @@ export default function Contracts({ user, switchTab, mode }) {
 
       {mode === 'follow' ? (
         <div className="kpi-row kpi-3">
-          <div className="kpi-card c-orange"><div className="kpi-label">追客対象（成約・要追客）</div><div className="kpi-val">{modeItems.length}<span>件</span></div></div>
-          <div className="kpi-card c-purple"><div className="kpi-label">追客対象（リード・要追客）</div><div className="kpi-val">{followLeads.length}<span>件</span></div></div>
+          <div className="kpi-card c-orange"><div className="kpi-label">追客対象（合計）</div><div className="kpi-val">{modeItems.length}<span>件</span></div></div>
+          <div className="kpi-card c-purple"><div className="kpi-label">うちリード（未成約）</div><div className="kpi-val">{leadRows.length}<span>件</span></div></div>
           <div className="kpi-card c-green"><div className="kpi-label">成約済み（全体）</div><div className="kpi-val">{countBy('成約済み')}<span>件</span></div></div>
         </div>
       ) : (mode === 'aircon' || mode === 'cardboard') ? (
@@ -313,28 +338,35 @@ export default function Contracts({ user, switchTab, mode }) {
                   <tr><td colSpan={11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id}>
-                    <td><b>{item.name}</b></td>
+                    <td>
+                      <b>{item.name}</b>
+                      {item._isLead && <span className="badge bk" style={{ marginLeft: 6, fontSize: 10 }}>未成約</span>}
+                    </td>
                     <td><SourceTag label={item.srcLabel} /></td>
                     <td>{item.date}</td>
                     <td title={contractRoute(item).full}>
                       <div style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractRoute(item).short}</div>
                     </td>
-                    <td>¥{(item.amount||0).toLocaleString()}</td>
-                    <td>{flagSelect(item, 'aircon', AIRCON_OPTS)}</td>
-                    <td>{flagSelect(item, 'cardboard', CARDBOARD_OPTS)}</td>
-                    <td>{ttCheckbox(item)}</td>
+                    <td>{item.amount ? `¥${item.amount.toLocaleString()}` : '—'}</td>
+                    <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'aircon', AIRCON_OPTS)}</td>
+                    <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'cardboard', CARDBOARD_OPTS)}</td>
+                    <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : ttCheckbox(item)}</td>
                     <td>
-                      <select value={item.status || ''} onChange={e => updateContractStatus(item, e.target.value)}
-                        className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}
-                        style={{ border: 'none', fontFamily: 'inherit', cursor: 'pointer', fontWeight: 700 }}>
-                        {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-                        {item.status && !STATUS_LIST.includes(item.status) && <option value={item.status}>{item.status}</option>}
-                      </select>
+                      {item._isLead ? (
+                        <span className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}>{item.status}</span>
+                      ) : (
+                        <select value={item.status || ''} onChange={e => updateContractStatus(item, e.target.value)}
+                          className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}
+                          style={{ border: 'none', fontFamily: 'inherit', cursor: 'pointer', fontWeight: 700 }}>
+                          {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                          {item.status && !STATUS_LIST.includes(item.status) && <option value={item.status}>{item.status}</option>}
+                        </select>
+                      )}
                     </td>
                     <td>
                       <select
                         value={item.staff || ''}
-                        onChange={e => updateContractStaff(item, e.target.value)}
+                        onChange={e => item._isLead ? updateLeadStaff(item, e.target.value) : updateContractStaff(item, e.target.value)}
                         style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 6px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', background: '#fff', color: item.staff ? '#1E293B' : '#94A3B8' }}
                       >
                         <option value="">未割当</option>
@@ -343,53 +375,20 @@ export default function Contracts({ user, switchTab, mode }) {
                       </select>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn btn-outline btn-sm" onClick={() => openEdit(item)}>編集</button>
-                        <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={() => setDeleteConfirm(item.id)}>削除</button>
-                      </div>
+                      {item._isLead ? (
+                        <button className="btn btn-outline btn-sm" onClick={() => switchTab && switchTab('leads')}>リード管理で見る</button>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button className="btn btn-outline btn-sm" onClick={() => openEdit(item)}>編集</button>
+                          <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={() => setDeleteConfirm(item.id)}>削除</button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* 追客タブ：リード管理で「要追客」にした未成約リード（成約前なのでこの画面では編集せず、リード管理へ誘導） */}
-      {mode === 'follow' && followLeads.length > 0 && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <div className="card-head">
-            <h3>リード（未成約・要追客）</h3>
-            <span className="c-sub">{followLeads.length}件</span>
-          </div>
-          <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
-            <table>
-              <thead>
-                <tr><th>受付日時</th><th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>引越し希望日</th><th>操作</th></tr>
-              </thead>
-              <tbody>
-                {followLeads.map(lead => (
-                  <tr key={lead.id}>
-                    <td style={{ whiteSpace: 'nowrap' }}>{lead.receivedAt || ''}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}><SourceTag site={lead.site} /></td>
-                    <td><b>{lead.name || '（名前なし）'}</b></td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{lead.phone || ''}</td>
-                    <td title={`${lead.from || ''} → ${lead.to || ''}`}>
-                      <div style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {shortArea(lead.from)} → {shortArea(lead.to)}
-                      </div>
-                    </td>
-                    <td>{lead.moveDate || ''}</td>
-                    <td>
-                      <button className="btn btn-outline btn-sm" onClick={() => switchTab && switchTab('leads')}>リード管理で見る</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ fontSize: 11, color: '#94A3B8', padding: '8px 16px 12px' }}>※ まだ成約登録前のリードです。詳細の編集・成約登録はリード管理から行ってください。</div>
         </div>
       )}
 

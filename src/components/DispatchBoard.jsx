@@ -511,8 +511,19 @@ function computeVehicleRoutes(vehicles, jobs, show) {
       else if (stops[stops.length - 1] !== from) { legs.push('move'); stops.push(from) }
       if (to && to !== stops[stops.length - 1]) { legs.push('job'); stops.push(to) }
     })
-    return { v, color: ROUTE_COLORS[idx % ROUTE_COLORS.length], stops, legs }
+    return { v, color: ROUTE_COLORS[idx % ROUTE_COLORS.length], stops, legs, jobs: vj }
   }).filter(r => r.stops.length > 0)
+}
+
+// 地名(name)がそのルートのどのジョブの積地(S)／卸地(G)に該当するかを判定（地図上のS/Gマーク用）。
+// 同じ地名が複数ジョブに跨っても文字列一致で判定（区・市単位の概略表示のため十分な精度）。
+function roleForStopName(jobsOfRoute, name) {
+  let isS = false, isG = false
+  jobsOfRoute.forEach(j => {
+    if (j.from === name) isS = true
+    if (j.to && j.to !== '—' && j.to === name) isG = true
+  })
+  return isS && isG ? 'S/G' : isS ? 'S' : isG ? 'G' : null
 }
 
 // 凡例（車両→色＋経路＋Googleマップリンク）。両モード共通。
@@ -648,10 +659,20 @@ function SchematicMap({ routes }) {
                       </g>
                     )
                   })}
-                  {pts.map((p, pi) => (
-                    <circle key={pi} cx={p[0]} cy={p[1]} r={pi === 0 ? 6 : 5}
-                      fill={pi === 0 ? r.color : '#fff'} stroke={r.color} strokeWidth="2.5" />
-                  ))}
+                  {pts.map((p, pi) => {
+                    const role = roleForStopName(r.jobs, r.pts[pi].name)
+                    const rr = role ? 8.5 : (pi === 0 ? 6 : 5)
+                    return (
+                      <g key={pi}>
+                        <circle cx={p[0]} cy={p[1]} r={rr}
+                          fill={role ? r.color : (pi === 0 ? r.color : '#fff')} stroke={r.color} strokeWidth="2.5" />
+                        {role && (
+                          <text x={p[0]} y={p[1]} fontSize={role.length > 1 ? 6.5 : 9} fontWeight="800" fill="#fff"
+                            textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: 'none' }}>{role}</text>
+                        )}
+                      </g>
+                    )
+                  })}
                 </g>
               )
             })}
@@ -731,7 +752,16 @@ function GoogleRouteMap({ routes }) {
     const svc = new g.maps.DirectionsService()
     let cancelled = false
 
-    const pin = (pos, color, scale) => { const m = new g.maps.Marker({ position: pos, map, icon: { path: g.maps.SymbolPath.CIRCLE, scale, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 1.8 } }); overlays.current.push(m); bounds.extend(pos) }
+    const pin = (pos, color, scale, label) => {
+      const finalScale = label ? Math.max(scale, 11) : scale
+      const m = new g.maps.Marker({
+        position: pos, map,
+        icon: { path: g.maps.SymbolPath.CIRCLE, scale: finalScale, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 1.8 },
+        label: label ? { text: label, color: '#fff', fontSize: label.length > 1 ? '8px' : '10px', fontWeight: '800' } : undefined,
+        zIndex: label ? 10 : 5,
+      })
+      overlays.current.push(m); bounds.extend(pos)
+    }
 
     // 元の停車順(names)における stopA→stopB が「案件の搬送区間(job)」か「手配間の移動区間(move)」かを判定。
     // optimizeWaypoints で訪問順が入れ替わった場合も、名前が元々隣接していたかどうかで判定する（隣接しなければ移動区間扱い）。
@@ -777,8 +807,8 @@ function GoogleRouteMap({ routes }) {
           const line = new g.maps.Polyline(lineOpts)
           overlays.current.push(casing, line)
           g.maps.event.addListener(line, 'click', () => setDetail(info))
-          if (i === 0) pin(leg.start_location, r.color, 9)
-          pin(leg.end_location, r.color, 7)
+          if (i === 0) pin(leg.start_location, r.color, 9, roleForStopName(r.jobs, orderedNames[0]))
+          pin(leg.end_location, r.color, 7, roleForStopName(r.jobs, orderedNames[i + 1]))
         })
         route0.overview_path.forEach(p => bounds.extend(p))
         try { map.fitBounds(bounds) } catch {}
