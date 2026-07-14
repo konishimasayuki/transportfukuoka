@@ -58,7 +58,9 @@ function CallUI({ callOn, setCallOn, sites, logs, stats, detections, onOpenLog }
             <div style={{ fontSize:10, display:'flex', alignItems:'center', gap:5, marginBottom:4 }}>
               <div style={{ width:7, height:7, borderRadius:'50%', background:s.dotColor }} />{s.status}
             </div>
-            <div style={{ fontSize:10, color:'#64748B', marginBottom: s.newCount ? 4 : 0 }}>{s.count}</div>
+            <div style={{ fontSize:10, color:'#64748B', marginBottom: 2 }}>{s.count}</div>
+            {/* 最終取得時刻（取得時間）。3サイトとも表示。未取得なら「—」 */}
+            <div style={{ fontSize:10, color:'#94A3B8', marginBottom: s.newCount ? 4 : 0 }}>🕐 取得 {s.lastAt ? fmtHM(s.lastAt) : '—'}</div>
             {s.newCount && <span style={{ background:'#FEF2F2', color:'#DC2626', fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:5 }}>{s.newCount}</span>}
           </div>
         ))}
@@ -120,6 +122,14 @@ const fmtTime = (iso) => {
 }
 
 const SITE_LABELS = { zba: 'ズバット', samurai: '引越し侍', kakaku: '価格.com' }
+// サイト名 → 監視ステータスのソースキー（最終取得時刻の紐付け用）
+const STATUS_SRC  = { 'ズバット': 'zba', '引越し侍': 'samurai', '価格.com': 'kakaku' }
+// 時刻(HH:MM)だけの短い表記（監視カードの「取得時間」表示用）
+const fmtHM = (iso) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+}
 
 // 各サイト監視の生存状態 → 表示用の判定（null を返したらバナーを出さない）
 function monHealth(label, status) {
@@ -286,15 +296,22 @@ export default function Call({ user, switchTab }) {
     if (typeof switchTab === 'function') switchTab('estimate')
   }
 
-  // サイト別 取得済み件数（監視カード用）
+  // サイト別 取得済み件数＋最終取得時刻（監視カード用）。3サイト（ズバット/引越し侍/価格.com）とも表示。
   const siteCount = (name) => leads.filter(l => l.site === name).length
-  const liveSites = MON_SITES.map(name => ({
-    name,
-    status: callOn ? '監視中' : '待機中',
-    dotColor: callOn ? '#22c55e' : '#94A3B8',
-    count: `取得済み ${siteCount(name)}件`,
-    newCount: null,
-  }))
+  const liveSites = MON_SITES.map(name => {
+    const st = statuses[STATUS_SRC[name]]
+    return {
+      name,
+      status: callOn ? '監視中' : '待機中',
+      dotColor: callOn ? '#22c55e' : '#94A3B8',
+      count: `取得済み ${siteCount(name)}件`,
+      lastAt: st && st.at ? st.at : null, // 最終取得時刻（拡張のハートビート）。未取得なら null
+      newCount: null,
+    }
+  })
+  // デモ：監視カードの「取得時間」も見せるため、各サイトに直近の取得時刻を付与
+  const _demoNow = Date.now()
+  const demoSites = DEMO_SITES.map((s, i) => ({ ...s, lastAt: new Date(_demoNow - (i * 40 + 25) * 1000).toISOString() }))
 
   // サイト別 新規検知（本日の取得をサイトで集計）
   const detCounts = {}
@@ -326,7 +343,7 @@ export default function Call({ user, switchTab }) {
       <CallUI
         callOn={callOn}
         setCallOn={setCallOn}
-        sites={isDemo ? DEMO_SITES : liveSites}
+        sites={isDemo ? demoSites : liveSites}
         logs={isDemo ? DEMO_LOGS : liveLogs}
         stats={isDemo ? { total:7, success:5 } : { total: todaysLeads.length, success: 0 }}
         detections={isDemo ? DEMO_DETECTIONS : liveDetections}

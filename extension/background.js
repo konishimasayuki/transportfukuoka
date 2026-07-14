@@ -207,9 +207,9 @@ function kakakuLoop(gen, today) {
   window.__tfKakakuSeen = window.__tfKakakuSeen || [] // ページ存続中の取込済みorderid（リロードで自然リセット→当日分は再送・サーバ重複除外）
   const seen = new Set(window.__tfKakakuSeen)
   const persist = () => { window.__tfKakakuSeen = Array.from(seen).slice(-5000) }
-  const PER = 8, GAP = 300, FAST_MS = 15000, SLOW_MS = 120000
-  // 巡回間隔：ほぼ終日(7-24時)は15秒＋0〜8秒ジッター、深夜(0-7時)は120秒に減速（負荷・BAN配慮）
-  const nextDelay = () => { const h = new Date().getHours(); const base = (h >= 7 && h < 24) ? FAST_MS : SLOW_MS; return base + Math.floor(Math.random() * 8000) }
+  const PER = 8, GAP = 300, FAST_MS = 12000, SLOW_MS = 120000
+  // 巡回間隔：ほぼ終日(7-24時)は12秒＋0〜4秒ジッター（最速12秒・最遅16秒）、深夜(0-7時)は120秒に減速（負荷・BAN配慮）
+  const nextDelay = () => { const h = new Date().getHours(); const base = (h >= 7 && h < 24) ? FAST_MS : SLOW_MS; return base + Math.floor(Math.random() * 4000) }
   const INBOUND = 'https://transportfukuoka.vercel.app/api/inbound'
   const LIST = '/hikkoshi/vender/admin/Index'
   const DETAIL = id => '/hikkoshi/vender/admin/userdetail/?orderid=' + id
@@ -445,8 +445,8 @@ function samuraiLoop(gen, todayMD) {
   window.__tfSamuraiSeen = window.__tfSamuraiSeen || [] // ページ存続中の取込済みid（リロードで自然リセット→当日分は再送・サーバ重複除外）
   const seen = new Set(window.__tfSamuraiSeen)
   const persist = () => { window.__tfSamuraiSeen = Array.from(seen).slice(-5000) }
-  // 巡回間隔：当日フィルターPOSTで軽く取れる時は日中15秒。空/失敗で重い全件GETを使った回だけ、
-  // 次回を60秒以上に空ける（tick末尾でheavy判定）。深夜は120秒。
+  // 巡回間隔：当日フィルターPOSTで軽く取れる時は日中約15秒。空/失敗で重い全件GETを使った回だけ、
+  // 次回を45秒以上に空ける（tick末尾でheavy判定・最悪でも50秒以内）。深夜は120秒。
   const PER = 8, GAP = 300, FAST_MS = 15000, SLOW_MS = 120000
   // 巡回間隔：ほぼ終日(7-24時)は15秒＋0〜8秒ジッター、深夜(0-7時)は120秒に減速（負荷・BAN配慮）
   const nextDelay = () => { const h = new Date().getHours(); const base = (h >= 7 && h < 24) ? FAST_MS : SLOW_MS; return base + Math.floor(Math.random() * 8000) }
@@ -688,7 +688,7 @@ function samuraiLoop(gen, todayMD) {
       const f = window.__tfSamuraiFail || 0
       let delay
       if (f > 0) delay = Math.min(nextDelay() * Math.pow(2, Math.min(f, 5)), 30 * 1000) // 連続エラーで最大30秒まで指数バックオフ
-      else delay = window.__tfSamuraiHeavy ? Math.max(nextDelay(), 60000) : nextDelay() // 重いGET後は60秒以上、軽いフィルターは15秒
+      else delay = window.__tfSamuraiHeavy ? Math.max(nextDelay(), 45000) : nextDelay() // 重いGET後は45秒以上（最悪でも50秒以内に取得）、軽いフィルターは約15秒
       setTimeout(tick, delay)
     }
   }

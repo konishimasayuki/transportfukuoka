@@ -236,7 +236,7 @@ const API_SYNC_MS      = 15000     // 旧：固定間隔同期。現在は watch
 //  - 件数変化が無くても WATCH_FORCE_MS に一度は通常同期して取りこぼし防止
 const WATCH_FAST_MS    = 5000      // 営業時間中のヒートビート（5秒・軽量API）
 const WATCH_SLOW_MS    = 60000     // 営業時間外（60秒）
-const WATCH_FORCE_MS   = 120000    // 取りこぼし防止の強制同期（2分）
+const WATCH_FORCE_MS   = 45000     // 取りこぼし防止＆最終取得時刻更新の強制同期（45秒・最悪でも45秒以内に取得/表示更新）
 const BUSY_HOUR_FROM   = 8         // 営業時間（JST）
 const BUSY_HOUR_TO     = 23
 // 詳細取り込みロジックを変えたら +1。既存の取得済みフラグをリセットして全件取り直す。

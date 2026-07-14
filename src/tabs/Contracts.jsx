@@ -163,6 +163,32 @@ export default function Contracts({ user, switchTab }) {
     } catch (e) { console.error(e) }
   }
 
+  // エアコン/段ボールの要否トグル（デフォルト＝必要なし、押すと必要あり）。全項目を保持して保存。
+  const toggleContractFlag = async (item, field) => {
+    const updated = { ...item, [field]: !item[field] }
+    setItems(prev => prev.map(i => i.id === item.id ? updated : i))
+    if (isDemo) return
+    try {
+      await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) })
+    } catch (e) { console.error(e) }
+  }
+  // 「必要あり/必要なし」トグルボタン
+  const flagBtn = (item, field) => {
+    const on = !!item[field]
+    return (
+      <button onClick={() => toggleContractFlag(item, field)} title="クリックで切替"
+        style={{
+          cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, borderRadius: 6,
+          padding: '4px 10px', whiteSpace: 'nowrap',
+          border: `1px solid ${on ? '#1E5FA8' : '#E2E8F0'}`,
+          background: on ? '#EFF6FF' : '#F8FAFC',
+          color: on ? '#1E5FA8' : '#94A3B8',
+        }}>
+        {on ? '必要あり' : '必要なし'}
+      </button>
+    )
+  }
+
   // CSVエクスポート（現在の一覧をすべて）
   const handleExport = () => {
     const csv = toCSV(items, CSV_COLUMNS)
@@ -256,11 +282,11 @@ export default function Contracts({ user, switchTab }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>顧客名</th><th>流入元</th><th>売上登録日</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
+                <tr><th>顧客名</th><th>流入元</th><th>売上登録日</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>エアコン</th><th>段ボール</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={9} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
+                  <tr><td colSpan={11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id}>
                     <td><b>{item.name}</b></td>
@@ -271,6 +297,8 @@ export default function Contracts({ user, switchTab }) {
                       <div style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractRoute(item).short}</div>
                     </td>
                     <td>¥{(item.amount||0).toLocaleString()}</td>
+                    <td>{flagBtn(item, 'aircon')}</td>
+                    <td>{flagBtn(item, 'cardboard')}</td>
                     <td>
                       <select value={item.status || ''} onChange={e => updateContractStatus(item, e.target.value)}
                         className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}
