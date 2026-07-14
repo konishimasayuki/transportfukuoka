@@ -4,6 +4,7 @@ import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { SourceTag } from '../lib/source'
 import { shortArea, splitRoute } from '../lib/area'
 import ContractDetailModal, { STATUS_LIST, STATUS_BADGE, SOURCE_LIST, AIRCON_OPTS, CARDBOARD_OPTS, EMPTY_CONTRACT } from '../components/ContractDetailModal'
+import LeadDetailModal from '../components/LeadDetailModal'
 import { DEMO_DATA as DEMO_LEADS } from './Leads'
 
 // すべて架空のサンプル（氏名は「サンプル＋名」で実在しないと一目でわかる形）。
@@ -60,7 +61,7 @@ function contractRoute(item) {
   return { short, full }
 }
 
-export default function Contracts({ user, switchTab, mode }) {
+export default function Contracts({ user, mode }) {
   const isDemo = user?.mode === 'demo'
   const meta = MODE_META[mode] || null       // 依頼/追客ビューのメタ（null＝通常の成約管理）
   const modeMatch = meta ? meta.match : () => true
@@ -75,6 +76,7 @@ export default function Contracts({ user, switchTab, mode }) {
   const [importing, setImporting] = useState(false)
   const [toast, setToast] = useState('')
   const [followLeads, setFollowLeads] = useState([]) // 追客タブ用：ステータス「要追客」のリード（未成約）
+  const [leadDetailItem, setLeadDetailItem] = useState(null) // 追客タブ：クリックしたリード行の詳細（リード管理と同じモーダル）
   const fileRef = useRef(null)
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2600) }
 
@@ -199,7 +201,7 @@ export default function Contracts({ user, switchTab, mode }) {
   )
 
   // 追客タブ：未成約リード（status==='要追客'）を成約行と同じ形に変換して一覧に混ぜて表示する。
-  // 成約前のためエアコン/段ボール/タイムツリーは対象外（「—」表示）。編集・削除はリード管理へ誘導する。
+  // 成約前のためエアコン/段ボール/タイムツリーは対象外（「—」表示）。行クリックでリード管理と同じ詳細モーダルを開く。
   const leadToRow = (lead) => ({
     id: 'lead:' + lead.id, _isLead: true, _lead: lead,
     name: lead.name || '（名前なし）', srcLabel: lead.site || '',
@@ -213,6 +215,19 @@ export default function Contracts({ user, switchTab, mode }) {
     if (isDemo) return
     try {
       await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: row._lead.key || row._lead.phone, phone: row._lead.phone, staff }) })
+    } catch (e) { console.error(e) }
+  }
+  // リード詳細モーダル（リード管理と同じ）からの保存
+  const saveLeadPatch = async (lead, patch) => {
+    setFollowLeads(prev => prev.map(l => l.id === lead.id ? { ...l, ...patch } : l))
+    setLeadDetailItem(d => (d && d.id === lead.id ? { ...d, ...patch } : d))
+    if (isDemo) {
+      const idx = DEMO_LEADS.findIndex(l => l.id === lead.id)
+      if (idx !== -1) DEMO_LEADS[idx] = { ...DEMO_LEADS[idx], ...patch }
+      return
+    }
+    try {
+      await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, ...patch }) })
     } catch (e) { console.error(e) }
   }
 
@@ -337,7 +352,9 @@ export default function Contracts({ user, switchTab, mode }) {
                 {filtered.length === 0 ? (
                   <tr><td colSpan={11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
-                  <tr key={item.id}>
+                  <tr key={item.id}
+                    onClick={() => item._isLead && setLeadDetailItem(item._lead)}
+                    style={item._isLead ? { cursor: 'pointer' } : undefined}>
                     <td>
                       <b>{item.name}</b>
                       {item._isLead && <span className="badge bk" style={{ marginLeft: 6, fontSize: 10 }}>未成約</span>}
@@ -366,6 +383,7 @@ export default function Contracts({ user, switchTab, mode }) {
                     <td>
                       <select
                         value={item.staff || ''}
+                        onClick={e => e.stopPropagation()}
                         onChange={e => item._isLead ? updateLeadStaff(item, e.target.value) : updateContractStaff(item, e.target.value)}
                         style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 6px', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', background: '#fff', color: item.staff ? '#1E293B' : '#94A3B8' }}
                       >
@@ -376,7 +394,7 @@ export default function Contracts({ user, switchTab, mode }) {
                     </td>
                     <td>
                       {item._isLead ? (
-                        <button className="btn btn-outline btn-sm" onClick={() => switchTab && switchTab('leads')}>リード管理で見る</button>
+                        <span style={{ color: '#94A3B8', fontSize: 14 }} title="クリックで詳細を表示">›</span>
                       ) : (
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button className="btn btn-outline btn-sm" onClick={() => openEdit(item)}>編集</button>
@@ -400,6 +418,15 @@ export default function Contracts({ user, switchTab, mode }) {
           onClose={closeModal}
           onSave={handleModalSave}
           onDelete={!isNewModal ? handleModalDelete : undefined}
+        />
+      )}
+
+      {/* 追客タブ：リード行クリックで開くリード詳細モーダル（リード管理と同じレイアウト） */}
+      {leadDetailItem && (
+        <LeadDetailModal
+          item={leadDetailItem}
+          onClose={() => setLeadDetailItem(null)}
+          onSave={saveLeadPatch}
         />
       )}
 

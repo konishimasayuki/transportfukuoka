@@ -511,19 +511,8 @@ function computeVehicleRoutes(vehicles, jobs, show) {
       else if (stops[stops.length - 1] !== from) { legs.push('move'); stops.push(from) }
       if (to && to !== stops[stops.length - 1]) { legs.push('job'); stops.push(to) }
     })
-    return { v, color: ROUTE_COLORS[idx % ROUTE_COLORS.length], stops, legs, jobs: vj }
+    return { v, color: ROUTE_COLORS[idx % ROUTE_COLORS.length], stops, legs }
   }).filter(r => r.stops.length > 0)
-}
-
-// 地名(name)がそのルートのどのジョブの積地(S)／卸地(G)に該当するかを判定（地図上のS/Gマーク用）。
-// 同じ地名が複数ジョブに跨っても文字列一致で判定（区・市単位の概略表示のため十分な精度）。
-function roleForStopName(jobsOfRoute, name) {
-  let isS = false, isG = false
-  jobsOfRoute.forEach(j => {
-    if (j.from === name) isS = true
-    if (j.to && j.to !== '—' && j.to === name) isG = true
-  })
-  return isS && isG ? 'S/G' : isS ? 'S' : isG ? 'G' : null
 }
 
 // 凡例（車両→色＋経路＋Googleマップリンク）。両モード共通。
@@ -639,13 +628,17 @@ function SchematicMap({ routes }) {
             {g.withC.map((r, ri) => {
               const pts = r.pts.map(s => g.proj(s.c))
               const onClickDetail = () => setDetail({ color: r.color, label: r.v.ext ? '外注' : '#' + r.v.id, cls: r.v.cls, stops: r.stops, fromAddr: r.stops[0], toAddr: r.stops[r.stops.length - 1] })
+              // 描画区間ごとの種別（'job'=実線／'move'=点線）を先に確定し、線描画とS/Gラベル判定の両方で使い回す。
+              const segTypes = pts.slice(1).map((p, i) => {
+                const prev = r.pts[i], cur = r.pts[i + 1]
+                const isMove = cur.origIndex !== prev.origIndex + 1 || r.legs[cur.origIndex - 1] === 'move'
+                return isMove ? 'move' : 'job'
+              })
               return (
                 <g key={ri}>
                   {pts.slice(1).map((p, i) => {
                     const a = pts[i], b = p
-                    const prev = r.pts[i], cur = r.pts[i + 1]
-                    // 隣接する2点が元々連続していた場合のみ legs の種別を引き継ぐ（間引かれていれば移動区間扱い）
-                    const isMove = cur.origIndex !== prev.origIndex + 1 || r.legs[cur.origIndex - 1] === 'move'
+                    const isMove = segTypes[i] === 'move'
                     const d = `M${a[0].toFixed(1)} ${a[1].toFixed(1)} L${b[0].toFixed(1)} ${b[1].toFixed(1)}`
                     const dash = isMove ? { strokeDasharray: '2 7' } : {}
                     return (
@@ -660,7 +653,10 @@ function SchematicMap({ routes }) {
                     )
                   })}
                   {pts.map((p, pi) => {
-                    const role = roleForStopName(r.jobs, r.pts[pi].name)
+                    // S/Gは実線(job区間)の両端にのみ表示。点線(move区間)だけに接する点にはラベルを出さない。
+                    const isS = pi < segTypes.length && segTypes[pi] === 'job'
+                    const isG = pi > 0 && segTypes[pi - 1] === 'job'
+                    const role = isS && isG ? 'S/G' : isS ? 'S' : isG ? 'G' : null
                     const rr = role ? 8.5 : (pi === 0 ? 6 : 5)
                     return (
                       <g key={pi}>
@@ -797,8 +793,15 @@ function GoogleRouteMap({ routes }) {
           altIndex: ai, altCount,
         }
         // 案件区間(job)は実線、移動区間(move)は点線（casingは共通の白フチ）。
+        // S/Gラベルは実線(job区間)の両端にのみ表示し、点線(move区間)だけに接する点には出さない。
+        const types = legs.map((leg, i) => legTypeBetween(names, r.legs, orderedNames[i], orderedNames[i + 1]))
+        const roleAt = (j) => {
+          const isS = j < types.length && types[j] === 'job'
+          const isG = j > 0 && types[j - 1] === 'job'
+          return isS && isG ? 'S/G' : isS ? 'S' : isG ? 'G' : null
+        }
         legs.forEach((leg, i) => {
-          const type = legTypeBetween(names, r.legs, orderedNames[i], orderedNames[i + 1])
+          const type = types[i]
           const legPath = leg.steps.flatMap(s => s.path)
           const casing = new g.maps.Polyline({ map, path: legPath, strokeColor: '#fff', strokeWeight: 8, strokeOpacity: 0.95, zIndex: 1 })
           const lineOpts = type === 'move'
@@ -807,8 +810,8 @@ function GoogleRouteMap({ routes }) {
           const line = new g.maps.Polyline(lineOpts)
           overlays.current.push(casing, line)
           g.maps.event.addListener(line, 'click', () => setDetail(info))
-          if (i === 0) pin(leg.start_location, r.color, 9, roleForStopName(r.jobs, orderedNames[0]))
-          pin(leg.end_location, r.color, 7, roleForStopName(r.jobs, orderedNames[i + 1]))
+          if (i === 0) pin(leg.start_location, r.color, 9, roleAt(0))
+          pin(leg.end_location, r.color, 7, roleAt(i + 1))
         })
         route0.overview_path.forEach(p => bounds.extend(p))
         try { map.fitBounds(bounds) } catch {}
