@@ -4,6 +4,7 @@ import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { SourceTag } from '../lib/source'
 import { shortArea, splitRoute } from '../lib/area'
 import ContractDetailModal, { STATUS_LIST, STATUS_BADGE, SOURCE_LIST, AIRCON_OPTS, CARDBOARD_OPTS, EMPTY_CONTRACT } from '../components/ContractDetailModal'
+import { DEMO_DATA as DEMO_LEADS } from './Leads'
 
 // すべて架空のサンプル（氏名は「サンプル＋名」で実在しないと一目でわかる形）。
 const DEMO_DATA = [
@@ -73,10 +74,20 @@ export default function Contracts({ user, switchTab, mode }) {
   const [staffList, setStaffList] = useState(DEFAULT_STAFF)
   const [importing, setImporting] = useState(false)
   const [toast, setToast] = useState('')
+  const [followLeads, setFollowLeads] = useState([]) // 追客タブ用：ステータス「要追客」のリード（未成約）
   const fileRef = useRef(null)
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2600) }
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
+
+  // 追客タブ：リード管理で「要追客」にしたリード（まだ成約登録していないもの）も合わせて表示する
+  useEffect(() => {
+    if (mode !== 'follow') return
+    if (isDemo) { setFollowLeads(DEMO_LEADS.filter(l => l.status === '要追客')); return }
+    fetch('/api/inbound').then(r => r.json()).then(d => {
+      setFollowLeads((d.items || []).filter(l => l.status === '要追客'))
+    }).catch(() => setFollowLeads([]))
+  }, [mode, isDemo])
   useEffect(() => {
     if (isDemo) { setStaffList(DEFAULT_STAFF); return }
     fetchStaffList().then(setStaffList)
@@ -259,8 +270,9 @@ export default function Contracts({ user, switchTab, mode }) {
       </div>
 
       {mode === 'follow' ? (
-        <div className="kpi-row kpi-2">
-          <div className="kpi-card c-orange"><div className="kpi-label">追客対象（要追客）</div><div className="kpi-val">{modeItems.length}<span>件</span></div></div>
+        <div className="kpi-row kpi-3">
+          <div className="kpi-card c-orange"><div className="kpi-label">追客対象（成約・要追客）</div><div className="kpi-val">{modeItems.length}<span>件</span></div></div>
+          <div className="kpi-card c-purple"><div className="kpi-label">追客対象（リード・要追客）</div><div className="kpi-val">{followLeads.length}<span>件</span></div></div>
           <div className="kpi-card c-green"><div className="kpi-label">成約済み（全体）</div><div className="kpi-val">{countBy('成約済み')}<span>件</span></div></div>
         </div>
       ) : (mode === 'aircon' || mode === 'cardboard') ? (
@@ -341,6 +353,43 @@ export default function Contracts({ user, switchTab, mode }) {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* 追客タブ：リード管理で「要追客」にした未成約リード（成約前なのでこの画面では編集せず、リード管理へ誘導） */}
+      {mode === 'follow' && followLeads.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-head">
+            <h3>リード（未成約・要追客）</h3>
+            <span className="c-sub">{followLeads.length}件</span>
+          </div>
+          <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
+            <table>
+              <thead>
+                <tr><th>受付日時</th><th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>引越し希望日</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                {followLeads.map(lead => (
+                  <tr key={lead.id}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{lead.receivedAt || ''}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}><SourceTag site={lead.site} /></td>
+                    <td><b>{lead.name || '（名前なし）'}</b></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{lead.phone || ''}</td>
+                    <td title={`${lead.from || ''} → ${lead.to || ''}`}>
+                      <div style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {shortArea(lead.from)} → {shortArea(lead.to)}
+                      </div>
+                    </td>
+                    <td>{lead.moveDate || ''}</td>
+                    <td>
+                      <button className="btn btn-outline btn-sm" onClick={() => switchTab && switchTab('leads')}>リード管理で見る</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 11, color: '#94A3B8', padding: '8px 16px 12px' }}>※ まだ成約登録前のリードです。詳細の編集・成約登録はリード管理から行ってください。</div>
         </div>
       )}
 

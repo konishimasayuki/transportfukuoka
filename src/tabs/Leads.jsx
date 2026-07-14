@@ -71,7 +71,7 @@ const CSV_COLUMNS = [
 // デモデータ：今回追加した機能（獲得スピード/詳細編集/見積書プリフィル）を試せる中身を含む
 // receivedAt と detectedAt の差で「獲得スピード」が緑/橙/赤に色分けされる
 // ※すべて架空のサンプル（氏名は「サンプル＋名」、電話は 090-0000-XXXX のダミー）。
-const DEMO_DATA = [
+export const DEMO_DATA = [
   // 緑（17秒で獲得・詳細あり・家財あり）
   {
     id: '1', site: 'ズバット', name: 'サンプル 太郎', kana: 'サンプル タロウ',
@@ -129,7 +129,7 @@ const DEMO_DATA = [
   { id: '7', site: 'ズバット', name: 'サンプル 陽子', phone: '090-0000-0007', from: '福岡県大野城市', to: '福岡県福岡市中央区', count: '1人', receivedAt: '07/06 08:40', moveDate: '07月19日 午前中', status: '成約' },
   { id: '8', site: '価格.com', name: 'サンプル 美咲', phone: '090-0000-0008', from: '福岡県福岡市西区', to: '福岡県糸島市', count: '2人', receivedAt: '07/07 16:55', moveDate: '08月10日 いつでも', status: '架電済' },
   { id: '9', site: '引越し侍', name: 'サンプル 健太', phone: '090-0000-0009', from: '福岡県筑紫野市', to: '福岡県福岡市南区', count: '1人', receivedAt: '07/08 11:30', moveDate: '07月25日 午後', status: '未架電' },
-  { id: '10', site: 'ズバット', name: 'サンプル 楓', phone: '090-0000-0010', from: '福岡県福岡市城南区', to: '福岡県福岡市早良区', count: '2人', receivedAt: '07/09 13:18', moveDate: '08月01日 いつでも', status: '見送り' },
+  { id: '10', site: 'ズバット', name: 'サンプル 楓', phone: '090-0000-0010', from: '福岡県福岡市城南区', to: '福岡県福岡市早良区', count: '2人', receivedAt: '07/09 13:18', moveDate: '08月01日 いつでも', status: '要追客' },
   { id: '11', site: '引越し侍', name: 'サンプル 蓮', phone: '090-0000-0011', from: '福岡県宗像市', to: '福岡県福岡市東区', count: '4人', receivedAt: '07/10 19:44', moveDate: '08月15日 午前中', status: '未架電' },
 ]
 
@@ -191,7 +191,12 @@ export default function Leads({ user, switchTab }) {
       return
     }
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, status } : i)) // 楽観更新
-    if (isDemo) return
+    if (isDemo) {
+      // デモは共有DBが無いため、他タブ（追客タブ等）が参照する DEMO_DATA 自体も更新して同期させる
+      const idx = DEMO_DATA.findIndex(i => i.id === item.id)
+      if (idx !== -1) DEMO_DATA[idx] = { ...DEMO_DATA[idx], status }
+      return
+    }
     try {
       await fetch('/api/inbound', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
