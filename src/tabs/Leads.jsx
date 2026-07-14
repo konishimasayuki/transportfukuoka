@@ -454,11 +454,11 @@ export default function Leads({ user, switchTab }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>受付日時</th><th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th style={{ textAlign: 'right' }}>金額</th><th>メモ</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
+                <tr><th>受付日時</th><th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>訪問見積もり日</th><th style={{ textAlign: 'right' }}>金額</th><th>メモ</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={12} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
+                  <tr><td colSpan={13} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
                 ) : paged.map(item => {
                   return (
                   <tr key={item.id} onClick={() => setDetailItem(item)} style={{ cursor: 'pointer' }}>
@@ -476,6 +476,10 @@ export default function Leads({ user, switchTab }) {
                       <div style={{ maxWidth: 84, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {item.moveDate || item.moveDateDetail || ''}
                       </div>
+                    </td>
+                    <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
+                      <input type="date" value={item.visitEstimateDate || ''} onChange={e => savePatch(item, { visitEstimateDate: e.target.value })}
+                        style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 5px', fontFamily: 'inherit', fontSize: 12, color: item.visitEstimateDate ? '#1E293B' : '#94A3B8', background: '#fff' }} />
                     </td>
                     <td style={{ whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 700 }}>{item.amount ? `¥${Number(item.amount).toLocaleString('ja-JP')}` : '—'}</td>
                     <td title={item.memo || ''}>

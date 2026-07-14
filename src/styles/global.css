@@ -252,8 +252,7 @@ tr:hover td { background: var(--bg); }
 .nav-item.active { background: rgba(59,130,246,.18); color: #fff; border-left-color: var(--blueL); }
 .ni-icon  { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; }
 .ni-badge { margin-left: auto; background: var(--red); color: #fff; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 10px; min-width: 18px; text-align: center; }
-.ni-new   { margin-left: auto; background: var(--green); color: #fff; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 10px; animation: blink 2s infinite; }
-@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+.ni-mark  { margin-left: auto; background: var(--orange); color: #fff; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 10px; }
 .sidebar-footer { padding: 14px 16px; border-top: 1px solid rgba(255,255,255,.07); font-size: 10px; color: rgba(255,255,255,.25); flex-shrink: 0; }
 
 @media (max-width: 768px) {

@@ -7,10 +7,10 @@ const NAV_ITEMS = [
   { tab: 'aircon',    icon: '❄️', label: 'エアコン依頼' },
   { tab: 'cardboard', icon: '📦', label: '段ボール配達' },
   { tab: 'leads',     icon: '📥', label: 'リード管理' },
-  { tab: 'call',      icon: '📞', label: '架電機能' },
-  { tab: 'estimate',  icon: '📝', label: '見積書', isNew: true },
-  { tab: 'schedule',  icon: '📅', label: '月カレンダー', isNew: true },
-  { tab: 'board',     icon: '🚚', label: '配車ボード', isNew: true },
+  { tab: 'call',      icon: '📞', label: '架電機能', mark: '未' },
+  { tab: 'estimate',  icon: '📝', label: '見積書', mark: '未' },
+  { tab: 'schedule',  icon: '📅', label: '月カレンダー', mark: '未' },
+  { tab: 'board',     icon: '🚚', label: '配車ボード', mark: '未' },
   { tab: 'settings',  icon: '⚙️', label: '設定' },
   { tab: 'debug',     icon: '🧪', label: 'デバッグ', dev: true },
   { tab: 'debugreq',  icon: '🐛', label: 'デバッグ依頼', dev: true },
@@ -40,7 +40,7 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout
             <span className="ni-icon">{item.icon}</span>
             {item.label}
             {item.badge && <span className="ni-badge">{item.badge}</span>}
-            {item.isNew && <span className="ni-new">NEW</span>}
+            {item.mark && <span className="ni-mark">{item.mark}</span>}
           </div>
         ))}
       </nav>

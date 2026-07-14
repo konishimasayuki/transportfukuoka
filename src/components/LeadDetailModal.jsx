@@ -46,7 +46,7 @@ const EDITABLE_KEYS = [
   // 引越し元
   'fromZip', 'fromAddress', 'fromType', 'fromFloor', 'fromElevator', 'fromLayout',
   // 引越し先
-  'toZip', 'toAddress', 'toType', 'toFloor', 'toElevator', 'toLayout',
+  'toZip', 'toAddress', 'toType', 'toFloor', 'toElevator', 'toLayout', 'visitEstimateDate',
   // 詳細内容
   'request', 'option', 'referenceFee',
   // 対応・金額・メモ
@@ -254,7 +254,8 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
           <Row label="建物階数"      edit={edit} value={v('toFloor')}   onChange={x => setField('toFloor', x)} />
           <Row label="エレベーター"  edit={edit} value={v('toElevator')} onChange={x => setField('toElevator', x)} options={YN} />
           <Row label="間取り"        edit={edit} value={v('toLayout')}  onChange={x => setField('toLayout', x)} />
-          {!edit && !toText && <div style={{ fontSize: 12, color: '#94A3B8', padding: 10, gridColumn: '1 / -1' }}>（未入力）</div>}
+          <Row label="訪問見積もり日" edit={edit} value={v('visitEstimateDate')} onChange={x => setField('visitEstimateDate', x)} type="date" wide />
+          {!edit && !toText && !v('visitEstimateDate') && <div style={{ fontSize: 12, color: '#94A3B8', padding: 10, gridColumn: '1 / -1' }}>（未入力）</div>}
         </div>
 
         {/* 詳細内容 */}

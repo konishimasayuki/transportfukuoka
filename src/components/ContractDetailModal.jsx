@@ -13,7 +13,7 @@ export const CARDBOARD_OPTS = ['必要なし', '要配達']            // 段ボ
 export const EMPTY_CONTRACT = {
   name: '', kana: '', phone: '', email: '',
   srcLabel: 'サムライ', salesDate: '', date: '', moveDateText: '', persons: '',
-  fromAddress: '', toAddress: '', route: '',
+  fromAddress: '', toAddress: '', visitEstimateDate: '', route: '',
   amount: '', status: '交渉中', aircon: '必要なし', cardboard: '必要なし', timetree: false,
   staff: '', memo: '',
 }
@@ -139,6 +139,7 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid #EEF2F7' }}>
           <Row label="引越し元"   edit={edit} value={v('fromAddress')} onChange={x => setField('fromAddress', x)} placeholder="福岡市…" wide />
           <Row label="引越し先"   edit={edit} value={v('toAddress')}   onChange={x => setField('toAddress', x)} placeholder="福岡市…" wide />
+          <Row label="訪問見積もり日" edit={edit} value={v('visitEstimateDate')} onChange={x => setField('visitEstimateDate', x)} type="date" wide />
           <Row label="区間（表示）" edit={edit} value={v('route')} onChange={x => setField('route', x)} placeholder={routeAuto || '例：東区→博多区'} wide />
         </div>
 
