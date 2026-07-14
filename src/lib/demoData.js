@@ -54,6 +54,46 @@ export const DEMO_CONTRACTS = Array.from({ length: 32 }, (_, i) => {
   return { ...c, date: `${YM}-${moveDay}`, salesDate: `${YM}-${day}`, phone, kazai, boxCount: String(8 + (i % 4) * 4) }
 })
 
+// ===== 配車ボードのデモ用：1/1（今年）に架空の成約10件 =====
+// すべて架空。住所は「区名＋サンプル/テスト町＋番地」で、地図（概略図）に載るよう区名を含める。
+// 配車ボードは date（引越し日＝配車日）が対象日と一致する成約を未手配カードに出すため、日付を YYYY-01-01 に固定。
+const _BOARD_DATE = `${_now.getFullYear()}-01-01`
+const _BOARD_ROUTES = [
+  ['福岡市博多区サンプル町1-2-3', '北九州市小倉北区テスト4-5'],
+  ['福岡市東区みほん台2-4', '福岡市南区ダミー1-1'],
+  ['福岡市早良区サンプル3-2-1', '福岡市西区テスト5-6'],
+  ['福岡市城南区みほん7-8', '春日市ダミー2-3'],
+  ['大野城市サンプル9-1', '筑紫野市テスト3-4'],
+  ['糸島市みほん2-2', '福岡市早良区ダミー6-7'],
+  ['福岡市南区サンプル8-9', '福岡市東区テスト1-2'],
+  ['福岡市中央区みほん3-3', '福岡市博多区ダミー4-5'],
+  ['福岡市西区サンプル1-1', '糸島市テスト2-2'],
+  ['春日市みほん5-5', '大野城市ダミー6-6'],
+]
+const _BOARD_GIVEN = ['太郎', '花子', '一郎', '二郎', '三郎', '桜', '陽子', '大和', '美咲', '健太']
+const _BOARD_AMT = [58000, 82000, 46000, 120000, 63000, 95000, 51000, 138000, 74000, 42000]
+const _BOARD_PERSONS = ['2', '3', '1', '4', '2', '3', '1', '4', '2', '1']
+const _BOARD_SRC = [
+  { src: 'bb', srcLabel: '引越し侍' }, { src: 'bo', srcLabel: 'ズバット' },
+  { src: 'bg', srcLabel: '価格.com' }, { src: 'bp', srcLabel: 'SUUMO' },
+]
+export const DEMO_BOARD_CONTRACTS = _BOARD_ROUTES.map((r, i) => {
+  const s = _BOARD_SRC[i % _BOARD_SRC.length]
+  return {
+    id: 'db' + (i + 1),
+    name: `サンプル ${_BOARD_GIVEN[i]}`,
+    src: s.src, srcLabel: s.srcLabel,
+    route: `${r[0]} → ${r[1]}`,
+    persons: _BOARD_PERSONS[i],
+    amount: _BOARD_AMT[i],
+    badge: 'bg', status: '成約済み',
+    date: _BOARD_DATE, salesDate: _BOARD_DATE,   // 配車日＝1/1
+    phone: `090-0000-${String(3000 + i).padStart(4, '0')}`,
+    kazai: DEMO_KAZAI_SETS[i % DEMO_KAZAI_SETS.length],
+    boxCount: String(10 + (i % 4) * 5),
+  }
+})
+
 // ===== 広告費(反響課金)算出用のリード（売上管理・広告費で使用） =====
 // adCountsByMonthDay が読む最小フィールド：site / count(人数) / receivedAt('MM/DD HH:MM')。
 // 当月の各日に数件ずつ散らして、掲載費が自然な額になるようにする。
