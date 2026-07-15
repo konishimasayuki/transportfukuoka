@@ -467,45 +467,45 @@ export default function Leads({ user, switchTab }) {
                 🔎 絞り込み{activeFilterCount > 0 ? `（${activeFilterCount}）` : ''}
               </button>
               {showFilterPanel && (
-                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 50, background: '#fff', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 12px 34px rgba(0,0,0,.18)', padding: 14, width: 240, maxHeight: 420, overflowY: 'auto' }}>
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 50, background: '#fff', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 12px 34px rgba(0,0,0,.18)', padding: 14, width: 340, maxHeight: 420, overflowY: 'auto' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <span style={{ fontSize: 12, fontWeight: 800, color: '#1E293B' }}>絞り込み</span>
                     {activeFilterCount > 0 && <button onClick={clearFilters} style={{ border: 'none', background: 'none', color: '#1E5FA8', fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0 }}>クリア</button>}
                   </div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>ステータス</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
                     {STATUS_LIST.map(s => (
-                      <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer' }}>
+                      <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
                         <input type="checkbox" checked={filterStatuses.includes(s)} onChange={() => toggleInArr(setFilterStatuses, s)}
-                          style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                          style={{ width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
                         {s}
                       </label>
                     ))}
                   </div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>タイムツリー</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
                       <input type="checkbox" checked={filterTimetree.includes('done')} onChange={() => toggleInArr(setFilterTimetree, 'done')}
-                        style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                        style={{ width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
                       登録済
                     </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
                       <input type="checkbox" checked={filterTimetree.includes('none')} onChange={() => toggleInArr(setFilterTimetree, 'none')}
-                        style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                        style={{ width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
                       未登録
                     </label>
                   </div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>担当者</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
                       <input type="checkbox" checked={filterStaffs.includes('')} onChange={() => toggleInArr(setFilterStaffs, '')}
-                        style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                        style={{ width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
                       未割当
                     </label>
                     {staffList.map(s => (
-                      <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer' }}>
+                      <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
                         <input type="checkbox" checked={filterStaffs.includes(s)} onChange={() => toggleInArr(setFilterStaffs, s)}
-                          style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                          style={{ width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
                         {s}
                       </label>
                     ))}
