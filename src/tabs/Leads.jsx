@@ -144,7 +144,12 @@ export default function Leads({ user, switchTab }) {
   const [loading, setLoading]   = useState(!isDemo)
   const [search, setSearch]     = useState('')
   const [dateFilter, setDateFilter] = useState({ type: 'all' }) // {type:'all'|'day'(date)|'month'(month)}
-  const [filterStatus, setFilterStatus] = useState('')
+  // 絞り込み（チェック形式・複数選択可。空配列＝絞り込みなし）
+  const [filterStatuses, setFilterStatuses] = useState([])
+  const [filterTimetree, setFilterTimetree] = useState([]) // 'done'（登録済）／'none'（未登録）
+  const [filterStaffs, setFilterStaffs] = useState([])     // ''＝未割当も選択肢に含む
+  const [showFilterPanel, setShowFilterPanel] = useState(false)
+  const filterPanelRef = useRef(null)
   const [page, setPage] = useState(0) // リード一覧のページ（1ページ50件）
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [detailItem, setDetailItem] = useState(null)
@@ -154,6 +159,17 @@ export default function Leads({ user, switchTab }) {
   const [staffList, setStaffList] = useState(DEFAULT_STAFF)
   const fileRef = useRef(null)
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2600) }
+  const toggleInArr = (setter, val) => setter(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val])
+  const clearFilters = () => { setFilterStatuses([]); setFilterTimetree([]); setFilterStaffs([]) }
+  const activeFilterCount = filterStatuses.length + filterTimetree.length + filterStaffs.length
+
+  // 絞り込みパネルの外側クリックで閉じる
+  useEffect(() => {
+    if (!showFilterPanel) return
+    const onDocClick = (e) => { if (filterPanelRef.current && !filterPanelRef.current.contains(e.target)) setShowFilterPanel(false) }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [showFilterPanel])
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
   useEffect(() => { if (isDemo) { setStaffList(DEFAULT_STAFF); return } fetchStaffList().then(setStaffList) }, [isDemo])
@@ -388,7 +404,13 @@ export default function Leads({ user, switchTab }) {
       const hay = normJa(`${i.name || ''} ${i.kana || ''} ${i.phone || ''} ${i.from || ''} ${i.to || ''}`)
       return hay.includes(q)
     })
-    .filter(i => !filterStatus || i.status === filterStatus)
+    .filter(i => !filterStatuses.length || filterStatuses.includes(i.status))
+    .filter(i => {
+      if (!filterTimetree.length) return true
+      const has = !!i.timetree
+      return (has && filterTimetree.includes('done')) || (!has && filterTimetree.includes('none'))
+    })
+    .filter(i => !filterStaffs.length || filterStaffs.includes(i.staff || ''))
     .sort((a, b) => receivedAtMs(b) - receivedAtMs(a))
 
   const countBy = (s) => items.filter(i => i.status === s).length
@@ -399,7 +421,7 @@ export default function Leads({ user, switchTab }) {
   const safePage = Math.min(page, pageCount - 1)
   const paged = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
   // 検索・フィルタが変わったら1ページ目へ戻す
-  useEffect(() => { setPage(0) }, [search, filterStatus, dateFilter])
+  useEffect(() => { setPage(0) }, [search, filterStatuses, filterTimetree, filterStaffs, dateFilter])
 
   return (
     <div>
@@ -413,10 +435,6 @@ export default function Leads({ user, switchTab }) {
 
       <div className="filter-row">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 名前・フリガナ(ひらがな可)・電話・エリアで検索..." />
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-          <option value="">全ステータス</option>
-          {STATUS_LIST.map(s => <option key={s}>{s}</option>)}
-        </select>
         <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={isDemo}>⟳ 更新</button>
       </div>
 
@@ -444,6 +462,57 @@ export default function Leads({ user, switchTab }) {
             {dateFilter.type !== 'all' && <button className="btn btn-outline btn-sm" onClick={() => setDateFilter({ type: 'all' })}>クリア</button>}
             {/* CSV出力・取込はフィルターと同じ行に（右寄せ） */}
             <div style={{ flex: 1 }} />
+            <div ref={filterPanelRef} style={{ position: 'relative' }}>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowFilterPanel(v => !v)}>
+                🔎 絞り込み{activeFilterCount > 0 ? `（${activeFilterCount}）` : ''}
+              </button>
+              {showFilterPanel && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 50, background: '#fff', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 12px 34px rgba(0,0,0,.18)', padding: 14, width: 240, maxHeight: 420, overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#1E293B' }}>絞り込み</span>
+                    {activeFilterCount > 0 && <button onClick={clearFilters} style={{ border: 'none', background: 'none', color: '#1E5FA8', fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0 }}>クリア</button>}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>ステータス</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 }}>
+                    {STATUS_LIST.map(s => (
+                      <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={filterStatuses.includes(s)} onChange={() => toggleInArr(setFilterStatuses, s)}
+                          style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                        {s}
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>タイムツリー</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={filterTimetree.includes('done')} onChange={() => toggleInArr(setFilterTimetree, 'done')}
+                        style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                      登録済
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={filterTimetree.includes('none')} onChange={() => toggleInArr(setFilterTimetree, 'none')}
+                        style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                      未登録
+                    </label>
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>担当者</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={filterStaffs.includes('')} onChange={() => toggleInArr(setFilterStaffs, '')}
+                        style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                      未割当
+                    </label>
+                    {staffList.map(s => (
+                      <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={filterStaffs.includes(s)} onChange={() => toggleInArr(setFilterStaffs, s)}
+                          style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                        {s}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             <button className="btn btn-outline btn-sm" onClick={handleExport}>⬇ CSV出力</button>
             <button className="btn btn-outline btn-sm" onClick={() => fileRef.current && fileRef.current.click()} disabled={importing}>
               {importing ? '取込中…' : '⬆ CSV取込'}

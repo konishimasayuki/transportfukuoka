@@ -195,16 +195,28 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
     </select>
   ) : <span className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}>{item.status || '未架電'}</span>
 
+  // 印刷・PDF出力：ブラウザの印刷ダイアログを使う（PDFは「PDFに保存」を選択）。
+  // PDF出力時だけタブタイトルを一時的にリード名にし、保存ファイル名の候補に反映させる。
+  const doPrint = () => window.print()
+  const doPdf = () => {
+    const prevTitle = document.title
+    document.title = `リード_${(v('name') || item.name || '名称未設定').replace(/\s+/g, '')}`
+    window.print()
+    setTimeout(() => { document.title = prevTitle }, 300)
+  }
+
   return (
     <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={box}>
+      <div style={box} className="print-area">
         {/* ヘッダー */}
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 800 }}>{v('name') || item.name || '（名前なし）'} <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>様</span></div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{item.site || ''}{item.orderId ? ` ／ 依頼番号 ${item.orderId}` : ''}</div>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="no-print" style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-sm btn-outline" onClick={doPrint}>🖨 印刷</button>
+            <button className="btn btn-sm btn-outline" onClick={doPdf}>📄 PDF出力</button>
             {onSave && (
               <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`}
                 onClick={() => setEdit(e => !e)}>
@@ -402,7 +414,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
 
         {/* 保存バー */}
         {onSave && (
-          <div style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '1px solid #EEF2F7', padding: '10px 14px', display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+          <div className="no-print" style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '1px solid #EEF2F7', padding: '10px 14px', display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
             {dirty && <span style={{ fontSize: 11, color: '#C2410C', marginRight: 'auto' }}>未保存の変更があります</span>}
             <button className="btn btn-outline btn-sm" onClick={onClose}>閉じる</button>
             <button className="btn btn-primary btn-sm" onClick={saveChanges} disabled={!dirty || saving} style={{ opacity: (!dirty || saving) ? .55 : 1 }}>

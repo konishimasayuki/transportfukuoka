@@ -417,3 +417,11 @@ tr:hover td { background: var(--bg); }
 @media (prefers-reduced-motion: reduce) {
   .db-job.conflict { animation: none; }
 }
+/* 印刷/PDF出力：.print-area だけを表示し、それ以外（サイドバー・背景など）は隠す。.no-print は印刷時に非表示。 */
+@media print {
+  html, body, #root { overflow: visible !important; height: auto !important; }
+  body * { visibility: hidden !important; }
+  .print-area, .print-area * { visibility: visible !important; }
+  .print-area { position: absolute !important; left: 0; top: 0; width: 100%; max-height: none !important; overflow: visible !important; box-shadow: none !important; }
+  .no-print { display: none !important; }
+}
