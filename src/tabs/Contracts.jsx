@@ -201,13 +201,14 @@ export default function Contracts({ user, mode }) {
   )
 
   // 追客タブ：未成約リード（status==='要追客'）を成約行と同じ形に変換して一覧に混ぜて表示する。
-  // 成約前のためエアコン/段ボール/タイムツリーは対象外（「—」表示）。行クリックでリード管理と同じ詳細モーダルを開く。
+  // 成約前のためエアコン/段ボールは対象外（「—」表示）。行クリックでリード管理と同じ詳細モーダルを開く。
   const leadToRow = (lead) => ({
     id: 'lead:' + lead.id, _isLead: true, _lead: lead,
     name: lead.name || '（名前なし）', srcLabel: lead.site || '',
     date: lead.moveDate || lead.moveDateDetail || '',
     fromAddress: lead.from || lead.fromAddress || '', toAddress: lead.to || lead.toAddress || '', route: '',
     amount: lead.amount || 0, status: lead.status || '要追客', staff: lead.staff || '',
+    memo: lead.memo || '', timetree: !!lead.timetree,
   })
   // リード由来行の担当者をインライン変更（/api/inbound を更新）
   const updateLeadStaff = async (row, staff) => {
@@ -217,6 +218,25 @@ export default function Contracts({ user, mode }) {
       await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: row._lead.key || row._lead.phone, phone: row._lead.phone, staff }) })
     } catch (e) { console.error(e) }
   }
+  // リード由来行のタイムツリー登録チェックをインライン変更（/api/inbound を更新）
+  const updateLeadTimetree = async (row, timetree) => {
+    setFollowLeads(prev => prev.map(l => l.id === row._lead.id ? { ...l, timetree } : l))
+    if (isDemo) {
+      const idx = DEMO_LEADS.findIndex(l => l.id === row._lead.id)
+      if (idx !== -1) DEMO_LEADS[idx] = { ...DEMO_LEADS[idx], timetree }
+      return
+    }
+    try {
+      await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: row._lead.key || row._lead.phone, phone: row._lead.phone, timetree }) })
+    } catch (e) { console.error(e) }
+  }
+  const leadTtCheckbox = (item) => (
+    <label onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: item.timetree ? '#0E8A7A' : '#94A3B8', whiteSpace: 'nowrap' }} title="TimeTreeに登録済みかを記録">
+      <input type="checkbox" checked={!!item.timetree} onChange={() => updateLeadTimetree(item, !item.timetree)}
+        style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0E8A7A' }} />
+      {item.timetree ? '登録済' : '未登録'}
+    </label>
+  )
   // リード由来行のステータスをインライン変更（成約管理と同じステータス一覧を使用。要追客を選び直すと一覧から外れる）
   const updateLeadStatus = async (row, status) => {
     setFollowLeads(prev => prev.map(l => l.id === row._lead.id ? { ...l, status } : l))
@@ -358,11 +378,15 @@ export default function Contracts({ user, mode }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th><th>エアコン</th><th>段ボール</th><th>タイムツリー</th><th>ステータス</th><th>担当者</th>{mode !== 'follow' && <th>操作</th>}</tr>
+                <tr>
+                  <th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th>
+                  {mode === 'follow' ? <th>メモ</th> : <><th>エアコン</th><th>段ボール</th></>}
+                  <th>タイムツリー</th><th>ステータス</th><th>担当者</th>{mode !== 'follow' && <th>操作</th>}
+                </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={mode === 'follow' ? 10 : 11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
+                  <tr><td colSpan={mode === 'follow' ? 9 : 11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id}
                     onClick={() => item._isLead && setLeadDetailItem(item._lead)}
@@ -374,9 +398,17 @@ export default function Contracts({ user, mode }) {
                       <div style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractRoute(item).short}</div>
                     </td>
                     <td>{item.amount ? `¥${item.amount.toLocaleString()}` : '—'}</td>
-                    <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'aircon', AIRCON_OPTS)}</td>
-                    <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'cardboard', CARDBOARD_OPTS)}</td>
-                    <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : ttCheckbox(item)}</td>
+                    {mode === 'follow' ? (
+                      <td title={item.memo || ''}>
+                        <div style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748B' }}>{item.memo || ''}</div>
+                      </td>
+                    ) : (
+                      <>
+                        <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'aircon', AIRCON_OPTS)}</td>
+                        <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'cardboard', CARDBOARD_OPTS)}</td>
+                      </>
+                    )}
+                    <td>{item._isLead ? leadTtCheckbox(item) : ttCheckbox(item)}</td>
                     <td>
                       {item._isLead ? (
                         <select value={item.status || ''} onClick={e => e.stopPropagation()} onChange={e => updateLeadStatus(item, e.target.value)}

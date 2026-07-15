@@ -228,6 +228,7 @@ export default function Leads({ user, switchTab }) {
       // 家財情報を成約に引き継ぐ（成約由来の見積書で家財が空にならないように）
       kazai: Array.isArray(lead.kazai) ? lead.kazai : [],
       boxCount: lead.boxCount || '',
+      timetree: !!lead.timetree,
       leadKey: lead.key || lead.phone,
     }
     // ローカル楽観更新：リードのステータスと金額（contracted=1リード1成約の恒久フラグ）
@@ -459,7 +460,7 @@ export default function Leads({ user, switchTab }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>受付日時</th><th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>訪問見積もり日</th><th style={{ textAlign: 'right' }}>金額</th><th>メモ</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
+                <tr><th>受付日時</th><th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>訪問見積もり日</th><th>タイムツリー</th><th>メモ</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
@@ -486,7 +487,13 @@ export default function Leads({ user, switchTab }) {
                       <input type="date" value={item.visitEstimateDate || ''} onChange={e => savePatch(item, { visitEstimateDate: e.target.value })}
                         style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 5px', fontFamily: 'inherit', fontSize: 12, color: item.visitEstimateDate ? '#1E293B' : '#94A3B8', background: '#fff' }} />
                     </td>
-                    <td style={{ whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 700 }}>{item.amount ? `¥${Number(item.amount).toLocaleString('ja-JP')}` : '—'}</td>
+                    <td onClick={e => e.stopPropagation()}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: item.timetree ? '#0E8A7A' : '#94A3B8', whiteSpace: 'nowrap' }} title="TimeTreeに登録済みかを記録">
+                        <input type="checkbox" checked={!!item.timetree} onChange={() => savePatch(item, { timetree: !item.timetree })}
+                          style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0E8A7A' }} />
+                        {item.timetree ? '登録済' : '未登録'}
+                      </label>
+                    </td>
                     <td title={item.memo || ''}>
                       <div style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748B' }}>
                         {item.memo || ''}
