@@ -37,10 +37,6 @@ const sectionBar = {
   borderLeft: '4px solid #1E5FA8', letterSpacing: '.04em',
 }
 const inp = { padding: '6px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff', width: '100%' }
-// 印刷/PDF出力（1枚レイアウト）専用のスタイル
-const printLabel = { padding: '4px 8px', background: '#F8FAFC', fontWeight: 700, border: '1px solid #ddd', whiteSpace: 'nowrap', width: '12%' }
-const printVal = { padding: '4px 8px', border: '1px solid #ddd' }
-const printSectionTitle = { fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#1E293B' }
 
 // 「対応履歴以外」の編集対象キー一覧（保存時にこの集合だけ patch として送る）
 const EDITABLE_KEYS = [
@@ -209,12 +205,9 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
     setTimeout(() => { document.title = prevTitle }, 300)
   }
 
-  const kazaiPrintText = kazai.filter(k => k.name && Number(k.qty) > 0).map(k => `${k.name}×${k.qty}`).join('　') || 'なし'
-
   return (
-    <>
     <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={box}>
+      <div style={box} className="print-area">
         {/* ヘッダー */}
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
           <div>
@@ -430,41 +423,6 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
         )}
       </div>
     </div>
-
-    {/* 印刷/PDF出力専用の1枚レイアウト（画面には表示せず、印刷時のみ表示） */}
-    <div className="print-area lead-print-sheet">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: '2px solid #111', paddingBottom: 6, marginBottom: 10 }}>
-        <div style={{ fontSize: 20, fontWeight: 900 }}>リード情報</div>
-        <div style={{ fontSize: 11, color: '#555' }}>{item.site || ''}{item.orderId ? `／依頼番号 ${item.orderId}` : ''}</div>
-      </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 12 }}>
-        <tbody>
-          <tr>
-            <td style={printLabel}>名前</td><td style={printVal}>{(v('name') || item.name || '') + '　様'}（{v('kana') || ''}）</td>
-            <td style={printLabel}>電話</td><td style={printVal}>{v('phone') || ''}</td>
-          </tr>
-          <tr>
-            <td style={printLabel}>人数</td><td style={printVal}>{v('count') || ''}</td>
-            <td style={printLabel}>希望日</td><td style={printVal}>{v('moveDateDetail') || item.moveDate || ''}{v('preferredTime') ? `（${v('preferredTime')}）` : ''}</td>
-          </tr>
-          <tr>
-            <td style={printLabel}>引越し元</td><td style={printVal} colSpan={3}>{fromText || ''}</td>
-          </tr>
-          <tr>
-            <td style={printLabel}>引越し先</td><td style={printVal} colSpan={3}>{toText || ''}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div style={printSectionTitle}>家財・段ボール</div>
-      <div style={{ fontSize: 11.5, lineHeight: 1.7, marginBottom: 12, border: '1px solid #ddd', padding: '6px 8px' }}>
-        {kazaiPrintText}{boxCount ? `　／　段ボール ${boxCount}箱` : ''}
-      </div>
-      <div style={printSectionTitle}>対応</div>
-      <div style={{ fontSize: 11.5, marginBottom: 12, border: '1px solid #ddd', padding: '6px 8px' }}>{item.status || '未架電'}</div>
-      <div style={printSectionTitle}>メモ</div>
-      <div style={{ fontSize: 11.5, whiteSpace: 'pre-wrap', border: '1px solid #ddd', padding: '6px 8px', minHeight: 40 }}>{v('memo') || '—'}</div>
-    </div>
-    </>
   )
 }
 

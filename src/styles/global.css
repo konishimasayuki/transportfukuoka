@@ -425,12 +425,3 @@ tr:hover td { background: var(--bg); }
   .print-area { position: absolute !important; left: 0; top: 0; width: 100%; max-height: none !important; overflow: visible !important; box-shadow: none !important; }
   .no-print { display: none !important; }
 }
-/* リード詳細の印刷専用1枚レイアウト：画面には出さず、印刷時のみ表示（1ページに収まるようA4・余白控えめ） */
-.lead-print-sheet { display: none; }
-@media print {
-  .lead-print-sheet {
-    display: block !important; background: #fff; color: #111;
-    font-family: 'Noto Sans JP', sans-serif; padding: 10mm 12mm; box-sizing: border-box;
-  }
-  @page { size: A4; margin: 8mm; }
-}
