@@ -32,7 +32,7 @@ html, body, #root {
 }
 
 /* ===== LAYOUT ===== */
-.app { display: flex; height: 100vh; overflow: hidden; }
+.app { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
 .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 
 /* ===== TOPBAR ===== */
@@ -231,7 +231,7 @@ tr:hover td { background: var(--bg); }
 /* ===== SIDEBAR ===== */
 .sidebar {
   width: var(--sw); flex-shrink: 0; background: var(--navy);
-  display: flex; flex-direction: column; height: 100vh;
+  display: flex; flex-direction: column; height: 100vh; height: 100dvh;
   transition: transform .3s cubic-bezier(.4,0,.2,1);
   z-index: 200;
 }
