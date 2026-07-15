@@ -195,13 +195,19 @@ function DebugThreadView({ thread, author, fmt, onImgs, onPosted, onDelete }) {
   const [body, setBody] = useState('')
   const [imgs, setImgs] = useState([])
   const [posting, setPosting] = useState(false)
+  // 返信者の名前（未入力ならadmin表記のまま）。一度入力すればこの端末で次回以降も引き継ぐ。
+  const [replyName, setReplyName] = useState(() => {
+    try { return localStorage.getItem('tf_debugreq_name') || '' } catch { return '' }
+  })
   const canDelete = !thread.author || !thread.author.id || thread.author.id === author.id
   const submit = async () => {
     if (!body.trim() && !imgs.length) { alert('本文または画像を入力してください'); return }
     if (debugTooBig(imgs)) { alert('画像の合計が大きすぎます。枚数を減らしてください'); return }
     setPosting(true)
+    const name = replyName.trim()
+    try { localStorage.setItem('tf_debugreq_name', name) } catch {}
     try {
-      const d = await apiJson('/api/debugreq?id=' + encodeURIComponent(thread.id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, images: imgs, author }) })
+      const d = await apiJson('/api/debugreq?id=' + encodeURIComponent(thread.id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, images: imgs, author: { ...author, name: name || 'admin' } }) })
       setBody(''); setImgs([])
       onPosted(d.thread)
     } catch (e) { alert('返信エラー: ' + (e?.message || e)) }
@@ -237,6 +243,8 @@ function DebugThreadView({ thread, author, fmt, onImgs, onPosted, onDelete }) {
       {/* 返信フォーム */}
       <div style={{ background: '#fff', border: '1px solid #dde3ed', borderRadius: 10, padding: 14, marginTop: 6 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#475467', marginBottom: 6 }}>💬 返信を投稿</div>
+        <input type="text" value={replyName} onChange={e => setReplyName(e.target.value)} placeholder="名前（未入力の場合は admin）" maxLength={60}
+          style={{ width: '100%', boxSizing: 'border-box', fontSize: 13, padding: '7px 10px', border: '1.5px solid #d4dbe5', borderRadius: 8, fontFamily: 'inherit', marginBottom: 8 }} />
         <textarea value={body} onChange={e => setBody(e.target.value)} rows={3} placeholder="本文を入力（誰でも返信できます）" style={{ width: '100%', boxSizing: 'border-box', fontSize: 14, padding: '8px 10px', border: '1.5px solid #d4dbe5', borderRadius: 8, fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.5 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1.5px solid #cdd5e0', background: '#fff', color: '#3a4a5c', borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>📷 スクショ添付（複数可）
