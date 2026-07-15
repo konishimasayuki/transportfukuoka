@@ -51,11 +51,7 @@ export default function App() {
       return saved ? JSON.parse(saved) : null
     } catch { return null }
   })
-  // 初期タブ: URL に ?tab=xxx（既知タブ）があればそれを開く（チャットのデバッグ依頼リンク等の deep-link 用）
-  const [activeTab, setActiveTab]     = useState(() => {
-    try { const t = new URLSearchParams(window.location.search).get('tab'); if (t && TABS[t]) return t } catch { /* noop */ }
-    return 'dashboard'
-  })
+  const [activeTab, setActiveTab]     = useState('dashboard')
   const [loading, setLoading]         = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 

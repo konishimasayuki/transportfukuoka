@@ -10,15 +10,7 @@ const INGEST_URL = process.env.KONICHAT_INGEST_URL
 const INGEST_SECRET = process.env.KONICHAT_INGEST_SECRET || ''
 const SOURCE = 'トランスポート福岡'
 
-// リクエストから自分（このアプリ）の公開URLを組み立てる（デバッグ依頼へ戻るリンク用）。
-export function baseUrlFrom(req) {
-  if (process.env.PUBLIC_APP_URL) return process.env.PUBLIC_APP_URL.replace(/\/$/, '')
-  const proto = req.headers['x-forwarded-proto'] || 'https'
-  const host = req.headers['x-forwarded-host'] || req.headers.host || ''
-  return `${proto}://${host}`
-}
-
-// payload: { kind:'thread'|'reply', title?, threadTitle?, body, authorName, url }
+// payload: { kind:'thread'|'reply', title?, threadTitle?, body, authorName }
 export async function notifyKonichat(payload) {
   if (!INGEST_URL) return   // 未設定なら無効（デプロイしても env を入れるまでは何もしない）
   try {

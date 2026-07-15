@@ -5,7 +5,7 @@
 //   ・自動更新なし（画面側で手動取得）
 // 保存: Upstash(Redis REST)。スレッドごとにキーを分け、index(sorted set)で新しい順に並べる。
 // 既存の api/debug.js（架電テスト）とは Redis キー空間もエンドポイントも完全に別。
-import { notifyKonichat, baseUrlFrom } from './_konichat.js'
+import { notifyKonichat } from './_konichat.js'
 
 const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
@@ -95,13 +95,12 @@ export default async function handler(req, res) {
       }
       await redis(['SET', THREAD_KEY(thread.id), JSON.stringify(thread)])
       await redis(['ZADD', INDEX_KEY, Date.now(), thread.id])
-      // スーパーコニチャットの「デバック依頼」チャンネルへ転送（画像は送らない・失敗しても投稿は成功扱い）
+      // スーパーコニチャットの「デバック依頼」チャンネルへ転送（テキストのみ・失敗しても投稿は成功扱い）
       await notifyKonichat({
         kind: 'thread',
         title: thread.title,
         body: thread.body,
         authorName: thread.author?.name || '匿名',
-        url: `${baseUrlFrom(req)}/?tab=debugreq&thread=${encodeURIComponent(thread.id)}`,
       })
       return res.status(201).json({ thread })
     }
@@ -137,7 +136,6 @@ export default async function handler(req, res) {
         threadTitle: t.title,
         body: reply.body,
         authorName: reply.author?.name || '匿名',
-        url: `${baseUrlFrom(req)}/?tab=debugreq&thread=${encodeURIComponent(id)}`,
       })
       return res.status(201).json({ thread: t })
     }
