@@ -45,7 +45,7 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout
         ))}
       </nav>
 
-      <div style={{ marginTop: 'auto' }}>
+      <div>
         <div
           onClick={onLogout}
           style={{
