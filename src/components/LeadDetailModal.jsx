@@ -119,6 +119,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
   const [boxCount, setBoxCount] = useState('')
   const [addName, setAddName] = useState('')
   const [addQty, setAddQty] = useState(1)
+  const [customKazai, setCustomKazai] = useState(false) // 家財追加：自由入力モード（選択の度に1回だけ）
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -132,7 +133,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
     setDraft(d)
     setKazai(Array.isArray(item.kazai) ? item.kazai.map(k => ({ ...k })) : [])
     setBoxCount(item.boxCount || '')
-    setAddName(''); setAddQty(1)
+    setAddName(''); setAddQty(1); setCustomKazai(false)
     setDirty(false)
     setEdit(false)
   }, [item && item.id, item && item.phone])
@@ -142,6 +143,11 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
   const setField = (k, v) => { setDraft(p => ({ ...p, [k]: v })); setDirty(true) }
   const setQty = (i, q) => { setKazai(p => p.map((k, idx) => idx === i ? { ...k, qty: Math.max(0, Number(q) || 0) } : k)); setDirty(true) }
   const removeRow = (i) => { setKazai(p => p.filter((_, idx) => idx !== i)); setDirty(true) }
+  // 家財の追加プルダウンで「✏ 自由入力」を選ぶと、その場だけ入力欄に切り替える
+  const chooseAddName = (val) => {
+    if (val === '__custom__') { setCustomKazai(true); setAddName('') }
+    else { setCustomKazai(false); setAddName(val) }
+  }
   const addRow = () => {
     if (!addName) return
     setKazai(p => {
@@ -149,7 +155,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
       if (idx >= 0) { const c = [...p]; c[idx] = { ...c[idx], qty: (Number(c[idx].qty) || 0) + (Number(addQty) || 1) }; return c }
       return [...p, { name: addName, qty: Number(addQty) || 1 }]
     })
-    setAddName(''); setAddQty(1); setDirty(true)
+    setAddName(''); setAddQty(1); setCustomKazai(false); setDirty(true)
   }
 
   const saveChanges = async () => {
@@ -297,14 +303,20 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
           )}
           {onSave && (
             <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <select value={addName} onChange={e => setAddName(e.target.value)} style={{ ...inp, flex: 1, minWidth: 180, width: 'auto' }}>
-                <option value="">＋ 家財を追加…</option>
-                {Object.entries(KAZAI_CATEGORY).map(([cat, list]) => (
-                  <optgroup key={cat} label={cat}>
-                    {list.map(n => <option key={n} value={n}>{n}</option>)}
-                  </optgroup>
-                ))}
-              </select>
+              {customKazai ? (
+                <input type="text" autoFocus value={addName} onChange={e => setAddName(e.target.value)}
+                  placeholder="品名を入力…" style={{ ...inp, flex: 1, minWidth: 180, width: 'auto' }} />
+              ) : (
+                <select value={addName} onChange={e => chooseAddName(e.target.value)} style={{ ...inp, flex: 1, minWidth: 180, width: 'auto' }}>
+                  <option value="">＋ 家財を追加…</option>
+                  <option value="__custom__">✏ 自由入力（品名を直接入力）</option>
+                  {Object.entries(KAZAI_CATEGORY).map(([cat, list]) => (
+                    <optgroup key={cat} label={cat}>
+                      {list.map(n => <option key={n} value={n}>{n}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              )}
               <input type="number" min={1} value={addQty} onChange={e => setAddQty(e.target.value)} style={{ ...inp, width: 70, textAlign: 'center' }} />
               <button className="btn btn-outline btn-sm" onClick={addRow} disabled={!addName}>追加</button>
               <div style={{ flexBasis: '100%' }} />
