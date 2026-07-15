@@ -168,10 +168,9 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
           <div style={{ display: 'flex', fontSize: 13, gridColumn: '1 / -1' }}>
             <div style={{ width: 110, flexShrink: 0, color: '#64748B', fontWeight: 600, background: '#F8FAFC', padding: '8px 10px' }}>タイムツリー</div>
             <div style={{ padding: '8px 10px' }}>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700, color: v('timetree') ? '#0E8A7A' : '#94A3B8' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
                 <input type="checkbox" checked={!!v('timetree')} onChange={() => setField('timetree', !v('timetree'))}
                   style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0E8A7A' }} />
-                {v('timetree') ? '登録済' : '未登録'}
               </label>
             </div>
           </div>

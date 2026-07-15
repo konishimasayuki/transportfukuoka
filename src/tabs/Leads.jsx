@@ -488,10 +488,9 @@ export default function Leads({ user, switchTab }) {
                         style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 5px', fontFamily: 'inherit', fontSize: 12, color: item.visitEstimateDate ? '#1E293B' : '#94A3B8', background: '#fff' }} />
                     </td>
                     <td onClick={e => e.stopPropagation()}>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: item.timetree ? '#0E8A7A' : '#94A3B8', whiteSpace: 'nowrap' }} title="TimeTreeに登録済みかを記録">
+                      <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} title="TimeTreeに登録済みかを記録">
                         <input type="checkbox" checked={!!item.timetree} onChange={() => savePatch(item, { timetree: !item.timetree })}
                           style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0E8A7A' }} />
-                        {item.timetree ? '登録済' : '未登録'}
                       </label>
                     </td>
                     <td title={item.memo || ''}>

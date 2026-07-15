@@ -340,10 +340,9 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
             <div style={{ display: 'flex', fontSize: 13, borderBottom: '1px solid #F1F5F9' }}>
               <div style={{ width: 110, flexShrink: 0, color: '#64748B', fontWeight: 600, background: '#F8FAFC', padding: '8px 10px' }}>タイムツリー</div>
               <div style={{ padding: '8px 10px' }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700, color: item.timetree ? '#0E8A7A' : '#94A3B8' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
                   <input type="checkbox" checked={!!item.timetree} onChange={() => onSave(item, { timetree: !item.timetree })}
                     style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0E8A7A' }} />
-                  {item.timetree ? '登録済' : '未登録'}
                 </label>
               </div>
             </div>

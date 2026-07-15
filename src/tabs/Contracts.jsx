@@ -193,10 +193,9 @@ export default function Contracts({ user, mode }) {
   }
   // タイムツリー登録チェック（TimeTreeカレンダーに登録済みかを記録）
   const ttCheckbox = (item) => (
-    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: item.timetree ? '#0E8A7A' : '#94A3B8', whiteSpace: 'nowrap' }} title="TimeTreeに登録済みかを記録">
+    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} title="TimeTreeに登録済みかを記録">
       <input type="checkbox" checked={!!item.timetree} onChange={() => updateContractField(item, 'timetree', !item.timetree)}
         style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0E8A7A' }} />
-      {item.timetree ? '登録済' : '未登録'}
     </label>
   )
 
@@ -231,10 +230,9 @@ export default function Contracts({ user, mode }) {
     } catch (e) { console.error(e) }
   }
   const leadTtCheckbox = (item) => (
-    <label onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: item.timetree ? '#0E8A7A' : '#94A3B8', whiteSpace: 'nowrap' }} title="TimeTreeに登録済みかを記録">
+    <label onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} title="TimeTreeに登録済みかを記録">
       <input type="checkbox" checked={!!item.timetree} onChange={() => updateLeadTimetree(item, !item.timetree)}
         style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0E8A7A' }} />
-      {item.timetree ? '登録済' : '未登録'}
     </label>
   )
   // リード由来行のステータスをインライン変更（成約管理と同じステータス一覧を使用。要追客を選び直すと一覧から外れる）
