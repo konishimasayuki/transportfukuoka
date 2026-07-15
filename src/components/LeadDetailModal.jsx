@@ -304,8 +304,12 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
           {onSave && (
             <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               {customKazai ? (
-                <input type="text" autoFocus value={addName} onChange={e => setAddName(e.target.value)}
-                  placeholder="品名を入力…" style={{ ...inp, flex: 1, minWidth: 180, width: 'auto' }} />
+                <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
+                  <input type="text" autoFocus value={addName} onChange={e => setAddName(e.target.value)}
+                    placeholder="品名を入力…" style={{ ...inp, width: '100%', paddingRight: 26 }} />
+                  <button type="button" onClick={() => { setCustomKazai(false); setAddName('') }} title="自由入力をキャンセル"
+                    style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: 15, fontWeight: 700, lineHeight: 1, padding: 4 }}>×</button>
+                </div>
               ) : (
                 <select value={addName} onChange={e => chooseAddName(e.target.value)} style={{ ...inp, flex: 1, minWidth: 180, width: 'auto' }}>
                   <option value="">＋ 家財を追加…</option>
