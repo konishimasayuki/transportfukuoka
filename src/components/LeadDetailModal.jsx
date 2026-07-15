@@ -405,7 +405,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
         })()}
 
         {/* 日時 */}
-        <div style={{ fontSize: 11, color: '#94A3B8', padding: '10px 14px', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        <div className="no-print" style={{ fontSize: 11, color: '#94A3B8', padding: '10px 14px', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           {item.receivedAt && <span>ズバット登録: {item.receivedAt}</span>}
           {item.detectedAt && <span>取得日時（拡張検知）: {new Date(item.detectedAt).toLocaleString('ja-JP')}</span>}
           {item.savedAt && <span>登録日時（CRM保存）: {new Date(item.savedAt).toLocaleString('ja-JP')}</span>}
