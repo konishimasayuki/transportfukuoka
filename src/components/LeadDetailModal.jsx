@@ -195,10 +195,9 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
     </select>
   ) : <span className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}>{item.status || '未架電'}</span>
 
-  // 印刷・PDF出力：ブラウザの印刷ダイアログを使う（PDFは「PDFに保存」を選択）。
-  // PDF出力時だけタブタイトルを一時的にリード名にし、保存ファイル名の候補に反映させる。
-  const doPrint = () => window.print()
-  const doPdf = () => {
+  // 印刷/PDF出力：どちらもブラウザの印刷ダイアログを使う（PDFは「PDFに保存」を選択するだけで同じ動作のため1ボタンに統一）。
+  // タブタイトルを一時的にリード名にし、「PDFに保存」時の保存ファイル名の候補に反映させる。
+  const doPrint = () => {
     const prevTitle = document.title
     document.title = `リード_${(v('name') || item.name || '名称未設定').replace(/\s+/g, '')}`
     window.print()
@@ -215,8 +214,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{item.site || ''}{item.orderId ? ` ／ 依頼番号 ${item.orderId}` : ''}</div>
           </div>
           <div className="no-print" style={{ display: 'flex', gap: 6 }}>
-            <button className="btn btn-sm btn-outline" onClick={doPrint}>🖨 印刷</button>
-            <button className="btn btn-sm btn-outline" onClick={doPdf}>📄 PDF出力</button>
+            <button className="btn btn-sm btn-outline" onClick={doPrint}>🖨 印刷/PDF</button>
             {onSave && (
               <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`}
                 onClick={() => setEdit(e => !e)}>
@@ -314,7 +312,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>他{item.kazaiUnknown}品（詳細ページを開くと品名表示）</div>
           )}
           {onSave && (
-            <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="no-print" style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               {customKazai ? (
                 <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
                   <input type="text" autoFocus value={addName} onChange={e => setAddName(e.target.value)}
@@ -335,7 +333,10 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
               )}
               <input type="number" min={1} value={addQty} onChange={e => setAddQty(e.target.value)} style={{ ...inp, width: 70, textAlign: 'center' }} />
               <button className="btn btn-outline btn-sm" onClick={addRow} disabled={!addName}>追加</button>
-              <div style={{ flexBasis: '100%' }} />
+            </div>
+          )}
+          {onSave && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: 11, color: '#64748B' }}>ダンボール</span>
               <input value={boxCount} onChange={e => { setBoxCount(e.target.value); setDirty(true) }} placeholder="例：10" style={{ ...inp, width: 80, textAlign: 'center' }} />
               <span style={{ fontSize: 11, color: '#94A3B8' }}>箱</span>
@@ -377,7 +378,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
           const sec = captureLagSec(item)
           if (sec == null) return null
           return (
-            <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #EEF2F7' }}>
+            <div className="no-print" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #EEF2F7' }}>
               <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>獲得スピード</div>
               <div style={{ fontSize: 18, fontWeight: 900, color: lagColor(sec) }}>{lagText(sec)}</div>
               <div style={{ fontSize: 10, color: '#94A3B8' }}>（目標 25秒以内）</div>

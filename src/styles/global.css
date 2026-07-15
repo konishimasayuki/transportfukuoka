@@ -424,4 +424,5 @@ tr:hover td { background: var(--bg); }
   .print-area, .print-area * { visibility: visible !important; }
   .print-area { position: absolute !important; left: 0; top: 0; width: 100%; max-height: none !important; overflow: visible !important; box-shadow: none !important; }
   .no-print { display: none !important; }
+  @page { size: portrait; }
 }
