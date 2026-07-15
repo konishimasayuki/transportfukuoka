@@ -59,7 +59,12 @@ export default function DebugRequest({ user }) {
     catch (e) { alert('取得エラー: ' + (e?.message || e)) }
     finally { setLoading(false) }
   }
-  useEffect(() => { reload() }, [])   // 初回のみ。自動更新なし
+  // 初回のみ取得（自動更新なし）。URL に ?thread=xxx があれば、そのスレッドを開いた状態にする
+  //   （チャットの「デバッグ依頼」通知リンクから、該当スレッドへ直接飛べるようにする）。
+  useEffect(() => {
+    reload()
+    try { const tid = new URLSearchParams(window.location.search).get('thread'); if (tid) setOpenId(tid) } catch { /* noop */ }
+  }, [])
   const opened = openId ? threads.find(t => t.id === openId) : null
 
   // 複数画像対応：選んだ画像を縮小して現在の配列に追記（枚数上限あり）
