@@ -8,7 +8,7 @@ import LeadDetailModal from '../components/LeadDetailModal'
 import { DEMO_DATA as DEMO_LEADS } from './Leads'
 
 // すべて架空のサンプル（氏名は「サンプル＋名」で実在しないと一目でわかる形）。
-const DEMO_DATA = [
+export const DEMO_DATA = [
   { id: '1', name: 'サンプル 太郎', src: 'bb', srcLabel: '引越し侍', date: '2025-06-15', route: '東区→博多区', amount: 68000, badge: 'bg', status: '成約済み', aircon: '未依頼', cardboard: '要配達' },
   { id: '2', name: 'サンプル 花子', src: 'bp', srcLabel: '比較ナビ',  date: '2025-06-22', route: '北九州→中央区', amount: 124000, badge: 'bb', status: '交渉中' },
   { id: '3', name: 'サンプル 一郎', src: 'bg', srcLabel: '価格.com', date: '2025-06-18', route: '南区→春日市', amount: 38500, badge: 'bo', status: '見積済み', aircon: '依頼済み' },
@@ -346,10 +346,7 @@ export default function Contracts({ user, mode }) {
     <div>
       <div className="page-hdr" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div>
-          <h1>
-            {meta ? meta.title : '成約管理'}
-            {mode === 'follow' && <span style={{ marginLeft: 10, fontSize: 14, fontWeight: 700, color: '#C2410C' }}>残追客数 {modeItems.length}件</span>}
-          </h1>
+          <h1>{meta ? meta.title : '成約管理'}</h1>
           <p>{meta ? meta.sub : '成約済み・交渉中・失注の案件を管理します'}</p>
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>

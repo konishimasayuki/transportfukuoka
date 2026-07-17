@@ -1,3 +1,7 @@
+import { useEffect, useState } from 'react'
+import { DEMO_DATA as DEMO_LEADS } from '../tabs/Leads'
+import { DEMO_DATA as DEMO_CONTRACTS } from '../tabs/Contracts'
+
 const NAV_ITEMS = [
   { tab: 'dashboard', icon: '📊', label: 'ダッシュボード' },
   { tab: 'sales',     icon: '💴', label: '売上管理' },
@@ -21,6 +25,33 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout
   const companyName = user?.company || 'トランスポート福岡'
   const hideDev = user?.hideDev || user?.mode === 'demo'
   const navItems = NAV_ITEMS.filter(item => !(hideDev && item.dev))
+  const isDemo = user?.mode === 'demo'
+
+  // 追客タブの右に表示する残追客数（要追客のリード＋成約の件数）。タブ切替やポーリングで最新化。
+  const [followCount, setFollowCount] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    const compute = async () => {
+      if (isDemo) {
+        const n = DEMO_LEADS.filter(l => l.status === '要追客').length + DEMO_CONTRACTS.filter(c => c.status === '要追客').length
+        if (!cancelled) setFollowCount(n)
+        return
+      }
+      try {
+        const [leadsRes, contractsRes] = await Promise.all([
+          fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
+          fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
+        ])
+        const n = (leadsRes.items || []).filter(l => l.status === '要追客').length +
+                  (contractsRes.items || []).filter(c => c.status === '要追客').length
+        if (!cancelled) setFollowCount(n)
+      } catch { if (!cancelled) setFollowCount(0) }
+    }
+    compute()
+    const timer = setInterval(compute, 15000)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [isDemo, activeTab])
+
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="sidebar-logo">
@@ -39,6 +70,7 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout
           >
             <span className="ni-icon">{item.icon}</span>
             {item.label}
+            {item.tab === 'follow' && followCount > 0 && <span className="ni-badge">{followCount}</span>}
             {item.badge && <span className="ni-badge">{item.badge}</span>}
             {item.mark && <span className="ni-mark">{item.mark}</span>}
           </div>
