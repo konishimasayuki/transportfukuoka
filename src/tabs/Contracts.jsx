@@ -61,6 +61,15 @@ function contractRoute(item) {
   return { short, full }
 }
 
+// メモ最終更新日時の短縮表示（追客タブ）：MM/DD HH:MM
+function fmtMemoTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const p = (n) => String(n).padStart(2, '0')
+  return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 export default function Contracts({ user, mode }) {
   const isDemo = user?.mode === 'demo'
   const meta = MODE_META[mode] || null       // 依頼/追客ビューのメタ（null＝通常の成約管理）
@@ -125,7 +134,7 @@ export default function Contracts({ user, mode }) {
   // ContractDetailModal からの保存（新規／編集を統一）
   const handleModalSave = async (payload) => {
     if (isNewModal) {
-      const newItem = { ...payload, id: Date.now().toString() }
+      const newItem = { ...payload, id: Date.now().toString(), ...(payload.memo ? { memoUpdatedAt: new Date().toISOString() } : {}) }
       setItems(prev => [newItem, ...prev])
       if (!isDemo) {
         try { await fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newItem) }); await fetchItems() }
@@ -133,9 +142,13 @@ export default function Contracts({ user, mode }) {
       }
     } else {
       const id = modalItem.id
-      setItems(prev => prev.map(i => i.id === id ? { ...payload, id } : i))
+      // メモを変更した回だけメモの最終更新日時を記録する
+      const finalPayload = (payload.memo !== undefined && payload.memo !== modalItem.memo)
+        ? { ...payload, memoUpdatedAt: new Date().toISOString() }
+        : payload
+      setItems(prev => prev.map(i => i.id === id ? { ...finalPayload, id } : i))
       if (!isDemo) {
-        try { await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, id }) }); await fetchItems() }
+        try { await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...finalPayload, id }) }); await fetchItems() }
         catch (e) { console.error(e) }
       }
     }
@@ -207,7 +220,7 @@ export default function Contracts({ user, mode }) {
     date: lead.moveDate || lead.moveDateDetail || '',
     fromAddress: lead.from || lead.fromAddress || '', toAddress: lead.to || lead.toAddress || '', route: '',
     amount: lead.amount || 0, status: lead.status || '要追客', staff: lead.staff || '',
-    memo: lead.memo || '', timetree: !!lead.timetree,
+    memo: lead.memo || '', memoUpdatedAt: lead.memoUpdatedAt || '', timetree: !!lead.timetree,
   })
   // リード由来行の担当者をインライン変更（/api/inbound を更新）
   const updateLeadStaff = async (row, staff) => {
@@ -247,8 +260,11 @@ export default function Contracts({ user, mode }) {
       await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: row._lead.key || row._lead.phone, phone: row._lead.phone, status }) })
     } catch (e) { console.error(e) }
   }
-  // リード詳細モーダル（リード管理と同じ）からの保存
-  const saveLeadPatch = async (lead, patch) => {
+  // リード詳細モーダル（リード管理と同じ）からの保存。メモを変更した回だけメモの最終更新日時を記録する。
+  const saveLeadPatch = async (lead, patchIn) => {
+    const patch = (patchIn.memo !== undefined && patchIn.memo !== lead.memo)
+      ? { ...patchIn, memoUpdatedAt: new Date().toISOString() }
+      : patchIn
     setFollowLeads(prev => prev.map(l => l.id === lead.id ? { ...l, ...patch } : l))
     setLeadDetailItem(d => (d && d.id === lead.id ? { ...d, ...patch } : d))
     if (isDemo) {
@@ -329,7 +345,13 @@ export default function Contracts({ user, mode }) {
   return (
     <div>
       <div className="page-hdr" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-        <div><h1>{meta ? meta.title : '成約管理'}</h1><p>{meta ? meta.sub : '成約済み・交渉中・失注の案件を管理します'}</p></div>
+        <div>
+          <h1>
+            {meta ? meta.title : '成約管理'}
+            {mode === 'follow' && <span style={{ marginLeft: 10, fontSize: 14, fontWeight: 700, color: '#C2410C' }}>残追客数 {modeItems.length}件</span>}
+          </h1>
+          <p>{meta ? meta.sub : '成約済み・交渉中・失注の案件を管理します'}</p>
+        </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           <button className="btn btn-outline btn-sm" onClick={handleExport}>⬇ CSV出力</button>
           <button className="btn btn-outline btn-sm" onClick={() => fileRef.current && fileRef.current.click()} disabled={importing}>
@@ -378,13 +400,13 @@ export default function Contracts({ user, mode }) {
               <thead>
                 <tr>
                   <th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th>
-                  {mode === 'follow' ? <th>メモ</th> : <><th>エアコン</th><th>段ボール</th></>}
+                  {mode === 'follow' ? <><th>メモ</th><th>メモ最終更新日時</th></> : <><th>エアコン</th><th>段ボール</th></>}
                   <th>タイムツリー</th><th>ステータス</th><th>担当者</th>{mode !== 'follow' && <th>操作</th>}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={mode === 'follow' ? 9 : 11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
+                  <tr><td colSpan={mode === 'follow' ? 10 : 11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id}
                     onClick={() => item._isLead && setLeadDetailItem(item._lead)}
@@ -397,9 +419,12 @@ export default function Contracts({ user, mode }) {
                     </td>
                     <td>{item.amount ? `¥${item.amount.toLocaleString()}` : '—'}</td>
                     {mode === 'follow' ? (
-                      <td title={item.memo || ''}>
-                        <div style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748B' }}>{item.memo || ''}</div>
-                      </td>
+                      <>
+                        <td title={item.memo || ''}>
+                          <div style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748B' }}>{item.memo || ''}</div>
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap', color: '#94A3B8', fontSize: 12 }}>{fmtMemoTime(item.memoUpdatedAt)}</td>
+                      </>
                     ) : (
                       <>
                         <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'aircon', AIRCON_OPTS)}</td>

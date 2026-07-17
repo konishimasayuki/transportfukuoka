@@ -53,41 +53,6 @@ const EDITABLE_KEYS = [
   'memo',
 ]
 
-// "06/26 21:22"（年なし・分まで）→ Date。未来になる場合は前年と解釈。
-function parseSiteAt(s) {
-  const m = String(s || '').match(/^(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{1,2})/)
-  if (!m) return null
-  const now = new Date()
-  let y = now.getFullYear()
-  const d = new Date(y, parseInt(m[1], 10) - 1, parseInt(m[2], 10), parseInt(m[3], 10), parseInt(m[4], 10), 0)
-  if (d.getTime() > now.getTime() + 24 * 3600 * 1000) d.setFullYear(y - 1)
-  return d
-}
-function captureLagSec(item) {
-  const a = parseSiteAt(item && (item.receivedAt || item.requestedAt))
-  // CRM初回保存(savedAt)を基準にする。detectedAt(拡張検知)は再送で後の時刻に更新され、
-  // 実際の保存より後になって獲得スピードが過大表示されるため使わない（savedAt無い時のみ代替）。
-  const bRaw = item && (item.savedAt || item.detectedAt)
-  const b = bRaw ? new Date(bRaw) : null
-  if (!a || !b || isNaN(b.getTime())) return null
-  const sec = Math.round((b.getTime() - a.getTime()) / 1000)
-  return sec < 0 ? 0 : sec
-}
-function lagText(sec) {
-  if (sec == null) return null
-  if (sec < 60) return `${sec}秒`
-  if (sec < 3600) return `${Math.floor(sec / 60)}分${sec % 60}秒`
-  if (sec < 86400) return `${Math.floor(sec / 3600)}時間${Math.floor((sec % 3600) / 60)}分`
-  return `${Math.floor(sec / 86400)}日`
-}
-function lagColor(sec) {
-  if (sec == null) return '#94A3B8'
-  if (sec <= 25) return '#15803D'
-  if (sec <= 60) return '#C2410C'
-  return '#B91C1C'
-}
-export { captureLagSec, lagText, lagColor }
-
 // 編集／閲覧共通のフィールド行
 function Row({ label, value, edit, onChange, type = 'text', options, placeholder, wide }) {
   // 閲覧時：値が空なら行を出さない（編集モードでは空でも入力欄を出す）
@@ -373,44 +338,12 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
           </div>
         </div>
 
-        {/* 獲得スピード */}
-        {(() => {
-          const sec = captureLagSec(item)
-          if (sec == null) return null
-          return (
-            <div className="no-print" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #EEF2F7' }}>
-              <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>獲得スピード</div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: lagColor(sec) }}>{lagText(sec)}</div>
-              <div style={{ fontSize: 10, color: '#94A3B8' }}>（目標 25秒以内）</div>
-              {sec <= 25 && <span style={{ background: '#F0FDF4', color: '#15803D', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 12 }}>✓ 達成</span>}
-            </div>
-          )
-        })()}
-
-        {/* 獲得の内訳（拡張機能が計測した段階別の時間。timingを持つリードのみ表示） */}
-        {item.timing && (() => {
-          const total = captureLagSec(item)
-          const B = (item.timing.list || 0) / 1000
-          const D = (item.timing.detail || 0) / 1000
-          const A = total != null ? Math.max(0, total - B - D) : null
-          return (
-            <div style={{ fontSize: 11, color: '#64748B', padding: '10px 14px', borderBottom: '1px solid #EEF2F7', lineHeight: 1.8 }}>
-              <div style={{ fontWeight: 700, color: '#475569', marginBottom: 2 }}>獲得の内訳（段階別）</div>
-              {A != null && <div>A 巡回待ち：約{Math.round(A)}秒 <span style={{ color: '#94A3B8' }}>（受付の分精度の誤差・送信を含む）</span></div>}
-              <div>B 一覧取得：{B.toFixed(1)}秒</div>
-              <div>D 詳細取得：{D.toFixed(1)}秒</div>
-              {total != null && <div style={{ fontWeight: 700 }}>合計：{total}秒</div>}
-            </div>
-          )
-        })()}
-
-        {/* 日時 */}
-        <div className="no-print" style={{ fontSize: 11, color: '#94A3B8', padding: '10px 14px', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          {item.receivedAt && <span>ズバット登録: {item.receivedAt}</span>}
-          {item.detectedAt && <span>取得日時（拡張検知）: {new Date(item.detectedAt).toLocaleString('ja-JP')}</span>}
-          {item.savedAt && <span>登録日時（CRM保存）: {new Date(item.savedAt).toLocaleString('ja-JP')}</span>}
-          {item.updatedAt && <span>更新: {new Date(item.updatedAt).toLocaleString('ja-JP')}</span>}
-        </div>
+        {/* メモ最終更新日時 */}
+        {item.memoUpdatedAt && (
+          <div style={{ fontSize: 11, color: '#94A3B8', padding: '10px 14px', borderBottom: '1px solid #EEF2F7' }}>
+            メモ最終更新: {new Date(item.memoUpdatedAt).toLocaleString('ja-JP')}
+          </div>
+        )}
 
         {/* 保存バー */}
         {onSave && (

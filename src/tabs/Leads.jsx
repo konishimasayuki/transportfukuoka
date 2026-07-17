@@ -260,10 +260,18 @@ export default function Leads({ user, switchTab }) {
   }
 
   // 詳細モーダルからの編集（メモ・家財）を保存
-  const savePatch = async (item, patch) => {
+  // メモを変更した回だけメモの最終更新日時を記録する（他フィールドの編集では更新しない）
+  const savePatch = async (item, patchIn) => {
+    const patch = (patchIn.memo !== undefined && patchIn.memo !== item.memo)
+      ? { ...patchIn, memoUpdatedAt: new Date().toISOString() }
+      : patchIn
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...patch } : i)) // 楽観更新
     setDetailItem(d => (d ? { ...d, ...patch } : d))
-    if (isDemo) return
+    if (isDemo) {
+      const idx = DEMO_DATA.findIndex(i => i.id === item.id)
+      if (idx !== -1) DEMO_DATA[idx] = { ...DEMO_DATA[idx], ...patch }
+      return
+    }
     try {
       await fetch('/api/inbound', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
