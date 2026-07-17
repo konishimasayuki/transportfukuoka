@@ -138,7 +138,7 @@ const modalBox     = { background: '#fff', borderRadius: 14, width: '100%', maxW
 
 const norm = (l) => ({ ...l, status: l.status || '未架電' })
 
-export default function Leads({ user, switchTab }) {
+export default function Leads({ user, switchTab, onFollowDelta }) {
   const isDemo = user?.mode === 'demo'
   const [items, setItems]       = useState(isDemo ? DEMO_DATA.map(norm) : [])
   const [loading, setLoading]   = useState(!isDemo)
@@ -206,6 +206,7 @@ export default function Leads({ user, switchTab }) {
       setConvertLead(item)
       return
     }
+    onFollowDelta?.((status === '要追客' ? 1 : 0) - (item.status === '要追客' ? 1 : 0))
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, status } : i)) // 楽観更新
     if (isDemo) {
       // デモは共有DBが無いため、他タブ（追客タブ等）が参照する DEMO_DATA 自体も更新して同期させる
@@ -248,6 +249,8 @@ export default function Leads({ user, switchTab }) {
       leadKey: lead.key || lead.phone,
     }
     // ローカル楽観更新：リードのステータスと金額（contracted=1リード1成約の恒久フラグ）
+    // リードは「成約」になり要追客から外れる（新規成約のstatusは成約済みで要追客ではない）
+    if (lead.status === '要追客') onFollowDelta?.(-1)
     setItems(prev => prev.map(i => i.id === lead.id ? { ...i, status: '成約', amount: payload.amount, contracted: true } : i))
     setDetailItem(d => (d && d.id === lead.id ? { ...d, status: '成約', amount: payload.amount, contracted: true } : d))
     if (isDemo) return
@@ -340,6 +343,7 @@ export default function Leads({ user, switchTab }) {
   }
 
   const handleDelete = async (item) => {
+    if (item.status === '要追客') onFollowDelta?.(-1)
     if (isDemo) { setItems(prev => prev.filter(i => i.id !== item.id)); setDeleteConfirm(null); return }
     try {
       await fetch('/api/inbound', {
@@ -375,9 +379,12 @@ export default function Leads({ user, switchTab }) {
         }))
         .filter(r => r.phone || (r.name && String(r.name).trim()))
       if (rows.length === 0) { showToast('取り込める行がありませんでした'); setImporting(false); return }
+      // 取り込んだ行のうち「要追客」件数だけ残追客数に加算（新規追加想定。既存リードとの統合は簡易扱い）
+      const addedFollowCount = rows.filter(r => r.status === '要追客').length
       if (isDemo) {
         const withIds = rows.map((r, i) => norm({ ...r, id: `${Date.now()}_${i}` }))
         setItems(prev => [...withIds, ...prev])
+        if (addedFollowCount) onFollowDelta?.(addedFollowCount)
         showToast(`${rows.length}件を取り込みました（デモ：保存なし）`)
         setImporting(false); return
       }
@@ -391,6 +398,7 @@ export default function Leads({ user, switchTab }) {
           ok++
         } catch (err) { console.error(err) }
       }
+      if (addedFollowCount) onFollowDelta?.(addedFollowCount)
       await fetchItems()
       showToast(`${ok}/${rows.length}件を取り込みました`)
     } catch (err) {

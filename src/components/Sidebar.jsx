@@ -1,7 +1,3 @@
-import { useEffect, useState } from 'react'
-import { DEMO_DATA as DEMO_LEADS } from '../tabs/Leads'
-import { DEMO_DATA as DEMO_CONTRACTS } from '../tabs/Contracts'
-
 const NAV_ITEMS = [
   { tab: 'dashboard', icon: '📊', label: 'ダッシュボード' },
   { tab: 'sales',     icon: '💴', label: '売上管理' },
@@ -20,37 +16,11 @@ const NAV_ITEMS = [
   { tab: 'debugreq',  icon: '🐛', label: 'デバッグ依頼', dev: true },
 ]
 
-export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout }) {
+export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout, followCount = 0 }) {
   // 会社名ブランディング（未指定はトランスポート福岡）／開発者向けタブ(dev)はデモ・hideDevで非表示
   const companyName = user?.company || 'トランスポート福岡'
   const hideDev = user?.hideDev || user?.mode === 'demo'
   const navItems = NAV_ITEMS.filter(item => !(hideDev && item.dev))
-  const isDemo = user?.mode === 'demo'
-
-  // 追客タブの右に表示する残追客数（要追客のリード＋成約の件数）。
-  // ポーリングはせず、タブを切り替えた（＝リード/成約タブでの変更が一段落した）タイミングでだけ数え直す。
-  const [followCount, setFollowCount] = useState(0)
-  useEffect(() => {
-    let cancelled = false
-    const compute = async () => {
-      if (isDemo) {
-        const n = DEMO_LEADS.filter(l => l.status === '要追客').length + DEMO_CONTRACTS.filter(c => c.status === '要追客').length
-        if (!cancelled) setFollowCount(n)
-        return
-      }
-      try {
-        const [leadsRes, contractsRes] = await Promise.all([
-          fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
-          fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
-        ])
-        const n = (leadsRes.items || []).filter(l => l.status === '要追客').length +
-                  (contractsRes.items || []).filter(c => c.status === '要追客').length
-        if (!cancelled) setFollowCount(n)
-      } catch { if (!cancelled) setFollowCount(0) }
-    }
-    compute()
-    return () => { cancelled = true }
-  }, [isDemo, activeTab])
 
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>

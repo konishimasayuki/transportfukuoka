@@ -70,7 +70,7 @@ function fmtMemoTime(iso) {
   return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-export default function Contracts({ user, mode }) {
+export default function Contracts({ user, mode, onFollowDelta }) {
   const isDemo = user?.mode === 'demo'
   const meta = MODE_META[mode] || null       // 依頼/追客ビューのメタ（null＝通常の成約管理）
   const modeMatch = meta ? meta.match : () => true
@@ -135,6 +135,7 @@ export default function Contracts({ user, mode }) {
   const handleModalSave = async (payload) => {
     if (isNewModal) {
       const newItem = { ...payload, id: Date.now().toString(), ...(payload.memo ? { memoUpdatedAt: new Date().toISOString() } : {}) }
+      if (newItem.status === '要追客') onFollowDelta?.(1)
       setItems(prev => [newItem, ...prev])
       if (!isDemo) {
         try { await fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newItem) }); await fetchItems() }
@@ -146,6 +147,7 @@ export default function Contracts({ user, mode }) {
       const finalPayload = (payload.memo !== undefined && payload.memo !== modalItem.memo)
         ? { ...payload, memoUpdatedAt: new Date().toISOString() }
         : payload
+      onFollowDelta?.((finalPayload.status === '要追客' ? 1 : 0) - (modalItem.status === '要追客' ? 1 : 0))
       setItems(prev => prev.map(i => i.id === id ? { ...finalPayload, id } : i))
       if (!isDemo) {
         try { await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...finalPayload, id }) }); await fetchItems() }
@@ -155,6 +157,8 @@ export default function Contracts({ user, mode }) {
   }
 
   const handleDelete = async (id) => {
+    const target = items.find(i => i.id === id)
+    if (target && target.status === '要追客') onFollowDelta?.(-1)
     if (isDemo) { setItems(prev => prev.filter(i => i.id !== id)); setDeleteConfirm(null); return }
     try {
       await fetch('/api/contracts', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
@@ -174,6 +178,7 @@ export default function Contracts({ user, mode }) {
   }
 
   const updateContractStatus = async (item, status) => {
+    onFollowDelta?.((status === '要追客' ? 1 : 0) - (item.status === '要追客' ? 1 : 0))
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, status } : i))
     if (isDemo) return
     try {
@@ -250,6 +255,7 @@ export default function Contracts({ user, mode }) {
   )
   // リード由来行のステータスをインライン変更（成約管理と同じステータス一覧を使用。要追客を選び直すと一覧から外れる）
   const updateLeadStatus = async (row, status) => {
+    onFollowDelta?.((status === '要追客' ? 1 : 0) - (row.status === '要追客' ? 1 : 0))
     setFollowLeads(prev => prev.map(l => l.id === row._lead.id ? { ...l, status } : l))
     if (isDemo) {
       const idx = DEMO_LEADS.findIndex(l => l.id === row._lead.id)
@@ -301,9 +307,12 @@ export default function Contracts({ user, mode }) {
         }))
         .filter(r => (r.name && String(r.name).trim()) || r.phone)
       if (rows.length === 0) { showToast('取り込める行がありませんでした'); setImporting(false); return }
+      // 取り込んだ行のうち「要追客」件数だけ残追客数に加算
+      const addedFollowCount = rows.filter(r => r.status === '要追客').length
       if (isDemo) {
         const withIds = rows.map((r, i) => ({ ...r, id: `${Date.now()}_${i}` }))
         setItems(prev => [...withIds, ...prev])
+        if (addedFollowCount) onFollowDelta?.(addedFollowCount)
         showToast(`${rows.length}件を取り込みました（デモ：保存なし）`)
         setImporting(false); return
       }
@@ -317,6 +326,7 @@ export default function Contracts({ user, mode }) {
           ok++
         } catch (err) { console.error(err) }
       }
+      if (addedFollowCount) onFollowDelta?.(addedFollowCount)
       await fetchItems()
       showToast(`${ok}/${rows.length}件を取り込みました`)
     } catch (err) {

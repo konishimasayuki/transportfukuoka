@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import LeadNotifier from './components/LeadNotifier'
@@ -6,8 +6,8 @@ import Login from './tabs/Login'
 import Dashboard from './tabs/Dashboard'
 import Sales from './tabs/Sales'
 import AdCost from './tabs/AdCost'
-import Contracts from './tabs/Contracts'
-import Leads from './tabs/Leads'
+import Contracts, { DEMO_DATA as DEMO_CONTRACTS } from './tabs/Contracts'
+import Leads, { DEMO_DATA as DEMO_LEADS } from './tabs/Leads'
 import Call from './tabs/Call'
 import Estimate from './tabs/Estimate'
 import Schedule from './tabs/Schedule'
@@ -55,6 +55,36 @@ export default function App() {
   const [loading, setLoading]         = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  // 残追客数（要追客のリード＋成約の件数）。ログイン時に一度だけ実数を数え、
+  // 以降はリード/成約タブでのステータス変更のたびに増減させる（ポーリングはしない）。
+  const [followCount, setFollowCount] = useState(0)
+  const bumpFollowCount = useCallback((delta) => {
+    if (!delta) return
+    setFollowCount(c => Math.max(0, c + delta))
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    if (user.mode === 'demo') {
+      const n = DEMO_LEADS.filter(l => l.status === '要追客').length + DEMO_CONTRACTS.filter(c => c.status === '要追客').length
+      setFollowCount(n)
+      return
+    }
+    (async () => {
+      try {
+        const [leadsRes, contractsRes] = await Promise.all([
+          fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
+          fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
+        ])
+        const n = (leadsRes.items || []).filter(l => l.status === '要追客').length +
+                  (contractsRes.items || []).filter(c => c.status === '要追客').length
+        if (!cancelled) setFollowCount(n)
+      } catch { if (!cancelled) setFollowCount(0) }
+    })()
+    return () => { cancelled = true }
+  }, [user])
+
   const handleLogin = useCallback((u) => {
     setUser(u)
     setActiveTab('dashboard')
@@ -93,11 +123,11 @@ export default function App() {
         style={{ display: sidebarOpen ? 'block' : 'none' }}
         onClick={() => setSidebarOpen(false)}
       />
-      <Sidebar activeTab={activeTab} onTabChange={switchTab} isOpen={sidebarOpen} user={user} onLogout={handleLogout} />
+      <Sidebar activeTab={activeTab} onTabChange={switchTab} isOpen={sidebarOpen} user={user} onLogout={handleLogout} followCount={followCount} />
       <div className="main">
         <Topbar activeTab={activeTab} onMenuClick={() => setSidebarOpen(true)} onRefresh={refresh} loading={loading} user={user} />
         <div className="content">
-          <ActiveTab user={user} switchTab={switchTab} view={safeTab === 'board' ? 'board' : 'month'} mode={['follow', 'aircon', 'cardboard'].includes(safeTab) ? safeTab : undefined} />
+          <ActiveTab user={user} switchTab={switchTab} view={safeTab === 'board' ? 'board' : 'month'} mode={['follow', 'aircon', 'cardboard'].includes(safeTab) ? safeTab : undefined} onFollowDelta={bumpFollowCount} />
         </div>
       </div>
       <LeadNotifier user={user} switchTab={switchTab} />
