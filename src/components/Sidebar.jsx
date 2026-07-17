@@ -27,7 +27,8 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout
   const navItems = NAV_ITEMS.filter(item => !(hideDev && item.dev))
   const isDemo = user?.mode === 'demo'
 
-  // 追客タブの右に表示する残追客数（要追客のリード＋成約の件数）。タブ切替やポーリングで最新化。
+  // 追客タブの右に表示する残追客数（要追客のリード＋成約の件数）。
+  // ポーリングはせず、タブを切り替えた（＝リード/成約タブでの変更が一段落した）タイミングでだけ数え直す。
   const [followCount, setFollowCount] = useState(0)
   useEffect(() => {
     let cancelled = false
@@ -48,8 +49,7 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout
       } catch { if (!cancelled) setFollowCount(0) }
     }
     compute()
-    const timer = setInterval(compute, 15000)
-    return () => { cancelled = true; clearInterval(timer) }
+    return () => { cancelled = true }
   }, [isDemo, activeTab])
 
   return (
