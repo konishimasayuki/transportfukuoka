@@ -71,6 +71,20 @@ function fmtMemoTime(iso) {
   return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
+// 受付日時の日付部分だけを表示（追客タブ）：時刻は表示しない。サイトごとに表記が異なる元データに対応。
+function fmtReceivedDate(s) {
+  s = String(s || '').trim()
+  if (!s) return ''
+  const p = (n) => String(n).padStart(2, '0')
+  let m = s.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+  if (m) return `${p(m[2])}/${p(m[3])}`
+  m = s.match(/^(\d{1,2})\/(\d{1,2})/)
+  if (m) return `${p(m[1])}/${p(m[2])}`
+  m = s.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/)
+  if (m) return `${p(m[2])}/${p(m[3])}`
+  return s
+}
+
 export default function Contracts({ user, mode, onFollowDelta }) {
   const isDemo = user?.mode === 'demo'
   const meta = MODE_META[mode] || null       // 依頼/追客ビューのメタ（null＝通常の成約管理）
@@ -429,11 +443,11 @@ export default function Contracts({ user, mode, onFollowDelta }) {
             <table>
               <thead>
                 <tr>
-                  <th>顧客名</th>
                   {mode === 'follow' && sortableTh('receivedAt', '受付日時')}
+                  {!meta && sortableTh('salesDate', '売上登録日')}
+                  <th>顧客名</th>
                   <th>流入元</th>
                   {sortableTh('date', '引越し日')}
-                  {!meta && sortableTh('salesDate', '売上登録日')}
                   <th>区間</th><th>見積金額</th>
                   {mode === 'follow' ? <><th>メモ</th><th>メモ最終更新日時</th></> : <><th>エアコン</th><th>段ボール</th></>}
                   <th>タイムツリー</th><th>ステータス</th><th>担当者</th>{mode !== 'follow' && <th>操作</th>}
@@ -446,11 +460,11 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                   <tr key={item.id}
                     onClick={() => item._isLead && setLeadDetailItem(item._lead)}
                     style={item._isLead ? { cursor: 'pointer' } : undefined}>
+                    {mode === 'follow' && <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: '#64748B' }}>{fmtReceivedDate(item.receivedAt)}</td>}
+                    {!meta && <td>{item.salesDate || ''}</td>}
                     <td><b>{item.name}</b></td>
-                    {mode === 'follow' && <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: '#64748B' }}>{item.receivedAt || ''}</td>}
                     <td><SourceTag label={item.srcLabel} /></td>
                     <td>{item.date}</td>
-                    {!meta && <td>{item.salesDate || ''}</td>}
                     <td title={contractRoute(item).full}>
                       <div style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractRoute(item).short}</div>
                     </td>
