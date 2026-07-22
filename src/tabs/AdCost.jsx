@@ -273,7 +273,8 @@ export default function AdCost({ user }) {
               <div className="card">
                 <div className="card-head"><h3>今月の掲載費（日別合計）</h3><span className="c-sub">{monthLabel} 合計 {yen(sums.dailyGrand)}</span></div>
                 <div className="card-body">
-                  <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+                  {/* paddingTop で吹き出し（棒の上に出る）が上端で見切れないよう余白を確保 */}
+                  <div style={{ overflowX: 'auto', paddingTop: 40, paddingBottom: 4 }}>
                     <div style={{ minWidth: totals.length * 24, position: 'relative' }}>
                       {/* 棒＋横線エリア */}
                       <div style={{ position: 'relative', height: H }}>
@@ -285,10 +286,15 @@ export default function AdCost({ user }) {
                         ))}
                         {/* 棒（タップ/クリックで金額を吹き出し表示） */}
                         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', gap: 2 }}>
-                          {totals.map(t => {
+                          {totals.map((t, idx) => {
                             const barH = (t.v / roundedMax) * H
                             const isToday = t.day === todayDD
                             const active = activeBar === t.day
+                            // 端の棒は吹き出しが左右で見切れるため、左右2本ずつは端寄せ・矢印位置も調整する
+                            const nearLeft = idx <= 1
+                            const nearRight = idx >= totals.length - 2
+                            const tipPos = nearLeft ? { left: 0, transform: 'none' } : nearRight ? { right: 0, transform: 'none' } : { left: '50%', transform: 'translateX(-50%)' }
+                            const arrowPos = nearLeft ? { left: 11 } : nearRight ? { right: 11 } : { left: '50%', marginLeft: -5 }
                             return (
                               <div key={t.day}
                                 onClick={() => t.v > 0 && setActiveBar(active ? null : t.day)}
@@ -298,12 +304,12 @@ export default function AdCost({ user }) {
                                   {/* 金額の吹き出し（タップ/クリックした棒のみ） */}
                                   {active && t.v > 0 && (
                                     <div style={{
-                                      position: 'absolute', left: '50%', bottom: '100%', transform: 'translateX(-50%)', marginBottom: 7,
+                                      position: 'absolute', bottom: '100%', marginBottom: 7, ...tipPos,
                                       background: '#0F2A4A', color: '#fff', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap',
                                       padding: '5px 9px', borderRadius: 8, boxShadow: '0 6px 18px rgba(0,0,0,.28)', zIndex: 5, pointerEvents: 'none',
                                     }}>
                                       {Number(t.day)}日 {yen(t.v)}
-                                      <span style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '6px solid #0F2A4A' }} />
+                                      <span style={{ position: 'absolute', top: '100%', ...arrowPos, width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '6px solid #0F2A4A' }} />
                                     </div>
                                   )}
                                 </div>

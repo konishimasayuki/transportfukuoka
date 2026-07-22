@@ -154,7 +154,6 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
 
   // 配車ボードの日付ナビ（前日/今日/翌日）
   const shiftBoardDay = (delta) => { const d = new Date(boardDate); d.setDate(d.getDate() + delta); setBoardDate(d) }
-  const boardDateLabel = `${boardDate.getMonth() + 1}月${boardDate.getDate()}日 (${WEEK[boardDate.getDay()]})`
   const boardIsToday = ymd(boardDate) === tStr
 
   return (
@@ -191,7 +190,8 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
           <input type="date" value={ymd(boardDate)}
             onChange={e => { if (e.target.value) { const d = new Date(e.target.value + 'T00:00:00'); if (!isNaN(d.getTime())) setBoardDate(d) } }}
             style={{ padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--text)', outline: 'none' }} />
-          <div style={{ fontSize: 13, fontWeight: 800, marginLeft: 4 }}>{boardDateLabel}</div>
+          {/* 日付ピッカーに年月日は出るので、ここは曜日のみ表示 */}
+          <div style={{ fontSize: 13, fontWeight: 800, marginLeft: 4 }}>({WEEK[boardDate.getDay()]})</div>
           {boardIsToday && <span className="badge bb" style={{ marginLeft: 2 }}>今日</span>}
         </div>
       )}
