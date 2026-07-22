@@ -86,7 +86,7 @@ function fmtReceivedDate(s) {
 }
 
 // 引越し日など可変フォーマットの日付を比較用の数値(ms)に変換する。
-// 対応: "2025-07-02" / "2026/10/11" / "2026年07月10日" / "07月20日" / "07月上旬" 等。
+// 対応: "2025-07-02" / "2026/10/11" / "2026/8/上旬" / "2026年07月10日" / "07月20日" / "07月上旬" 等。
 // ・年が無い場合は今年として扱う（「過ぎたら翌年」等の補正はしない＝表記通りの月日順で並べる）。
 // ・上旬=5日／中旬=15日／下旬=25日として扱う（上旬1〜9・中旬10〜19・下旬20〜31）。
 // ・空や解釈不能は Infinity（常に末尾へ）。
@@ -95,15 +95,21 @@ function moveDateMs(s) {
   if (!s) return Infinity
   const thisYear = new Date().getFullYear()
   const junDay = /上旬/.test(s) ? 5 : /中旬/.test(s) ? 15 : /下旬/.test(s) ? 25 : null
-  // YYYY-MM-DD / YYYY/MM/DD
+  // YYYY[-/]MM[-/]DD（日が数字）
   let m = s.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
   if (m) return new Date(+m[1], +m[2] - 1, +m[3]).getTime()
+  // YYYY[-/]MM[-/]上旬|中旬|下旬（日が旬表記。例: "2026/8/上旬"）
+  m = s.match(/(\d{4})[/-](\d{1,2})[/-]\s*(?:上旬|中旬|下旬)/)
+  if (m) return new Date(+m[1], +m[2] - 1, junDay != null ? junDay : 1).getTime()
   // (YYYY年)? MM月DD日
   m = s.match(/(?:(\d{4})年)?\s*(\d{1,2})月\s*(\d{1,2})日/)
   if (m) return new Date(m[1] ? +m[1] : thisYear, +m[2] - 1, +m[3]).getTime()
   // (YYYY年)? MM月（＋上旬/中旬/下旬。無ければ1日扱い）
   m = s.match(/(?:(\d{4})年)?\s*(\d{1,2})月/)
   if (m) return new Date(m[1] ? +m[1] : thisYear, +m[2] - 1, junDay != null ? junDay : 1).getTime()
+  // YYYY[-/]MM（日なし。＋旬表記があれば代表日、無ければ1日）
+  m = s.match(/(\d{4})[/-](\d{1,2})(?![/-]?\d)/)
+  if (m) return new Date(+m[1], +m[2] - 1, junDay != null ? junDay : 1).getTime()
   const t = Date.parse(s)
   return isNaN(t) ? Infinity : t
 }
