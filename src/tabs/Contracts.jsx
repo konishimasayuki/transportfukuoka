@@ -124,31 +124,37 @@ function cmpDate(a, b, key, dir) {
   return dir === 'asc' ? ma - mb : mb - ma
 }
 
-// タイムスタンプ(ms)を月キー "YYYY-MM" に変換（絞り込み用）。空・不正は ''。
-function monthKeyOf(ms) {
-  if (!ms || !isFinite(ms)) return ''
-  const d = new Date(ms)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-// 月キー "YYYY-MM" → 表示ラベル "YYYY年M月"
-function monthKeyLabel(key) {
-  const [y, m] = String(key).split('-')
-  return `${y}年${Number(m)}月`
-}
+const filterSelStyle = { width: '100%', padding: '6px 8px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', background: '#fff', outline: 'none', cursor: 'pointer' }
 
-// 絞り込みパネルの1グループ（見出し＋チェックボックス3列）。選択肢が無ければ非表示。
-function FilterGroup({ label, opts, sel, onToggle, fmt, last }) {
+// 絞り込み：単一選択プルダウン（流入元／ステータス／担当者）。選択肢が無ければ非表示。
+function SelectFilter({ label, opts, value, onChange, fmt, allLabel = '全て' }) {
   if (!opts || opts.length === 0) return null
   return (
-    <div style={{ marginBottom: last ? 0 : 12 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>{label}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-        {opts.map(o => (
-          <label key={o || '__none__'} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer', minWidth: 0 }}>
-            <input type="checkbox" checked={sel.includes(o)} onChange={() => onToggle(o)} style={{ width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
-            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fmt ? fmt(o) : o}</span>
-          </label>
-        ))}
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>{label}</div>
+      <select value={value} onChange={e => onChange(e.target.value)} style={filterSelStyle}>
+        <option value="">{allLabel}</option>
+        {opts.map(o => <option key={o || '__none__'} value={o}>{fmt ? fmt(o) : o}</option>)}
+      </select>
+    </div>
+  )
+}
+
+// 絞り込み：日付（年＋月の2プルダウン）。年の既定は当年（データに当年があるとき）。月は登録がある月のみ。
+function DateFilter({ label, years, months, year, month, onYear, onMonth }) {
+  if ((!years || years.length === 0) && (!months || months.length === 0)) return null
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>{label}</div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <select value={year} onChange={e => onYear(e.target.value)} style={{ ...filterSelStyle, flex: 1 }}>
+          <option value="">全年</option>
+          {years.map(y => <option key={y} value={y}>{y}年</option>)}
+        </select>
+        <select value={month} onChange={e => onMonth(e.target.value)} style={{ ...filterSelStyle, flex: 1 }}>
+          <option value="">全月</option>
+          {months.map(m => <option key={m} value={m}>{m}月</option>)}
+        </select>
       </div>
     </div>
   )
@@ -163,14 +169,15 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const [modalItem, setModalItem] = useState(null) // 開いている成約詳細モーダルの対象（null＝非表示）
   const [isNewModal, setIsNewModal] = useState(false)
   const [search, setSearch]   = useState('')
-  // 絞り込み（チェック形式・複数選択可。空配列＝絞り込みなし。日付は月単位 "YYYY-MM"）
-  const [filterStatuses, setFilterStatuses] = useState([])
-  const [filterSrcs, setFilterSrcs] = useState([])
-  const [filterStaffs, setFilterStaffs] = useState([])           // ''＝未割当
-  const [filterMoveMonths, setFilterMoveMonths] = useState([])   // 引越し日
-  const [filterSalesMonths, setFilterSalesMonths] = useState([]) // 売上登録日（成約管理のみ）
-  const [filterRecvMonths, setFilterRecvMonths] = useState([])   // 受付日時（追客のみ）
+  // 絞り込み（プルダウン。''＝絞り込みなし。日付は年＋月を別プルダウンで指定）
+  const [fStatus, setFStatus] = useState('')
+  const [fSrc, setFSrc] = useState('')
+  const [fStaff, setFStaff] = useState('')       // ''＝全て（未割当は '__none__'）
+  const [fMoveYear, setFMoveYear] = useState(''); const [fMoveMonth, setFMoveMonth] = useState('')
+  const [fSalesYear, setFSalesYear] = useState(''); const [fSalesMonth, setFSalesMonth] = useState('')
+  const [fRecvYear, setFRecvYear] = useState(''); const [fRecvMonth, setFRecvMonth] = useState('')
   const [showFilterPanel, setShowFilterPanel] = useState(false)
+  const yearInitRef = useRef(false) // 年の既定（当年）を一度だけ適用する
   const filterPanelRef = useRef(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [staffList, setStaffList] = useState(DEFAULT_STAFF)
@@ -185,10 +192,11 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const showSalesFilter = !meta               // 売上登録日（通常の成約管理のみ）
   const showRecvFilter  = mode === 'follow'   // 受付日時（追客のみ）
   const showStatusFilter = mode !== 'follow'  // ステータス（追客以外。追客は要追客固定のため不要）
-  const toggleInArr = (setter, val) => setter(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val])
-  const clearFilters = () => { setFilterStatuses([]); setFilterSrcs([]); setFilterStaffs([]); setFilterMoveMonths([]); setFilterSalesMonths([]); setFilterRecvMonths([]) }
-  const activeFilterCount = filterStatuses.length + filterSrcs.length + filterStaffs.length +
-    filterMoveMonths.length + filterSalesMonths.length + filterRecvMonths.length
+  const clearFilters = () => {
+    setFStatus(''); setFSrc(''); setFStaff('')
+    setFMoveYear(''); setFMoveMonth(''); setFSalesYear(''); setFSalesMonth(''); setFRecvYear(''); setFRecvMonth('')
+  }
+  const activeFilterCount = [fStatus, fSrc, fStaff, fMoveYear, fMoveMonth, fSalesYear, fSalesMonth, fRecvYear, fRecvMonth].filter(Boolean).length
 
   // 絞り込みパネルの外側クリックで閉じる
   useEffect(() => {
@@ -466,9 +474,35 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const distinctSorted = (arr) => [...new Set(arr.filter(Boolean))].sort()
   const scope = combined.filter(modeMatch)
   const srcOpts = distinctSorted(scope.map(i => i.srcLabel || ''))
-  const moveMonthOpts = distinctSorted(scope.map(i => monthKeyOf(moveDateMs(i.date))))
-  const salesMonthOpts = distinctSorted(scope.map(i => (i.salesDate || '').slice(0, 7)))
-  const recvMonthOpts = distinctSorted(scope.map(i => monthKeyOf(receivedAtMs(i))))
+  const staffOpts = distinctSorted(scope.map(i => i.staff || '')) // 実際に割当のある担当者
+  // 日付フィールドの年(YYYY)・月(1〜12) 選択肢。年は降順、月は昇順。
+  const ymList = (msFn) => scope.map(i => { const ms = msFn(i); if (!ms || !isFinite(ms)) return null; const d = new Date(ms); return { y: String(d.getFullYear()), m: String(d.getMonth() + 1) } }).filter(Boolean)
+  const yOpts = (list) => [...new Set(list.map(x => x.y))].sort((a, b) => b - a)
+  const mOpts = (list) => [...new Set(list.map(x => x.m))].sort((a, b) => a - b)
+  const moveYM = ymList(i => moveDateMs(i.date))
+  const salesYM = ymList(i => moveDateMs(i.salesDate))
+  const recvYM = ymList(i => receivedAtMs(i))
+  const moveYears = yOpts(moveYM), moveMonths = mOpts(moveYM)
+  const salesYears = yOpts(salesYM), salesMonths = mOpts(salesYM)
+  const recvYears = yOpts(recvYM), recvMonths = mOpts(recvYM)
+
+  // 年の既定＝当年（データに当年があるフィールドのみ）。1回だけ適用。
+  useEffect(() => {
+    if (yearInitRef.current || loading) return
+    const cy = String(new Date().getFullYear())
+    if (showSalesFilter && salesYears.includes(cy)) setFSalesYear(cy)
+    if (showRecvFilter && recvYears.includes(cy)) setFRecvYear(cy)
+    if (moveYears.includes(cy)) setFMoveYear(cy)
+    yearInitRef.current = true
+  }, [loading, salesYears.join(), recvYears.join(), moveYears.join()])
+
+  // 行の日付が「指定した年・月」に合致するか（年・月それぞれ空なら無条件通過）
+  const matchYM = (ms, y, mo) => {
+    if (!y && !mo) return true
+    if (!ms || !isFinite(ms)) return false
+    const d = new Date(ms)
+    return (!y || String(d.getFullYear()) === y) && (!mo || String(d.getMonth() + 1) === mo)
+  }
 
   // 列ヘッダで選んだ並び替え（受付日時／売上登録日／引越し日）。未選択時は引越し日の新しい順（既定）。
   // いずれも流入元などのグループに関係なく、一覧全体を対象に並べ替える。
@@ -476,12 +510,12 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     const q = search.toLowerCase()
     return modeMatch(i) &&
            (!q || i.name.toLowerCase().includes(q) || (i.route||'').includes(q) || (i.fromAddress||'').includes(q) || (i.toAddress||'').includes(q)) &&
-           (!filterStatuses.length || filterStatuses.includes(i.status)) &&
-           (!filterSrcs.length || filterSrcs.includes(i.srcLabel || '')) &&
-           (!filterStaffs.length || filterStaffs.includes(i.staff || '')) &&
-           (!filterMoveMonths.length || filterMoveMonths.includes(monthKeyOf(moveDateMs(i.date)))) &&
-           (!filterSalesMonths.length || filterSalesMonths.includes((i.salesDate || '').slice(0, 7))) &&
-           (!filterRecvMonths.length || filterRecvMonths.includes(monthKeyOf(receivedAtMs(i))))
+           (!fStatus || i.status === fStatus) &&
+           (!fSrc || (i.srcLabel || '') === fSrc) &&
+           (!fStaff || (fStaff === '__none__' ? !i.staff : i.staff === fStaff)) &&
+           matchYM(moveDateMs(i.date), fMoveYear, fMoveMonth) &&
+           matchYM(moveDateMs(i.salesDate), fSalesYear, fSalesMonth) &&
+           matchYM(receivedAtMs(i), fRecvYear, fRecvMonth)
   }).sort((a, b) => {
     if (sortKey === 'receivedAt') { const cmp = receivedAtMs(a) - receivedAtMs(b); return sortDir === 'asc' ? cmp : -cmp }
     if (sortKey) return cmpDate(a, b, sortKey, sortDir)     // 引越し日 / 売上登録日
@@ -544,17 +578,17 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                 {activeFilterCount > 0 && <button onClick={clearFilters} style={{ border: 'none', background: 'none', color: '#1E5FA8', fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0 }}>クリア</button>}
               </div>
               {showRecvFilter && (
-                <FilterGroup label="受付日時（月）" opts={recvMonthOpts} sel={filterRecvMonths} onToggle={v => toggleInArr(setFilterRecvMonths, v)} fmt={monthKeyLabel} />
+                <DateFilter label="受付日時" years={recvYears} months={recvMonths} year={fRecvYear} month={fRecvMonth} onYear={setFRecvYear} onMonth={setFRecvMonth} />
               )}
               {showSalesFilter && (
-                <FilterGroup label="売上登録日（月）" opts={salesMonthOpts} sel={filterSalesMonths} onToggle={v => toggleInArr(setFilterSalesMonths, v)} fmt={monthKeyLabel} />
+                <DateFilter label="売上登録日" years={salesYears} months={salesMonths} year={fSalesYear} month={fSalesMonth} onYear={setFSalesYear} onMonth={setFSalesMonth} />
               )}
-              <FilterGroup label="引越し日（月）" opts={moveMonthOpts} sel={filterMoveMonths} onToggle={v => toggleInArr(setFilterMoveMonths, v)} fmt={monthKeyLabel} />
-              <FilterGroup label="流入元" opts={srcOpts} sel={filterSrcs} onToggle={v => toggleInArr(setFilterSrcs, v)} />
+              <DateFilter label="引越し日" years={moveYears} months={moveMonths} year={fMoveYear} month={fMoveMonth} onYear={setFMoveYear} onMonth={setFMoveMonth} />
+              <SelectFilter label="流入元" opts={srcOpts} value={fSrc} onChange={setFSrc} />
               {showStatusFilter && (
-                <FilterGroup label="ステータス" opts={STATUS_LIST} sel={filterStatuses} onToggle={v => toggleInArr(setFilterStatuses, v)} />
+                <SelectFilter label="ステータス" opts={STATUS_LIST} value={fStatus} onChange={setFStatus} />
               )}
-              <FilterGroup label="担当者" opts={['', ...staffList]} sel={filterStaffs} onToggle={v => toggleInArr(setFilterStaffs, v)} fmt={v => v || '未割当'} last />
+              <SelectFilter label="担当者" opts={['__none__', ...staffOpts]} value={fStaff} onChange={setFStaff} fmt={v => v === '__none__' ? '未割当' : v} />
             </div>
           )}
         </div>
