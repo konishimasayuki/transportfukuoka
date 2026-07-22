@@ -3,6 +3,7 @@ import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { SourceTag } from '../lib/source'
 import { shortArea, splitRoute } from '../lib/area'
+import { receivedAtMs } from '../lib/sortLeads'
 import ContractDetailModal, { STATUS_LIST, STATUS_BADGE, SOURCE_LIST, AIRCON_OPTS, CARDBOARD_OPTS, EMPTY_CONTRACT } from '../components/ContractDetailModal'
 import LeadDetailModal from '../components/LeadDetailModal'
 import { DEMO_DATA as DEMO_LEADS } from './Leads'
@@ -88,6 +89,19 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const [leadDetailItem, setLeadDetailItem] = useState(null) // 追客タブ：クリックしたリード行の詳細（リード管理と同じモーダル）
   const fileRef = useRef(null)
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2600) }
+
+  // 列ヘッダクリックによるソート（受付日時／売上登録日／引越し日）。クリックのたびに 昇順▲→降順▼→既定 と循環。
+  const [sortKey, setSortKey] = useState(null)
+  const [sortDir, setSortDir] = useState(null) // 'asc' | 'desc' | null
+  const cycleSort = (key) => {
+    if (sortKey !== key) { setSortKey(key); setSortDir('asc'); return }
+    if (sortDir === 'asc') { setSortDir('desc'); return }
+    setSortKey(null); setSortDir(null)
+  }
+  const sortArrow = (key) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
+  const sortableTh = (key, label) => (
+    <th onClick={() => cycleSort(key)} style={{ cursor: 'pointer', userSelect: 'none' }} title="クリックで並び替え">{label}{sortArrow(key)}</th>
+  )
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
 
@@ -226,6 +240,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     fromAddress: lead.from || lead.fromAddress || '', toAddress: lead.to || lead.toAddress || '', route: '',
     amount: lead.amount || 0, status: lead.status || '要追客', staff: lead.staff || '',
     memo: lead.memo || '', memoUpdatedAt: lead.memoUpdatedAt || '', timetree: !!lead.timetree,
+    receivedAt: lead.receivedAt || lead.requestedAt || '',
   })
   // リード由来行の担当者をインライン変更（/api/inbound を更新）
   const updateLeadStaff = async (row, staff) => {
@@ -339,12 +354,20 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const leadRows = mode === 'follow' ? followLeads.map(leadToRow) : []
   const combined = mode === 'follow' ? [...items, ...leadRows] : items
 
+  // 列ヘッダで選んだ並び替え（受付日時／売上登録日／引越し日）。未選択時は引越し日の新しい順（既定）。
+  const compareBySortKey = (a, b, key) => key === 'receivedAt'
+    ? receivedAtMs(a) - receivedAtMs(b)
+    : String(a[key] || '').localeCompare(String(b[key] || ''))
+
   const filtered = combined.filter(i => {
     const q = search.toLowerCase()
     return modeMatch(i) &&
            (!q || i.name.toLowerCase().includes(q) || (i.route||'').includes(q) || (i.fromAddress||'').includes(q) || (i.toAddress||'').includes(q)) &&
            (!filterStatus || i.status === filterStatus)
-  }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))) // 引越し日の新しい順（上が最新）
+  }).sort((a, b) => {
+    if (sortKey) { const cmp = compareBySortKey(a, b, sortKey); return sortDir === 'asc' ? cmp : -cmp }
+    return String(b.date || '').localeCompare(String(a.date || '')) // 引越し日の新しい順（上が最新）
+  })
 
   const countBy = (s) => items.filter(i => i.status === s).length
   const totalAmount = items.filter(i => i.status === '成約済み').reduce((s, i) => s + (i.amount || 0), 0)
@@ -406,21 +429,28 @@ export default function Contracts({ user, mode, onFollowDelta }) {
             <table>
               <thead>
                 <tr>
-                  <th>顧客名</th><th>流入元</th><th>引越し日</th><th>区間</th><th>見積金額</th>
+                  <th>顧客名</th>
+                  {mode === 'follow' && sortableTh('receivedAt', '受付日時')}
+                  <th>流入元</th>
+                  {sortableTh('date', '引越し日')}
+                  {!meta && sortableTh('salesDate', '売上登録日')}
+                  <th>区間</th><th>見積金額</th>
                   {mode === 'follow' ? <><th>メモ</th><th>メモ最終更新日時</th></> : <><th>エアコン</th><th>段ボール</th></>}
                   <th>タイムツリー</th><th>ステータス</th><th>担当者</th>{mode !== 'follow' && <th>操作</th>}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={mode === 'follow' ? 10 : 11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
+                  <tr><td colSpan={mode === 'follow' ? 11 : (!meta ? 12 : 11)} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id}
                     onClick={() => item._isLead && setLeadDetailItem(item._lead)}
                     style={item._isLead ? { cursor: 'pointer' } : undefined}>
                     <td><b>{item.name}</b></td>
+                    {mode === 'follow' && <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: '#64748B' }}>{item.receivedAt || ''}</td>}
                     <td><SourceTag label={item.srcLabel} /></td>
                     <td>{item.date}</td>
+                    {!meta && <td>{item.salesDate || ''}</td>}
                     <td title={contractRoute(item).full}>
                       <div style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractRoute(item).short}</div>
                     </td>

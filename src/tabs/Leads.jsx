@@ -163,6 +163,19 @@ export default function Leads({ user, switchTab, onFollowDelta }) {
   const clearFilters = () => { setFilterStatuses([]); setFilterTimetree([]); setFilterStaffs([]) }
   const activeFilterCount = filterStatuses.length + filterTimetree.length + filterStaffs.length
 
+  // 列ヘッダクリックによるソート（受付日時）。クリックのたびに 昇順▲→降順▼→既定 と循環。
+  const [sortKey, setSortKey] = useState(null)
+  const [sortDir, setSortDir] = useState(null) // 'asc' | 'desc' | null
+  const cycleSort = (key) => {
+    if (sortKey !== key) { setSortKey(key); setSortDir('asc'); return }
+    if (sortDir === 'asc') { setSortDir('desc'); return }
+    setSortKey(null); setSortDir(null)
+  }
+  const sortArrow = (key) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
+  const sortableTh = (key, label) => (
+    <th onClick={() => cycleSort(key)} style={{ cursor: 'pointer', userSelect: 'none' }} title="クリックで並び替え">{label}{sortArrow(key)}</th>
+  )
+
   // 絞り込みパネルの外側クリックで閉じる
   useEffect(() => {
     if (!showFilterPanel) return
@@ -246,6 +259,7 @@ export default function Leads({ user, switchTab, onFollowDelta }) {
       kazai: Array.isArray(lead.kazai) ? lead.kazai : [],
       boxCount: lead.boxCount || '',
       timetree: !!lead.timetree,
+      receivedAt: lead.receivedAt || lead.requestedAt || '',
       leadKey: lead.key || lead.phone,
     }
     // ローカル楽観更新：リードのステータスと金額（contracted=1リード1成約の恒久フラグ）
@@ -427,7 +441,10 @@ export default function Leads({ user, switchTab, onFollowDelta }) {
       return (has && filterTimetree.includes('done')) || (!has && filterTimetree.includes('none'))
     })
     .filter(i => !filterStaffs.length || filterStaffs.includes(i.staff || ''))
-    .sort((a, b) => receivedAtMs(b) - receivedAtMs(a))
+    .sort((a, b) => {
+      if (sortKey === 'receivedAt') { const cmp = receivedAtMs(a) - receivedAtMs(b); return sortDir === 'asc' ? cmp : -cmp }
+      return receivedAtMs(b) - receivedAtMs(a) // 既定：受付日時の新しい順
+    })
 
   const countBy = (s) => items.filter(i => i.status === s).length
 
@@ -545,7 +562,7 @@ export default function Leads({ user, switchTab, onFollowDelta }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr><th>受付日時</th><th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>訪問見積もり日</th><th>タイムツリー</th><th>メモ</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
+                <tr>{sortableTh('receivedAt', '受付日時')}<th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>訪問見積もり日</th><th>タイムツリー</th><th>メモ</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
