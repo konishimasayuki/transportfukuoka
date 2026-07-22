@@ -85,6 +85,39 @@ function fmtReceivedDate(s) {
   return s
 }
 
+// 引越し日など可変フォーマットの日付を比較用の数値(ms)に変換する。
+// 対応: "2025-07-02" / "2026/10/11" / "2026年07月10日" / "07月20日" / "07月上旬" 等。
+// ・年が無い場合は今年として扱う（「過ぎたら翌年」等の補正はしない＝表記通りの月日順で並べる）。
+// ・上旬=5日／中旬=15日／下旬=25日として扱う（上旬1〜9・中旬10〜19・下旬20〜31）。
+// ・空や解釈不能は Infinity（常に末尾へ）。
+function moveDateMs(s) {
+  s = String(s || '').trim()
+  if (!s) return Infinity
+  const thisYear = new Date().getFullYear()
+  const junDay = /上旬/.test(s) ? 5 : /中旬/.test(s) ? 15 : /下旬/.test(s) ? 25 : null
+  // YYYY-MM-DD / YYYY/MM/DD
+  let m = s.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]).getTime()
+  // (YYYY年)? MM月DD日
+  m = s.match(/(?:(\d{4})年)?\s*(\d{1,2})月\s*(\d{1,2})日/)
+  if (m) return new Date(m[1] ? +m[1] : thisYear, +m[2] - 1, +m[3]).getTime()
+  // (YYYY年)? MM月（＋上旬/中旬/下旬。無ければ1日扱い）
+  m = s.match(/(?:(\d{4})年)?\s*(\d{1,2})月/)
+  if (m) return new Date(m[1] ? +m[1] : thisYear, +m[2] - 1, junDay != null ? junDay : 1).getTime()
+  const t = Date.parse(s)
+  return isNaN(t) ? Infinity : t
+}
+
+// 日付列の比較（流入元に関係なく全体で並べる）。空は常に末尾、それ以外は昇順/降順で数値比較。
+function cmpDate(a, b, key, dir) {
+  const ma = moveDateMs(a[key]), mb = moveDateMs(b[key])
+  const aEmpty = !isFinite(ma), bEmpty = !isFinite(mb)
+  if (aEmpty && bEmpty) return 0
+  if (aEmpty) return 1
+  if (bEmpty) return -1
+  return dir === 'asc' ? ma - mb : mb - ma
+}
+
 export default function Contracts({ user, mode, onFollowDelta }) {
   const isDemo = user?.mode === 'demo'
   const meta = MODE_META[mode] || null       // 依頼/追客ビューのメタ（null＝通常の成約管理）
@@ -369,18 +402,16 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const combined = mode === 'follow' ? [...items, ...leadRows] : items
 
   // 列ヘッダで選んだ並び替え（受付日時／売上登録日／引越し日）。未選択時は引越し日の新しい順（既定）。
-  const compareBySortKey = (a, b, key) => key === 'receivedAt'
-    ? receivedAtMs(a) - receivedAtMs(b)
-    : String(a[key] || '').localeCompare(String(b[key] || ''))
-
+  // いずれも流入元などのグループに関係なく、一覧全体を対象に並べ替える。
   const filtered = combined.filter(i => {
     const q = search.toLowerCase()
     return modeMatch(i) &&
            (!q || i.name.toLowerCase().includes(q) || (i.route||'').includes(q) || (i.fromAddress||'').includes(q) || (i.toAddress||'').includes(q)) &&
            (!filterStatus || i.status === filterStatus)
   }).sort((a, b) => {
-    if (sortKey) { const cmp = compareBySortKey(a, b, sortKey); return sortDir === 'asc' ? cmp : -cmp }
-    return String(b.date || '').localeCompare(String(a.date || '')) // 引越し日の新しい順（上が最新）
+    if (sortKey === 'receivedAt') { const cmp = receivedAtMs(a) - receivedAtMs(b); return sortDir === 'asc' ? cmp : -cmp }
+    if (sortKey) return cmpDate(a, b, sortKey, sortDir)     // 引越し日 / 売上登録日
+    return cmpDate(a, b, 'date', 'desc')                    // 既定：引越し日の新しい順（上が最新）
   })
 
   const countBy = (s) => items.filter(i => i.status === s).length
