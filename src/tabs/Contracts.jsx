@@ -124,6 +124,36 @@ function cmpDate(a, b, key, dir) {
   return dir === 'asc' ? ma - mb : mb - ma
 }
 
+// タイムスタンプ(ms)を月キー "YYYY-MM" に変換（絞り込み用）。空・不正は ''。
+function monthKeyOf(ms) {
+  if (!ms || !isFinite(ms)) return ''
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+// 月キー "YYYY-MM" → 表示ラベル "YYYY年M月"
+function monthKeyLabel(key) {
+  const [y, m] = String(key).split('-')
+  return `${y}年${Number(m)}月`
+}
+
+// 絞り込みパネルの1グループ（見出し＋チェックボックス3列）。選択肢が無ければ非表示。
+function FilterGroup({ label, opts, sel, onToggle, fmt, last }) {
+  if (!opts || opts.length === 0) return null
+  return (
+    <div style={{ marginBottom: last ? 0 : 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>{label}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+        {opts.map(o => (
+          <label key={o || '__none__'} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer', minWidth: 0 }}>
+            <input type="checkbox" checked={sel.includes(o)} onChange={() => onToggle(o)} style={{ width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fmt ? fmt(o) : o}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function Contracts({ user, mode, onFollowDelta }) {
   const isDemo = user?.mode === 'demo'
   const meta = MODE_META[mode] || null       // 依頼/追客ビューのメタ（null＝通常の成約管理）
@@ -133,7 +163,15 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const [modalItem, setModalItem] = useState(null) // 開いている成約詳細モーダルの対象（null＝非表示）
   const [isNewModal, setIsNewModal] = useState(false)
   const [search, setSearch]   = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
+  // 絞り込み（チェック形式・複数選択可。空配列＝絞り込みなし。日付は月単位 "YYYY-MM"）
+  const [filterStatuses, setFilterStatuses] = useState([])
+  const [filterSrcs, setFilterSrcs] = useState([])
+  const [filterStaffs, setFilterStaffs] = useState([])           // ''＝未割当
+  const [filterMoveMonths, setFilterMoveMonths] = useState([])   // 引越し日
+  const [filterSalesMonths, setFilterSalesMonths] = useState([]) // 売上登録日（成約管理のみ）
+  const [filterRecvMonths, setFilterRecvMonths] = useState([])   // 受付日時（追客のみ）
+  const [showFilterPanel, setShowFilterPanel] = useState(false)
+  const filterPanelRef = useRef(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [staffList, setStaffList] = useState(DEFAULT_STAFF)
   const [importing, setImporting] = useState(false)
@@ -142,6 +180,23 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const [leadDetailItem, setLeadDetailItem] = useState(null) // 追客タブ：クリックしたリード行の詳細（リード管理と同じモーダル）
   const fileRef = useRef(null)
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2600) }
+
+  // 絞り込みパネル用（表示するフィールドはモードで切替）
+  const showSalesFilter = !meta               // 売上登録日（通常の成約管理のみ）
+  const showRecvFilter  = mode === 'follow'   // 受付日時（追客のみ）
+  const showStatusFilter = mode !== 'follow'  // ステータス（追客以外。追客は要追客固定のため不要）
+  const toggleInArr = (setter, val) => setter(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val])
+  const clearFilters = () => { setFilterStatuses([]); setFilterSrcs([]); setFilterStaffs([]); setFilterMoveMonths([]); setFilterSalesMonths([]); setFilterRecvMonths([]) }
+  const activeFilterCount = filterStatuses.length + filterSrcs.length + filterStaffs.length +
+    filterMoveMonths.length + filterSalesMonths.length + filterRecvMonths.length
+
+  // 絞り込みパネルの外側クリックで閉じる
+  useEffect(() => {
+    if (!showFilterPanel) return
+    const onDocClick = (e) => { if (filterPanelRef.current && !filterPanelRef.current.contains(e.target)) setShowFilterPanel(false) }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [showFilterPanel])
 
   // 列ヘッダクリックによるソート（受付日時／売上登録日／引越し日）。クリックのたびに 昇順▲→降順▼→既定 と循環。
   const [sortKey, setSortKey] = useState(null)
@@ -407,13 +462,26 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const leadRows = mode === 'follow' ? followLeads.map(leadToRow) : []
   const combined = mode === 'follow' ? [...items, ...leadRows] : items
 
+  // 絞り込みパネルの選択肢（実データから重複なしで抽出）
+  const distinctSorted = (arr) => [...new Set(arr.filter(Boolean))].sort()
+  const scope = combined.filter(modeMatch)
+  const srcOpts = distinctSorted(scope.map(i => i.srcLabel || ''))
+  const moveMonthOpts = distinctSorted(scope.map(i => monthKeyOf(moveDateMs(i.date))))
+  const salesMonthOpts = distinctSorted(scope.map(i => (i.salesDate || '').slice(0, 7)))
+  const recvMonthOpts = distinctSorted(scope.map(i => monthKeyOf(receivedAtMs(i))))
+
   // 列ヘッダで選んだ並び替え（受付日時／売上登録日／引越し日）。未選択時は引越し日の新しい順（既定）。
   // いずれも流入元などのグループに関係なく、一覧全体を対象に並べ替える。
   const filtered = combined.filter(i => {
     const q = search.toLowerCase()
     return modeMatch(i) &&
            (!q || i.name.toLowerCase().includes(q) || (i.route||'').includes(q) || (i.fromAddress||'').includes(q) || (i.toAddress||'').includes(q)) &&
-           (!filterStatus || i.status === filterStatus)
+           (!filterStatuses.length || filterStatuses.includes(i.status)) &&
+           (!filterSrcs.length || filterSrcs.includes(i.srcLabel || '')) &&
+           (!filterStaffs.length || filterStaffs.includes(i.staff || '')) &&
+           (!filterMoveMonths.length || filterMoveMonths.includes(monthKeyOf(moveDateMs(i.date)))) &&
+           (!filterSalesMonths.length || filterSalesMonths.includes((i.salesDate || '').slice(0, 7))) &&
+           (!filterRecvMonths.length || filterRecvMonths.includes(monthKeyOf(receivedAtMs(i))))
   }).sort((a, b) => {
     if (sortKey === 'receivedAt') { const cmp = receivedAtMs(a) - receivedAtMs(b); return sortDir === 'asc' ? cmp : -cmp }
     if (sortKey) return cmpDate(a, b, sortKey, sortDir)     // 引越し日 / 売上登録日
@@ -465,10 +533,31 @@ export default function Contracts({ user, mode, onFollowDelta }) {
 
       <div className="filter-row">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 顧客名・エリアで検索..." />
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-          <option value="">全ステータス</option>
-          {STATUS_LIST.map(s => <option key={s}>{s}</option>)}
-        </select>
+        <div ref={filterPanelRef} style={{ position: 'relative' }}>
+          <button className="btn btn-outline btn-sm" onClick={() => setShowFilterPanel(v => !v)}>
+            🔎 絞り込み{activeFilterCount > 0 ? `（${activeFilterCount}）` : ''}
+          </button>
+          {showFilterPanel && (
+            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 50, background: '#fff', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 12px 34px rgba(0,0,0,.18)', padding: 14, width: 360, maxWidth: '90vw', maxHeight: 460, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: '#1E293B' }}>絞り込み</span>
+                {activeFilterCount > 0 && <button onClick={clearFilters} style={{ border: 'none', background: 'none', color: '#1E5FA8', fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0 }}>クリア</button>}
+              </div>
+              {showRecvFilter && (
+                <FilterGroup label="受付日時（月）" opts={recvMonthOpts} sel={filterRecvMonths} onToggle={v => toggleInArr(setFilterRecvMonths, v)} fmt={monthKeyLabel} />
+              )}
+              {showSalesFilter && (
+                <FilterGroup label="売上登録日（月）" opts={salesMonthOpts} sel={filterSalesMonths} onToggle={v => toggleInArr(setFilterSalesMonths, v)} fmt={monthKeyLabel} />
+              )}
+              <FilterGroup label="引越し日（月）" opts={moveMonthOpts} sel={filterMoveMonths} onToggle={v => toggleInArr(setFilterMoveMonths, v)} fmt={monthKeyLabel} />
+              <FilterGroup label="流入元" opts={srcOpts} sel={filterSrcs} onToggle={v => toggleInArr(setFilterSrcs, v)} />
+              {showStatusFilter && (
+                <FilterGroup label="ステータス" opts={STATUS_LIST} sel={filterStatuses} onToggle={v => toggleInArr(setFilterStatuses, v)} />
+              )}
+              <FilterGroup label="担当者" opts={['', ...staffList]} sel={filterStaffs} onToggle={v => toggleInArr(setFilterStaffs, v)} fmt={v => v || '未割当'} last />
+            </div>
+          )}
+        </div>
         <button className="btn btn-primary btn-sm" onClick={openAdd}>+ 新規追加</button>
       </div>
 
