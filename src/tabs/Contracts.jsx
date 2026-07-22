@@ -71,17 +71,17 @@ function fmtMemoTime(iso) {
   return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-// 受付日時の日付部分だけを表示（追客タブ）：時刻は表示しない。サイトごとに表記が異なる元データに対応。
+// 受付日時の表示（追客タブ）：日付＋時（分は表示しない）。サイトごとに表記が異なる元データに対応。
 function fmtReceivedDate(s) {
   s = String(s || '').trim()
   if (!s) return ''
   const p = (n) => String(n).padStart(2, '0')
-  let m = s.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
-  if (m) return `${p(m[2])}/${p(m[3])}`
-  m = s.match(/^(\d{1,2})\/(\d{1,2})/)
-  if (m) return `${p(m[1])}/${p(m[2])}`
-  m = s.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/)
-  if (m) return `${p(m[2])}/${p(m[3])}`
+  let m = s.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2}))?/)
+  if (m) return m[4] != null ? `${p(m[2])}/${p(m[3])} ${p(m[4])}` : `${p(m[2])}/${p(m[3])}`
+  m = s.match(/^(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/)
+  if (m) return m[3] != null ? `${p(m[1])}/${p(m[2])} ${p(m[3])}` : `${p(m[1])}/${p(m[2])}`
+  m = s.match(/(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s*(\d{1,2}):(\d{2}))?/)
+  if (m) return m[4] != null ? `${p(m[2])}/${p(m[3])} ${p(m[4])}` : `${p(m[2])}/${p(m[3])}`
   return s
 }
 
