@@ -748,14 +748,18 @@ function GoogleRouteMap({ routes }) {
     const svc = new g.maps.DirectionsService()
     let cancelled = false
 
-    const pin = (pos, color, scale, label) => {
+    const pin = (pos, color, scale, label, info) => {
       const finalScale = label ? Math.max(scale, 11) : scale
       const m = new g.maps.Marker({
         position: pos, map,
         icon: { path: g.maps.SymbolPath.CIRCLE, scale: finalScale, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 1.8 },
         label: label ? { text: label, color: '#fff', fontSize: label.length > 1 ? '8px' : '10px', fontWeight: '800' } : undefined,
         zIndex: label ? 10 : 5,
+        cursor: info ? 'pointer' : undefined,
+        title: info ? 'タップでルート詳細' : undefined,
       })
+      // S/G等の停車マーカーをタップしても、線タップと同じルート詳細を開く
+      if (info) g.maps.event.addListener(m, 'click', () => setDetail(info))
       overlays.current.push(m); bounds.extend(pos)
     }
 
@@ -810,8 +814,8 @@ function GoogleRouteMap({ routes }) {
           const line = new g.maps.Polyline(lineOpts)
           overlays.current.push(casing, line)
           g.maps.event.addListener(line, 'click', () => setDetail(info))
-          if (i === 0) pin(leg.start_location, r.color, 9, roleAt(0))
-          pin(leg.end_location, r.color, 7, roleAt(i + 1))
+          if (i === 0) pin(leg.start_location, r.color, 9, roleAt(0), info)
+          pin(leg.end_location, r.color, 7, roleAt(i + 1), info)
         })
         route0.overview_path.forEach(p => bounds.extend(p))
         try { map.fitBounds(bounds) } catch {}

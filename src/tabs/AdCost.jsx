@@ -78,9 +78,11 @@ export default function AdCost({ user }) {
   const [draftExp, setDraftExp] = useState({ daily: {}, monthly: {}, note: '' })
   const [bulkPaste, setBulkPaste] = useState('')
   const [toast, setToast] = useState('')
+  const [activeBar, setActiveBar] = useState(null) // グラフでタップ/クリックした棒の日（吹き出し表示）
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2200) }
 
   useEffect(() => { if (!isDemo) fetchAll() }, [isDemo])
+  useEffect(() => { setActiveBar(null) }, [selMonth]) // 月を切り替えたら吹き出しを閉じる
 
   useEffect(() => {
     const ex = expenses[selMonth] || {}
@@ -281,26 +283,28 @@ export default function AdCost({ user }) {
                             <span style={{ position: 'absolute', left: 0, top: -9, fontSize: 8, color: '#94A3B8', background: '#fff', padding: '0 3px', fontWeight: 700 }}>{level / STEP}万</span>
                           </div>
                         ))}
-                        {/* 棒（棒内に料金を縦書き表示） */}
+                        {/* 棒（タップ/クリックで金額を吹き出し表示） */}
                         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', gap: 2 }}>
                           {totals.map(t => {
                             const barH = (t.v / roundedMax) * H
                             const isToday = t.day === todayDD
-                            // 金額ラベルは縦書きで大きく・高コントラストに（見やすさ改善）。
-                            // 背の高い棒は棒内(白)、低い棒は棒の上(濃色)に配置して重なりや潰れを防ぐ。
-                            const inside = barH >= 48
+                            const active = activeBar === t.day
                             return (
-                              <div key={t.day} style={{ flex: '1 0 22px', minWidth: 22, height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} title={`${Number(t.day)}日：${yen(t.v)}`}>
-                                <div style={{ width: '80%', height: barH, minHeight: t.v > 0 ? 4 : 0, background: isToday ? '#1E5FA8' : '#93C5FD', borderRadius: '3px 3px 0 0', position: 'relative' }}>
-                                  {t.v > 0 && (
-                                    <span style={{
-                                      position: 'absolute', left: '50%', transform: 'translateX(-50%)',
-                                      writingMode: 'vertical-rl', textOrientation: 'mixed',
-                                      fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap', letterSpacing: '-.03em',
-                                      ...(inside
-                                        ? { top: 3, color: '#fff', textShadow: '0 1px 2px rgba(15,23,42,.9)' }
-                                        : { bottom: '100%', marginBottom: 2, color: isToday ? '#1E5FA8' : '#475569' }),
-                                    }}>{t.v.toLocaleString('ja-JP')}</span>
+                              <div key={t.day}
+                                onClick={() => t.v > 0 && setActiveBar(active ? null : t.day)}
+                                style={{ flex: '1 0 22px', minWidth: 22, height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', cursor: t.v > 0 ? 'pointer' : 'default' }}
+                                title={`${Number(t.day)}日：${yen(t.v)}`}>
+                                <div style={{ width: '80%', height: barH, minHeight: t.v > 0 ? 4 : 0, background: active ? '#1E5FA8' : isToday ? '#1E5FA8' : '#93C5FD', borderRadius: '3px 3px 0 0', position: 'relative' }}>
+                                  {/* 金額の吹き出し（タップ/クリックした棒のみ） */}
+                                  {active && t.v > 0 && (
+                                    <div style={{
+                                      position: 'absolute', left: '50%', bottom: '100%', transform: 'translateX(-50%)', marginBottom: 7,
+                                      background: '#0F2A4A', color: '#fff', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap',
+                                      padding: '5px 9px', borderRadius: 8, boxShadow: '0 6px 18px rgba(0,0,0,.28)', zIndex: 5, pointerEvents: 'none',
+                                    }}>
+                                      {Number(t.day)}日 {yen(t.v)}
+                                      <span style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '6px solid #0F2A4A' }} />
+                                    </div>
                                   )}
                                 </div>
                               </div>

@@ -96,10 +96,6 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
     } catch (e) { console.error(e) }
   }
 
-  const toggleGenre = (g) => {
-    setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
-  }
-
   const shown = useMemo(() => items.filter(e => genres.includes(e.calendar)), [items, genres])
   const eventsOn = (dateStr) => shown
     .filter(e => (e.start || '') <= dateStr && (e.end || e.start || '') >= dateStr)
@@ -161,14 +157,6 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
   const boardDateLabel = `${boardDate.getMonth() + 1}月${boardDate.getDate()}日 (${WEEK[boardDate.getDay()]})`
   const boardIsToday = ymd(boardDate) === tStr
 
-  // スタイル
-  const chip = (active, color) => ({
-    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 20,
-    fontSize: 12, fontWeight: 700, cursor: 'pointer', userSelect: 'none',
-    border: `1px solid ${active ? color : '#E2E8F0'}`,
-    background: active ? color + '18' : '#fff', color: active ? color : '#94A3B8',
-  })
-
   return (
     <div>
       <div className="page-hdr" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
@@ -179,17 +167,10 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
         {view === 'month' && <button className="btn btn-primary btn-sm" onClick={() => openAdd()}>＋ 予定を作成</button>}
       </div>
 
-      {/* ジャンル切替チップ（月カレンダーのみ。配車ボードではフィルターを出さず全件表示） */}
-      {view === 'month' && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
-          {GENRES.map(g => (
-            <span key={g} style={chip(genres.includes(g), GENRE_COLOR[g])} onClick={() => toggleGenre(g)}>
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: GENRE_COLOR[g], display: 'inline-block' }} />
-              {g}
-            </span>
-          ))}
-          <div style={{ flex: 1 }} />
-          {!isDemo && <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={loading}>⟳ 更新</button>}
+      {/* 月カレンダーの更新ボタン（ジャンルフィルターは廃止＝全ジャンル常時表示） */}
+      {view === 'month' && !isDemo && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={loading}>⟳ 更新</button>
         </div>
       )}
 
@@ -202,15 +183,15 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
           <div style={{ fontSize: 16, fontWeight: 900, marginLeft: 6 }}>{monthLabel}</div>
         </div>
       ) : (
-        <div className="filter-row" style={{ alignItems: 'center' }}>
-          <button className="btn btn-outline btn-sm" onClick={() => shiftBoardDay(-1)}>‹ 前日</button>
-          <button className="btn btn-outline btn-sm" onClick={() => setBoardDate(new Date())}>今日</button>
-          <button className="btn btn-outline btn-sm" onClick={() => shiftBoardDay(1)}>翌日 ›</button>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button className="btn btn-outline btn-sm" style={{ padding: '4px 8px' }} onClick={() => shiftBoardDay(-1)}>‹</button>
+          <button className="btn btn-outline btn-sm" style={{ padding: '4px 10px' }} onClick={() => setBoardDate(new Date())}>今日</button>
+          <button className="btn btn-outline btn-sm" style={{ padding: '4px 8px' }} onClick={() => shiftBoardDay(1)}>›</button>
           {/* 日付をカレンダーで直接選択 */}
           <input type="date" value={ymd(boardDate)}
             onChange={e => { if (e.target.value) { const d = new Date(e.target.value + 'T00:00:00'); if (!isNaN(d.getTime())) setBoardDate(d) } }}
-            style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--text)', outline: 'none' }} />
-          <div style={{ fontSize: 16, fontWeight: 900, marginLeft: 6 }}>{boardDateLabel}</div>
+            style={{ padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--text)', outline: 'none' }} />
+          <div style={{ fontSize: 13, fontWeight: 800, marginLeft: 4 }}>{boardDateLabel}</div>
           {boardIsToday && <span className="badge bb" style={{ marginLeft: 2 }}>今日</span>}
         </div>
       )}
