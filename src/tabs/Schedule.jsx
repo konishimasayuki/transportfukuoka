@@ -344,7 +344,8 @@ function ScheduleModal({ mode, initial, onClose, onSave, onDelete }) {
   const row = { padding: '12px 0', borderBottom: '1px solid #F1F5F9' }
 
   return (
-    <div style={ov} onClick={e => e.target === e.currentTarget && onClose()}>
+    // 枠外クリックでは閉じない（入力中の内容が消えないように）
+    <div style={ov}>
       <div style={bx}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', borderRadius: '14px 14px 0 0' }}>
           <div style={{ fontSize: 15, fontWeight: 800 }}>{mode === 'add' ? '予定の作成' : '予定の編集'}</div>

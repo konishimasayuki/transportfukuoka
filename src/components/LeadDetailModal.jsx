@@ -170,7 +170,8 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
   }
 
   return (
-    <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+    // 枠外クリックでは閉じない（入力中の内容が消えないように）。閉じるはヘッダー/フッターのボタンから
+    <div style={overlay}>
       <div style={box} className="print-area">
         {/* ヘッダー */}
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
@@ -423,7 +424,8 @@ export function ConvertToContractModal({ lead, onClose, onConfirm, onGoCalendar 
   const money = (n) => '¥' + (Number(n) || 0).toLocaleString('ja-JP')
 
   const formView = (
-    <div style={ov} onClick={e => e.target === e.currentTarget && onClose()}>
+    // 枠外クリックでは閉じない（入力中の内容が消えないように）
+    <div style={ov}>
       <div style={bx}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>

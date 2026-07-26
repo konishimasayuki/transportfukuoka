@@ -960,7 +960,8 @@ function VehicleModal({ vehicles, jobs, onClose, onApply }) {
   const th = { fontSize: 10, fontWeight: 700, color: '#64748B', textAlign: 'left', padding: '0 6px 6px' }
 
   return (
-    <div style={ov} onClick={e => e.target === e.currentTarget && onClose()}>
+    // 枠外クリックでは閉じない（入力中の内容が消えないように）
+    <div style={ov}>
       <div style={bx}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div><div style={{ fontSize: 15, fontWeight: 800 }}>車両の設定</div><div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>号車・車両クラスを登録します（乗務員はボード上でラベル割り当て）</div></div>
@@ -1051,7 +1052,8 @@ function CreateModal({ onClose, onAdd }) {
   const seg = (on) => ({ padding: '7px 11px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1px solid ${on ? 'var(--blue)' : '#E2E8F0'}`, background: on ? 'var(--blue)' : '#F8FAFC', color: on ? '#fff' : '#64748B' })
 
   return (
-    <div style={ov} onClick={e => e.target === e.currentTarget && onClose()}>
+    // 枠外クリックでは閉じない（入力中の内容が消えないように）
+    <div style={ov}>
       <div style={bx}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div><div style={{ fontSize: 15, fontWeight: 800 }}>予定を作成</div><div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>種別・荷量から概算見積を自動計算し、未手配に追加します</div></div>

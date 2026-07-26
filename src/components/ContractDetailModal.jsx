@@ -110,7 +110,8 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
   )
 
   return (
-    <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+    // 枠外クリックでは閉じない（入力中の内容が消えないように）。閉じるはヘッダー/フッターのボタンから
+    <div style={overlay}>
       <div style={box}>
         {/* ヘッダー */}
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
