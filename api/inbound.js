@@ -21,7 +21,8 @@ const BROADCAST_KEY = 'transportfukuoka:broadcasts'
 // 担当者がCRM上で入力・管理する項目（＝巡回では絶対に上書きしてはならない）。
 // 巡回(取得)POSTのマージ時、これらのキーは新値が来ても既存値を保持する。
 // 目的：侍などの再巡回で担当者のメモ・ステータス等が黙って上書きされる事故を防ぐ。
-// ※これらは通常フロント側の PUT（api/inbound PUT）でのみ更新される。
+// ※人手の操作（CSVインポート等）は body._manual = true を付けることでこの保護を外せる。
+//   保護対象はあくまで「自動巡回による意図しない上書き」であり、担当者自身の更新は妨げない。
 const CRM_OWNED_FIELDS = new Set([
   'memo', 'memoUpdatedAt', // 対応・メモ
   'status',                // ステータス
@@ -29,6 +30,30 @@ const CRM_OWNED_FIELDS = new Set([
   'timetree',              // タイムツリー登録チェック
   'amount', 'contracted',  // 金額・成約フラグ
 ])
+
+// 更新・削除の対象を1件だけ特定する。優先順位：key > id > 電話。
+// 電話は「一致が1件だけ」の時しか使わない。
+//   - 以前は key/id/電話の“いずれか一致”で更新していたため、同じ電話番号を持つ
+//     別リードまで一括で書き換わり、メモ・ステータスが他リードへ波及していた。
+//   - かといって key だけで特定すると、key を持たない古いリードの更新が
+//     何も起きずに消える（保存の空振り）。そのため電話は一意な時のみ許可する。
+// 見つからなければ -1。
+function findTargetIndex(items, body) {
+  if (body.key) {
+    const i = items.findIndex(x => x.key === body.key)
+    if (i !== -1) return i
+  }
+  if (body.id) {
+    const i = items.findIndex(x => x.id === body.id)
+    if (i !== -1) return i
+  }
+  if (body.phone) {
+    const hits = []
+    items.forEach((x, i) => { if (x.phone === body.phone) hits.push(i) })
+    if (hits.length === 1) return hits[0] // 複数一致は波及の恐れがあるので触らない
+  }
+  return -1
+}
 
 // 重複判定（統合）キー。信頼できる識別子が無ければ null を返し、その場合は統合せず別リード扱いにする。
 // 優先順位：明示key > 電話番号 > サイト+氏名+受付日時。
@@ -85,7 +110,9 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const body = req.body || {}
+      // _manual は「人手による取り込み（CSVインポート等）」の目印。保存データには残さない。
+      const { _manual, ...body } = req.body || {}
+      const manual = _manual === true
       if (!body.phone && !body.name && !body.key) {
         return res.status(400).json({ error: 'lead data required' })
       }
@@ -103,8 +130,9 @@ export default async function handler(req, res) {
           let changed = false
           for (const [k, v] of Object.entries(body)) {
             if (k === 'key' || k === 'id' || k === 'savedAt') continue
-            // 担当者所有の項目は巡回では上書きしない（メモ・ステータス等の保護）。
-            if (CRM_OWNED_FIELDS.has(k)) continue
+            // 担当者所有の項目は「自動巡回」では上書きしない（メモ・ステータス等の保護）。
+            // 人手の取り込み（_manual）は担当者の意思なので従来どおり更新を許可する。
+            if (!manual && CRM_OWNED_FIELDS.has(k)) continue
             const empty = v == null || v === '' || (Array.isArray(v) && v.length === 0)
             if (!empty && JSON.stringify(next[k]) !== JSON.stringify(v)) { next[k] = v; changed = true }
           }
@@ -151,17 +179,16 @@ export default async function handler(req, res) {
       if (!body.key && !body.phone && !body.id) {
         return res.status(400).json({ error: 'key / phone / id required' })
       }
-      // 対象の特定は「最も確実な識別子」を1つだけ使う。
-      // 以前は key/phone/id のいずれかに一致で更新していたため、同じ電話番号を持つ
-      // 別リードまで一括で書き換わり、メモ・ステータスが他リードへ波及していた。
-      // key があれば key のみ、無ければ id、どちらも無ければ電話で特定する。
-      const matchFn = body.key ? (i => i.key === body.key)
-        : body.id ? (i => i.id === body.id)
-        : (i => body.phone && i.phone === body.phone)
-      await mutate(KEY, VER_KEY, (items) => ({
-        items: items.map(i => matchFn(i) ? { ...i, ...body, updatedAt: new Date().toISOString() } : i),
-        result: { ok: true },
-      }))
+      // 対象は findTargetIndex で「1件だけ」特定する（他リードへの波及を防ぐ）。
+      const updated = await mutate(KEY, VER_KEY, (items) => {
+        const idx = findTargetIndex(items, body)
+        if (idx === -1) return { skipWrite: true, result: false }
+        const copy = items.slice()
+        copy[idx] = { ...copy[idx], ...body, updatedAt: new Date().toISOString() }
+        return { items: copy, result: true }
+      })
+      // 対象が見つからない更新は成功扱いにしない（画面側の保存が黙って消えるのを防ぐ）
+      if (!updated) return res.status(404).json({ error: 'lead not found', ok: false })
       return res.json({ ok: true })
     }
 
@@ -175,11 +202,10 @@ export default async function handler(req, res) {
         if (body.all === true) {
           filtered = []
         } else {
-          // 削除も「最も確実な識別子」を1つだけ使う（同一電話の別リードまで巻き込まないため）。
-          const matchFn = body.key ? (i => i.key === body.key)
-            : body.id ? (i => i.id === body.id)
-            : (i => body.phone && i.phone === body.phone)
-          filtered = items.filter(i => !matchFn(i))
+          // 削除も対象を1件だけ特定する（同一電話の別リードまで巻き込まないため）。
+          const idx = findTargetIndex(items, body)
+          if (idx === -1) return { skipWrite: true, result: { removed: 0 } }
+          filtered = items.filter((_, i) => i !== idx)
         }
         return { items: filtered, result: { removed: items.length - filtered.length } }
       })

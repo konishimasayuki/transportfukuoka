@@ -407,7 +407,12 @@ export default function Leads({ user, switchTab, onFollowDelta }) {
         try {
           await fetch('/api/inbound', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...rows[i], key: rows[i].phone || `${rows[i].site}:${rows[i].name}` }),
+            // key は電話がある時だけ指定する。以前は電話が無いと `サイト:氏名` を組み立てて
+            // 送っていたため、同姓の別人が同じキーになり1件に統合されていた（メモ・ステータス混入）。
+            // 電話が無い場合はキーを送らず、サーバ側の判定（サイト+氏名+受付日時）に委ねる。
+            // _manual: 人手の取り込みなので、サーバ側の「巡回による上書き保護」を外して
+            // ステータス・金額などの担当者項目も更新できるようにする（巡回だけを制限する）。
+            body: JSON.stringify({ ...rows[i], key: rows[i].phone || undefined, _manual: true }),
           })
           ok++
         } catch (err) { console.error(err) }
