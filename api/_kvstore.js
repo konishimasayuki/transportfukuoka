@@ -52,7 +52,7 @@ export async function readItems(dataKey) {
 //   nil を返さないよう Lua 側で必ず既定値に落とす。
 async function readVersioned(dataKey, verKey) {
   const script = "return { redis.call('GET', KEYS[1]) or '', redis.call('GET', KEYS[2]) or '0' }"
-  const r = await redisCmd(['EVAL', script, '2', dataKey, verKey])
+  const r = await redisCmd(['EVAL', script, 2, dataKey, verKey])
   const raw = r && r[0]
   const ver = r && r[1]
   // 壊れていれば parseItems が例外を投げる（＝書き込ませない）。
@@ -66,7 +66,7 @@ async function casWrite(dataKey, verKey, expectedVersion, newRaw, newVersion) {
     "if ((redis.call('GET', KEYS[2]) or '0') == ARGV[2]) then " +
     "redis.call('SET', KEYS[1], ARGV[1]); redis.call('SET', KEYS[2], ARGV[3]); return 1 " +
     "else return 0 end"
-  const r = await redisCmd(['EVAL', script, '2', dataKey, verKey, newRaw, expectedVersion, newVersion])
+  const r = await redisCmd(['EVAL', script, 2, dataKey, verKey, newRaw, expectedVersion, newVersion])
   return r === 1 || r === '1'
 }
 
