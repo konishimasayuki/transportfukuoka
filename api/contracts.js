@@ -1,64 +1,53 @@
-const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
-const KEY = 'transportfukuoka:contracts'
+import { readItems, mutate } from './_kvstore.js'
 
-async function redis(command) {
-  if (!REDIS_URL || !REDIS_TOKEN) {
-    throw new Error('Redis env vars (UPSTASH_REDIS_REST_URL / _TOKEN) missing')
-  }
-  const res = await fetch(REDIS_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(command),
-  })
-  const data = await res.json()
-  if (data.error) throw new Error('Redis error: ' + data.error)
-  return data.result
-}
-
-async function getItems() {
-  const raw = await redis(['GET', KEY])
-  if (!raw) return []
-  try { return JSON.parse(raw) } catch { return [] }
-}
-
-async function setItems(items) {
-  await redis(['SET', KEY, JSON.stringify(items)])
-}
+const KEY     = 'transportfukuoka:contracts'
+const VER_KEY = 'transportfukuoka:contracts:ver'
 
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      const items = await getItems()
+      const items = await readItems(KEY)
       return res.json({ items })
     }
 
     if (req.method === 'POST') {
-      const items = await getItems()
-      const newItem = { ...req.body, createdAt: new Date().toISOString() }
-      await setItems([newItem, ...items])
-      return res.json({ ok: true })
+      const body = req.body || {}
+      // 楽観ロック付きで「読む→加工→書き戻す」を原子的に実行（同時POSTでの取りこぼし防止）。
+      const result = await mutate(KEY, VER_KEY, (items) => {
+        // 重複登録の防止：同一 id が既にあれば再登録しない（拡張の再送・二重送信対策）。
+        if (body.id && items.some(i => i.id === body.id)) {
+          return { skipWrite: true, result: { ok: true, duplicate: true } }
+        }
+        const newItem = { ...body, createdAt: new Date().toISOString() }
+        return { items: [newItem, ...items], result: { ok: true, duplicate: false } }
+      })
+      return res.json(result)
     }
 
     if (req.method === 'PUT') {
-      const items = await getItems()
       const b = req.body || {}
-      let updated
-      if (b.id) {
-        updated = items.map(i => i.id === b.id ? { ...i, ...b, updatedAt: new Date().toISOString() } : i)
-      } else if (b.leadKey) {
-        // リード側からの同期（金額変更等）。leadKeyで紐づく成約をマージ更新する。
-        updated = items.map(i => (i.leadKey && i.leadKey === b.leadKey) ? { ...i, ...b, updatedAt: new Date().toISOString() } : i)
-      } else {
+      if (!b.id && !b.leadKey) {
         return res.status(400).json({ error: 'id or leadKey required' })
       }
-      await setItems(updated)
+      await mutate(KEY, VER_KEY, (items) => {
+        let updated
+        if (b.id) {
+          updated = items.map(i => i.id === b.id ? { ...i, ...b, updatedAt: new Date().toISOString() } : i)
+        } else {
+          // リード側からの同期（金額変更等）。leadKeyで紐づく成約をマージ更新する。
+          updated = items.map(i => (i.leadKey && i.leadKey === b.leadKey) ? { ...i, ...b, updatedAt: new Date().toISOString() } : i)
+        }
+        return { items: updated, result: { ok: true } }
+      })
       return res.json({ ok: true })
     }
 
     if (req.method === 'DELETE') {
-      const items = await getItems()
-      await setItems(items.filter(i => i.id !== req.body.id))
+      const id = req.body && req.body.id
+      await mutate(KEY, VER_KEY, (items) => ({
+        items: items.filter(i => i.id !== id),
+        result: { ok: true },
+      }))
       return res.json({ ok: true })
     }
 

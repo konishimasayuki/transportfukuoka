@@ -1,9 +1,9 @@
 import { placeCall, twilioReady } from './_twilio.js'
 import { sendPushToAll } from './_push.js'
+import { readItems, mutate } from './_kvstore.js'
 
-const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
-const KEY = 'transportfukuoka:leads'
+const KEY     = 'transportfukuoka:leads'
+const VER_KEY = 'transportfukuoka:leads:ver'
 
 // 新規リード検知時の自動架電（既定OFF。TWILIO_AUTOCALL=on で有効）
 // 安全策：営業時間（JST 9:00〜20:00）内のみ・失敗しても保存は止めない
@@ -15,38 +15,8 @@ async function maybeAutoCall(lead) {
   try { await placeCall(lead.phone) } catch (e) { console.error('autocall failed:', e.message) }
 }
 
-async function redis(command) {
-  if (!REDIS_URL || !REDIS_TOKEN) {
-    throw new Error('Redis env vars (UPSTASH_REDIS_REST_URL / _TOKEN) missing')
-  }
-  // Upstash REST: コマンドをJSON配列でPOST（値をボディで送るのでURLエンコード不要・日本語/長文も安全）
-  const res = await fetch(REDIS_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(command),
-  })
-  const data = await res.json()
-  if (data.error) throw new Error('Redis error: ' + data.error)
-  return data.result
-}
-
-async function getItems() {
-  const raw = await redis(['GET', KEY])
-  if (!raw) return []
-  try { return JSON.parse(raw) } catch { return [] }
-}
-
 // お知らせメッセージ（/api/broadcast で保存）。?recent 応答に混ぜて子拡張へ届ける。
 const BROADCAST_KEY = 'transportfukuoka:broadcasts'
-async function getBroadcasts() {
-  const raw = await redis(['GET', BROADCAST_KEY])
-  if (!raw) return []
-  try { return JSON.parse(raw) } catch { return [] }
-}
-
-async function setItems(items) {
-  await redis(['SET', KEY, JSON.stringify(items)])
-}
 
 // 重複判定（統合）キー。信頼できる識別子が無ければ null を返し、その場合は統合せず別リード扱いにする。
 // 優先順位：明示key > 電話番号 > サイト+氏名+受付日時。
@@ -73,14 +43,14 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const items = await getItems()
+      const items = await readItems(KEY)
       // 軽量モード：?recent=N で直近N件（savedAt降順）＋総数だけ返す（新着通知ポーリング用）
       // お知らせメッセージ（broadcast）も擬似リードとして混ぜ、子拡張(無改修)に通知させる。
       const recent = parseInt((req.query && req.query.recent) || '', 10)
       if (recent > 0) {
         let bcItems = []
         try {
-          const bc = await getBroadcasts()
+          const bc = await readItems(BROADCAST_KEY)
           // 子拡張の表示形式に合わせる：title→site（見出し）、body→name（本文）。
           bcItems = bc.map(b => ({
             key: 'bc_' + b.id,
@@ -107,48 +77,59 @@ export default async function handler(req, res) {
       if (!body.phone && !body.name && !body.key) {
         return res.status(400).json({ error: 'lead data required' })
       }
-      const items = await getItems()
       const key = leadKey(body)
 
-      // 既に取り込み済み：空でない新フィールドだけマージ（詳細ページ取得で情報を充実させる）
-      // key が null（信頼できる識別子なし）の場合は統合対象を探さない＝必ず新規リードとして追加する。
-      const idx = key ? items.findIndex(i => leadKey(i) === key) : -1
-      if (idx !== -1) {
-        const next = { ...items[idx] }
-        let changed = false
-        for (const [k, v] of Object.entries(body)) {
-          if (k === 'key' || k === 'id' || k === 'savedAt') continue
-          const empty = v == null || v === '' || (Array.isArray(v) && v.length === 0)
-          if (!empty && JSON.stringify(next[k]) !== JSON.stringify(v)) { next[k] = v; changed = true }
-        }
-        if (changed) {
+      // 楽観ロック付きで「読む→統合/追加→書き戻す」を原子的に実行。
+      // 同時POSTでの取りこぼし（lost update）を防ぐ。副作用（架電・プッシュ）は
+      // 書き込み確定後に一度だけ実行するため、mutator の外へ出す。
+      const result = await mutate(KEY, VER_KEY, (items) => {
+        // 既に取り込み済み：空でない新フィールドだけマージ（詳細ページ取得で情報を充実させる）
+        // key が null（信頼できる識別子なし）の場合は統合対象を探さない＝必ず新規リードとして追加する。
+        const idx = key ? items.findIndex(i => leadKey(i) === key) : -1
+        if (idx !== -1) {
+          const next = { ...items[idx] }
+          let changed = false
+          for (const [k, v] of Object.entries(body)) {
+            if (k === 'key' || k === 'id' || k === 'savedAt') continue
+            const empty = v == null || v === '' || (Array.isArray(v) && v.length === 0)
+            if (!empty && JSON.stringify(next[k]) !== JSON.stringify(v)) { next[k] = v; changed = true }
+          }
+          if (!changed) {
+            return { skipWrite: true, result: { ok: true, duplicate: true, merged: false } }
+          }
           next.updatedAt = new Date().toISOString()
-          items[idx] = next
-          await setItems(items)
+          const copy = items.slice()
+          copy[idx] = next
+          return { items: copy, result: { ok: true, duplicate: true, merged: true } }
         }
-        return res.json({ ok: true, duplicate: true, merged: changed })
-      }
 
-      // key が null のときは一意キーを発行し、以後この行が他リードへ統合されないようにする。
-      const newItem = {
-        ...body,
-        key: key || `u:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        id: body.id || Date.now().toString(),
-        savedAt: new Date().toISOString(),
+        // key が null のときは一意キーを発行し、以後この行が他リードへ統合されないようにする。
+        const newItem = {
+          ...body,
+          key: key || `u:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          id: body.id || Date.now().toString(),
+          savedAt: new Date().toISOString(),
+        }
+        return { items: [newItem, ...items], result: { ok: true, duplicate: false, newItem } }
+      })
+
+      // 書き込み確定後にのみ副作用を実行（再試行で重複発火しない）。
+      if (result && result.duplicate === false && result.newItem) {
+        const newItem = result.newItem
+        await maybeAutoCall(newItem)
+        // 新着プッシュ通知（拡張なしのブラウザにも即時通知。失敗しても保存は止めない）
+        try {
+          const route = [newItem.from, newItem.to].filter(Boolean).join(' → ')
+          await sendPushToAll({
+            title: `🆕 新規リード（${newItem.site || ''}）`,
+            body: `${(newItem.name || '名前なし')}　${newItem.phone || ''}`.trim() + (route ? `\n${route}` : ''),
+            tag: newItem.key,
+            url: '/',
+          })
+        } catch (e) { console.error('push failed:', e.message) }
+        return res.json({ ok: true, duplicate: false })
       }
-      await setItems([newItem, ...items])
-      await maybeAutoCall(newItem)
-      // 新着プッシュ通知（拡張なしのブラウザにも即時通知。失敗しても保存は止めない）
-      try {
-        const route = [newItem.from, newItem.to].filter(Boolean).join(' → ')
-        await sendPushToAll({
-          title: `🆕 新規リード（${newItem.site || ''}）`,
-          body: `${(newItem.name || '名前なし')}　${newItem.phone || ''}`.trim() + (route ? `\n${route}` : ''),
-          tag: newItem.key,
-          url: '/',
-        })
-      } catch (e) { console.error('push failed:', e.message) }
-      return res.json({ ok: true, duplicate: false })
+      return res.json({ ok: true, duplicate: true, merged: !!(result && result.merged) })
     }
 
     if (req.method === 'PUT') {
@@ -156,7 +137,6 @@ export default async function handler(req, res) {
       if (!body.key && !body.phone && !body.id) {
         return res.status(400).json({ error: 'key / phone / id required' })
       }
-      const items = await getItems()
       // 対象の特定は「最も確実な識別子」を1つだけ使う。
       // 以前は key/phone/id のいずれかに一致で更新していたため、同じ電話番号を持つ
       // 別リードまで一括で書き換わり、メモ・ステータスが他リードへ波及していた。
@@ -164,29 +144,32 @@ export default async function handler(req, res) {
       const matchFn = body.key ? (i => i.key === body.key)
         : body.id ? (i => i.id === body.id)
         : (i => body.phone && i.phone === body.phone)
-      const updated = items.map(i => matchFn(i) ? { ...i, ...body, updatedAt: new Date().toISOString() } : i)
-      await setItems(updated)
+      await mutate(KEY, VER_KEY, (items) => ({
+        items: items.map(i => matchFn(i) ? { ...i, ...body, updatedAt: new Date().toISOString() } : i),
+        result: { ok: true },
+      }))
       return res.json({ ok: true })
     }
 
     if (req.method === 'DELETE') {
       const body = req.body || {}
-      const items = await getItems()
-      let filtered
-      if (body.all === true) {
-        filtered = []
-      } else if (body.key || body.id || body.phone) {
-        // 削除も「最も確実な識別子」を1つだけ使う（同一電話の別リードまで巻き込まないため）。
-        const matchFn = body.key ? (i => i.key === body.key)
-          : body.id ? (i => i.id === body.id)
-          : (i => body.phone && i.phone === body.phone)
-        filtered = items.filter(i => !matchFn(i))
-      } else {
+      if (body.all !== true && !body.key && !body.id && !body.phone) {
         return res.status(400).json({ error: 'phone / key / id or all:true required' })
       }
-      const removed = items.length - filtered.length
-      await setItems(filtered)
-      return res.json({ ok: true, removed })
+      const out = await mutate(KEY, VER_KEY, (items) => {
+        let filtered
+        if (body.all === true) {
+          filtered = []
+        } else {
+          // 削除も「最も確実な識別子」を1つだけ使う（同一電話の別リードまで巻き込まないため）。
+          const matchFn = body.key ? (i => i.key === body.key)
+            : body.id ? (i => i.id === body.id)
+            : (i => body.phone && i.phone === body.phone)
+          filtered = items.filter(i => !matchFn(i))
+        }
+        return { items: filtered, result: { removed: items.length - filtered.length } }
+      })
+      return res.json({ ok: true, removed: out.removed })
     }
 
     res.status(405).json({ error: 'Method not allowed' })
