@@ -135,6 +135,16 @@ async function restoreCountBadge() {
   chrome.action.setBadgeBackgroundColor({ color: '#1E5FA8' })
 }
 
+// 送信結果の判定。呼び出し元は ok:true の時だけ「取り込み済み(seen)」に記録するため、
+// ここでの判定を誤るとリードが失われる。
+// ※以前は res.ok を見ずに常に成功扱いにしていたため、サーバーが 500 を返すと
+//   そのリードが seen に記録され二度と再送されず、永久に失われていた。
+// 5xx・408・429・通信エラー … 一時的な障害。ok:false を返して次の巡回で再送する。
+// それ以外の 4xx        … データ不備等で再送しても通らない。打ち切る（無限再送を防ぐ）。
+function isRetryableStatus(status) {
+  return status >= 500 || status === 408 || status === 429
+}
+
 async function handleLead(lead, notify = true) {
   try {
     const res = await fetch(API_URL, {
@@ -142,6 +152,14 @@ async function handleLead(lead, notify = true) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(lead),
     })
+    if (!res.ok) {
+      if (isRetryableStatus(res.status)) {
+        console.warn('[リード監視] 送信失敗（次回の巡回で再送します）', res.status, lead.key || lead.phone || lead.name)
+        return { ok: false, status: res.status }
+      }
+      console.warn('[リード監視] サーバーが受け付けませんでした（再送しません）', res.status, lead.key || lead.phone || lead.name)
+      return { ok: true, duplicate: true, rejected: true, status: res.status }
+    }
     const data = await res.json().catch(() => ({}))
     if (data && data.duplicate === false) {
       await bumpCount()
@@ -149,7 +167,7 @@ async function handleLead(lead, notify = true) {
     }
     return { ok: true, duplicate: !!(data && data.duplicate) }
   } catch (e) {
-    console.error('[リード監視] 送信失敗', e)
+    console.error('[リード監視] 送信失敗（次回の巡回で再送します）', e)
     return { ok: false, error: String(e) }
   }
 }
@@ -316,7 +334,17 @@ function kakakuLoop(gen, today) {
       chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead }, r => { done = true; if (chrome.runtime.lastError) res(null); else res(r) })
     } catch { res(null) }
     setTimeout(() => { if (!done) res(null) }, 4000)
-  }).then(r => r || fetch(INBOUND, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) }).then(() => ({ ok: true })).catch(() => ({ ok: false })))
+  }).then(r => r || fetch(INBOUND, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) })
+    // 呼び出し元は ok:true の時だけ seen（取り込み済み）に記録する。
+    // 以前は res.ok を見ずに常に成功扱いだったため、500が返るとそのリードは
+    // seen に入って二度と再送されず、永久に失われていた。
+    // 5xx/408/429 は一時障害とみなし ok:false（次の巡回で再送）。他の4xxは打ち切る。
+    .then(resp => {
+      if (resp.ok) return { ok: true }
+      if (resp.status >= 500 || resp.status === 408 || resp.status === 429) return { ok: false, status: resp.status }
+      return { ok: true, rejected: true, status: resp.status }
+    })
+    .catch(() => ({ ok: false })))
 
   // 依頼日 "2026/07/01 19:37:05" の先頭10文字が今日か。
   // 「今日」は毎回その場で算出する（注入時に凍結した today を使うと、0時をまたいだ瞬間に
@@ -559,7 +587,17 @@ function samuraiLoop(gen, todayMD) {
       chrome.runtime.sendMessage({ type: 'NEW_LEAD', lead }, r => { done = true; if (chrome.runtime.lastError) res(null); else res(r) })
     } catch { res(null) }
     setTimeout(() => { if (!done) res(null) }, 4000)
-  }).then(r => r || fetch(INBOUND, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) }).then(() => ({ ok: true })).catch(() => ({ ok: false })))
+  }).then(r => r || fetch(INBOUND, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) })
+    // 呼び出し元は ok:true の時だけ seen（取り込み済み）に記録する。
+    // 以前は res.ok を見ずに常に成功扱いだったため、500が返るとそのリードは
+    // seen に入って二度と再送されず、永久に失われていた。
+    // 5xx/408/429 は一時障害とみなし ok:false（次の巡回で再送）。他の4xxは打ち切る。
+    .then(resp => {
+      if (resp.ok) return { ok: true }
+      if (resp.status >= 500 || resp.status === 408 || resp.status === 429) return { ok: false, status: resp.status }
+      return { ok: true, rejected: true, status: resp.status }
+    })
+    .catch(() => ({ ok: false })))
 
   async function fetchDoc(url, mode) {
     // 一覧は no-cache（条件付きGET：変化なしは304で軽量／古い内容は出さない）。詳細は no-store。

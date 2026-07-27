@@ -78,14 +78,29 @@ function persistSeen() {
 }
 
 // 拡張コンテキストが無効化されても送れるよう、APIへ直接POST（CORSは * 許可済み）
+// 呼び出し元は ok:true の時だけ seen（取り込み済み）に記録するため、判定を誤るとリードが失われる。
+// ※以前は res.ok を見ずに常に成功扱いだったため、サーバーが500を返すとそのリードは
+//   seen に入って二度と再送されず、永久に失われていた。
+// 5xx・408・429・通信エラー … 一時障害とみなし ok:false（次の巡回で再送する）。
+// それ以外の 4xx          … 再送しても通らないので打ち切る（無限再送を防ぐ）。
 function directSend(lead) {
   return fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(lead),
   })
-    .then(r => r.json())
-    .then(d => ({ ok: true, duplicate: !!(d && d.duplicate) }))
+    .then(async r => {
+      if (!r.ok) {
+        if (r.status >= 500 || r.status === 408 || r.status === 429) {
+          console.warn(`[リード監視:${SITE}] 送信失敗（次回の巡回で再送します）`, r.status, lead.key || lead.phone)
+          return { ok: false, status: r.status }
+        }
+        console.warn(`[リード監視:${SITE}] サーバーが受け付けませんでした（再送しません）`, r.status, lead.key || lead.phone)
+        return { ok: true, duplicate: true, rejected: true, status: r.status }
+      }
+      const d = await r.json().catch(() => ({}))
+      return { ok: true, duplicate: !!(d && d.duplicate) }
+    })
     .catch(e => ({ ok: false, error: String(e) }))
 }
 
