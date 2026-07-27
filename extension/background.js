@@ -224,7 +224,12 @@ function kakakuLoop(gen, today) {
   window.__tfKakakuGen = gen
   window.__tfKakakuSeen = window.__tfKakakuSeen || [] // ページ存続中の取込済みorderid（リロードで自然リセット→当日分は再送・サーバ重複除外）
   const seen = new Set(window.__tfKakakuSeen)
-  const persist = () => { window.__tfKakakuSeen = Array.from(seen).slice(-5000) }
+  // 送信に失敗したidを保持する。日付が変わっても「非当日」として取込済み扱いにせず、
+  // 復旧後に再送できるようにする。※これが無いと、深夜0時をまたいだ瞬間に
+  //   未送信のリードが「当日でない」と判定されて取込済みに入り、永久に失われる。
+  window.__tfKakakuFailed = window.__tfKakakuFailed || []
+  const failed = new Set(window.__tfKakakuFailed)
+  const persist = () => { window.__tfKakakuSeen = Array.from(seen).slice(-5000); window.__tfKakakuFailed = Array.from(failed).slice(-500) }
   const PER = 8, GAP = 300, FAST_MS = 12000, SLOW_MS = 120000
   // 巡回間隔：ほぼ終日(7-24時)は12秒＋0〜4秒ジッター（最速12秒・最遅16秒）、深夜(0-7時)は120秒に減速（負荷・BAN配慮）
   const nextDelay = () => { const h = new Date().getHours(); const base = (h >= 7 && h < 24) ? FAST_MS : SLOW_MS; return base + Math.floor(Math.random() * 4000) }
@@ -402,8 +407,8 @@ function kakakuLoop(gen, today) {
         }
         let changed = false
         // 当日以外の既存行は「既知」登録のみ（過去ぶんの一括送信を防ぐ）
-        parsed.forEach(r => { if (!isToday(r.requestedAt) && !seen.has(r.id)) { seen.add(r.id); changed = true } })
-        const fresh = parsed.filter(r => isToday(r.requestedAt) && !seen.has(r.id))
+        parsed.forEach(r => { if (!isToday(r.requestedAt) && !seen.has(r.id) && !failed.has(r.id)) { seen.add(r.id); changed = true } })
+        const fresh = parsed.filter(r => (isToday(r.requestedAt) || failed.has(r.id)) && !seen.has(r.id))
         let cnt = 0
         for (const base of fresh.slice(0, PER)) {
           if (window.__tfKakakuGen !== gen) return
@@ -445,7 +450,9 @@ function kakakuLoop(gen, today) {
               detectedAt: new Date().toISOString(),
             }
             const r = await send(lead)
-            if (r && r.ok) { seen.add(base.id); changed = true; cnt++ }
+            // 成功したら取込済みへ。失敗（5xx/通信断）は failed に残し、次の巡回で再送する。
+            if (r && r.ok) { seen.add(base.id); failed.delete(base.id); changed = true; cnt++ }
+            else { failed.add(base.id); changed = true }
           } catch (e) { /* skip */ }
           await new Promise(res => setTimeout(res, GAP))
         }
@@ -472,7 +479,12 @@ function samuraiLoop(gen, todayMD) {
   window.__tfSamuraiGen = gen
   window.__tfSamuraiSeen = window.__tfSamuraiSeen || [] // ページ存続中の取込済みid（リロードで自然リセット→当日分は再送・サーバ重複除外）
   const seen = new Set(window.__tfSamuraiSeen)
-  const persist = () => { window.__tfSamuraiSeen = Array.from(seen).slice(-5000) }
+  // 送信に失敗したidを保持する。日付が変わっても「非当日」として取込済み扱いにせず、
+  // 復旧後に再送できるようにする。※これが無いと、深夜0時をまたいだ瞬間に
+  //   未送信のリードが「当日でない」と判定されて取込済みに入り、永久に失われる。
+  window.__tfSamuraiFailed = window.__tfSamuraiFailed || []
+  const failed = new Set(window.__tfSamuraiFailed)
+  const persist = () => { window.__tfSamuraiSeen = Array.from(seen).slice(-5000); window.__tfSamuraiFailed = Array.from(failed).slice(-500) }
   // 巡回間隔：当日フィルターPOSTで軽く取れる時は日中約15秒。空/失敗で重い全件GETを使った回だけ、
   // 次回を45秒以上に空ける（tick末尾でheavy判定・最悪でも50秒以内）。深夜は120秒。
   const PER = 8, GAP = 300, FAST_MS = 15000, SLOW_MS = 120000
@@ -694,8 +706,8 @@ function samuraiLoop(gen, todayMD) {
         const dd = new Set(); const rows = []
         for (const a of links) { const m = (a.getAttribute('href') || '').match(/id\/(\d+)/); if (m && !dd.has(m[1])) { dd.add(m[1]); rows.push(baseOf(m[1], a.closest('tr'))) } }
         let changed = false
-        rows.forEach(r => { if (!isToday(r.receivedAt) && !seen.has(r.id)) { seen.add(r.id); changed = true } })
-        const fresh = rows.filter(r => isToday(r.receivedAt) && !seen.has(r.id))
+        rows.forEach(r => { if (!isToday(r.receivedAt) && !seen.has(r.id) && !failed.has(r.id)) { seen.add(r.id); changed = true } })
+        const fresh = rows.filter(r => (isToday(r.receivedAt) || failed.has(r.id)) && !seen.has(r.id))
         let cnt = 0
         for (const base of fresh.slice(0, PER)) {
           if (window.__tfSamuraiGen !== gen) return
@@ -710,7 +722,9 @@ function samuraiLoop(gen, todayMD) {
             const k = parseKazaiFull(doc)
             const lead = { site: '引越し侍', key: phone || ('引越し侍:' + base.id), phone, name, kana: get('フリガナ'), email, count: get('引越し人数') || base.type, from: addrOf(doc, '現住所') || base.fromPref, to: addrOf(doc, '引越し先') || base.toPref, receivedAt: base.receivedAt, moveDate: get('引越し希望日') || base.moveDate, preferredTime: get('引越し希望時間'), referenceFee: get('表示料金相場'), request: get('備考・その他要望'), orderId: String(base.id), kazai: k.kazai, boxCount: k.boxCount, detail: true, timing: { list: listMs, detail: detailMs }, detectedAt: new Date().toISOString() }
             const r = await send(lead)
-            if (r && r.ok) { seen.add(base.id); changed = true; cnt++ }
+            // 成功したら取込済みへ。失敗（5xx/通信断）は failed に残し、次の巡回で再送する。
+            if (r && r.ok) { seen.add(base.id); failed.delete(base.id); changed = true; cnt++ }
+            else { failed.add(base.id); changed = true }
           } catch (e) { /* skip */ }
           await new Promise(res => setTimeout(res, GAP))
         }
