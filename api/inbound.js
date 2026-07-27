@@ -18,6 +18,18 @@ async function maybeAutoCall(lead) {
 // お知らせメッセージ（/api/broadcast で保存）。?recent 応答に混ぜて子拡張へ届ける。
 const BROADCAST_KEY = 'transportfukuoka:broadcasts'
 
+// 担当者がCRM上で入力・管理する項目（＝巡回では絶対に上書きしてはならない）。
+// 巡回(取得)POSTのマージ時、これらのキーは新値が来ても既存値を保持する。
+// 目的：侍などの再巡回で担当者のメモ・ステータス等が黙って上書きされる事故を防ぐ。
+// ※これらは通常フロント側の PUT（api/inbound PUT）でのみ更新される。
+const CRM_OWNED_FIELDS = new Set([
+  'memo', 'memoUpdatedAt', // 対応・メモ
+  'status',                // ステータス
+  'staff',                 // 担当者
+  'timetree',              // タイムツリー登録チェック
+  'amount', 'contracted',  // 金額・成約フラグ
+])
+
 // 重複判定（統合）キー。信頼できる識別子が無ければ null を返し、その場合は統合せず別リード扱いにする。
 // 優先順位：明示key > 電話番号 > サイト+氏名+受付日時。
 // ※ 以前は「サイト+氏名」だけを最終フォールバックにしていたため、
@@ -91,6 +103,8 @@ export default async function handler(req, res) {
           let changed = false
           for (const [k, v] of Object.entries(body)) {
             if (k === 'key' || k === 'id' || k === 'savedAt') continue
+            // 担当者所有の項目は巡回では上書きしない（メモ・ステータス等の保護）。
+            if (CRM_OWNED_FIELDS.has(k)) continue
             const empty = v == null || v === '' || (Array.isArray(v) && v.length === 0)
             if (!empty && JSON.stringify(next[k]) !== JSON.stringify(v)) { next[k] = v; changed = true }
           }
