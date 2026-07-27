@@ -48,8 +48,8 @@ function parseLeadMoveDate(raw) {
   return { date: `${y}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`, ap }
 }
 
-const STATUS_LIST  = ['未架電', '架電済', '留守', '要追客', '成約', '見送り']
-const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
+const STATUS_LIST  = ['未架電', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
+const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '見積り': 'bc', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
 
 // CSV入出力の列定義
 const CSV_COLUMNS = [
@@ -125,10 +125,10 @@ export const DEMO_DATA = [
   // 追加のデモリード（すべて架空・当月中心）
   { id: '4', site: '引越し侍', name: 'サンプル 二郎', kana: 'サンプル ジロウ', phone: '090-0000-0004', email: 'sample04@example.com', from: '福岡県福岡市東区', to: '福岡県糟屋郡新宮町', count: '2人', receivedAt: '07/02 10:20', moveDate: '07月20日 午前中', status: '架電済' },
   { id: '5', site: '価格.com', name: 'サンプル 三郎', kana: 'サンプル サブロウ', phone: '090-0000-0005', from: '福岡県福岡市南区', to: '福岡県春日市', count: '1人', receivedAt: '07/03 14:05', moveDate: '07月28日 いつでも', status: '未架電' },
-  { id: '6', site: '引越し侍', name: 'サンプル 桜', kana: 'サンプル サクラ', phone: '090-0000-0006', from: '福岡県福岡市早良区', to: '福岡県福岡市博多区', count: '3人', receivedAt: '07/05 09:12', moveDate: '08月03日 午後', status: '未架電' },
+  { id: '6', site: '引越し侍', name: 'サンプル 桜', kana: 'サンプル サクラ', phone: '090-0000-0006', from: '福岡県福岡市早良区', to: '福岡県福岡市博多区', count: '3人', receivedAt: '07/05 09:12', moveDate: '08月03日 午後', status: '見積り' },
   { id: '7', site: 'ズバット', name: 'サンプル 陽子', phone: '090-0000-0007', from: '福岡県大野城市', to: '福岡県福岡市中央区', count: '1人', receivedAt: '07/06 08:40', moveDate: '07月19日 午前中', status: '成約' },
   { id: '8', site: '価格.com', name: 'サンプル 美咲', phone: '090-0000-0008', from: '福岡県福岡市西区', to: '福岡県糸島市', count: '2人', receivedAt: '07/07 16:55', moveDate: '08月10日 いつでも', status: '架電済' },
-  { id: '9', site: '引越し侍', name: 'サンプル 健太', phone: '090-0000-0009', from: '福岡県筑紫野市', to: '福岡県福岡市南区', count: '1人', receivedAt: '07/08 11:30', moveDate: '07月25日 午後', status: '未架電' },
+  { id: '9', site: '引越し侍', name: 'サンプル 健太', phone: '090-0000-0009', from: '福岡県筑紫野市', to: '福岡県福岡市南区', count: '1人', receivedAt: '07/08 11:30', moveDate: '07月25日 午後', status: '見積り' },
   { id: '10', site: 'ズバット', name: 'サンプル 楓', phone: '090-0000-0010', from: '福岡県福岡市城南区', to: '福岡県福岡市早良区', count: '2人', receivedAt: '07/09 13:18', moveDate: '08月01日 いつでも', status: '要追客' },
   { id: '11', site: '引越し侍', name: 'サンプル 蓮', phone: '090-0000-0011', from: '福岡県宗像市', to: '福岡県福岡市東区', count: '4人', receivedAt: '07/10 19:44', moveDate: '08月15日 午前中', status: '未架電' },
 ]
@@ -138,7 +138,10 @@ const modalBox     = { background: '#fff', borderRadius: 14, width: '100%', maxW
 
 const norm = (l) => ({ ...l, status: l.status || '未架電' })
 
-export default function Leads({ user, switchTab, onFollowDelta }) {
+// mode='quotes' のとき「見積り管理」ビューとして動作し、ステータスが「見積り」の
+// リードだけを表示する（他は通常のリード管理）。表示・操作は共通のまま流用する。
+export default function Leads({ user, switchTab, onFollowDelta, mode }) {
+  const isQuotes = mode === 'quotes'
   const isDemo = user?.mode === 'demo'
   const [items, setItems]       = useState(isDemo ? DEMO_DATA.map(norm) : [])
   const [loading, setLoading]   = useState(!isDemo)
@@ -379,7 +382,7 @@ export default function Leads({ user, switchTab, onFollowDelta }) {
   const handleExport = () => {
     const csv = toCSV(items, CSV_COLUMNS)
     const stamp = new Date().toISOString().slice(0, 10)
-    downloadCSV(`リード管理_${stamp}.csv`, csv)
+    downloadCSV(`${isQuotes ? '見積り管理' : 'リード管理'}_${stamp}.csv`, csv)
   }
 
   // CSVインポート（/api/inbound に upsert）
@@ -433,6 +436,7 @@ export default function Leads({ user, switchTab, onFollowDelta }) {
   }
 
   const filtered = items
+    .filter(i => !isQuotes || i.status === '見積り') // 見積り管理：ステータス「見積り」のみ
     .filter(i => {
       if (dateFilter.type === 'day') return leadDateStr(i) === dateFilter.date
       if (dateFilter.type === 'month') return leadDateStr(i).startsWith(dateFilter.month)
@@ -458,6 +462,8 @@ export default function Leads({ user, switchTab, onFollowDelta }) {
     })
 
   const countBy = (s) => items.filter(i => i.status === s).length
+  // 見積り管理タブの集計母数（画面に出している対象と一致させる）
+  const quoteItems = items.filter(i => i.status === '見積り')
 
   // ページング：直近50件ずつ表示（受付日時の新しい順）。以降は「次へ」で移動。
   const PAGE_SIZE = 50
@@ -469,12 +475,13 @@ export default function Leads({ user, switchTab, onFollowDelta }) {
 
   return (
     <div>
-      <div className="page-hdr"><h1>リード管理</h1><p>一括査定サイトから取得した新規リードを管理します</p></div>
+      <div className="page-hdr"><h1>{isQuotes ? '見積り管理' : 'リード管理'}</h1><p>{isQuotes ? 'ステータスが「見積り」のお客様の一覧です' : '一括査定サイトから取得した新規リードを管理します'}</p></div>
 
       <div className="kpi-row kpi-3">
-        <div className="kpi-card c-blue"><div className="kpi-label">総リード数</div><div className="kpi-val">{items.length}<span>件</span></div></div>
-        <div className="kpi-card c-teal"><div className="kpi-label">本日</div><div className="kpi-val">{items.filter(isToday).length}<span>件</span></div></div>
-        <div className="kpi-card c-orange"><div className="kpi-label">未架電</div><div className="kpi-val">{countBy('未架電')}<span>件</span></div></div>
+        {/* 見積り管理では、そのタブで見えている母数に合わせた集計を出す（総リード数のままだと実数と食い違う） */}
+        <div className="kpi-card c-blue"><div className="kpi-label">{isQuotes ? '見積り件数' : '総リード数'}</div><div className="kpi-val">{isQuotes ? quoteItems.length : items.length}<span>件</span></div></div>
+        <div className="kpi-card c-teal"><div className="kpi-label">本日</div><div className="kpi-val">{(isQuotes ? quoteItems : items).filter(isToday).length}<span>件</span></div></div>
+        <div className="kpi-card c-orange"><div className="kpi-label">{isQuotes ? '担当者未割当' : '未架電'}</div><div className="kpi-val">{isQuotes ? quoteItems.filter(i => !i.staff).length : countBy('未架電')}<span>件</span></div></div>
       </div>
 
       <div className="filter-row">

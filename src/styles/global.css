@@ -174,6 +174,7 @@ tr:hover td { background: var(--bg); }
 .br { background: #FEF2F2; color: #B91C1C; }
 .bp { background: #F5F3FF; color: #6D28D9; }
 .by { background: #FFFBEB; color: #92400E; }
+.bc { background: #ECFEFF; color: #0E7490; }
 .bk { background: #F8FAFC; color: #475569; border: 1px solid var(--border); }
 
 .btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; font-family: inherit; transition: all .15s; }

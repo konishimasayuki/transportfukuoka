@@ -24,6 +24,7 @@ const TABS = {
   aircon: Contracts,     // エアコン依頼
   cardboard: Contracts,  // 段ボール配達
   leads: Leads,
+  quotes: Leads,       // 見積り管理（リード管理の絞り込みビュー：ステータス=見積り）
   call: Call,
   estimate: Estimate,
   schedule: Schedule,
@@ -127,7 +128,7 @@ export default function App() {
       <div className="main">
         <Topbar activeTab={activeTab} onMenuClick={() => setSidebarOpen(true)} onRefresh={refresh} loading={loading} user={user} />
         <div className="content">
-          <ActiveTab user={user} switchTab={switchTab} view={safeTab === 'board' ? 'board' : 'month'} mode={['follow', 'aircon', 'cardboard'].includes(safeTab) ? safeTab : undefined} onFollowDelta={bumpFollowCount} />
+          <ActiveTab user={user} switchTab={switchTab} view={safeTab === 'board' ? 'board' : 'month'} mode={['follow', 'aircon', 'cardboard', 'quotes'].includes(safeTab) ? safeTab : undefined} onFollowDelta={bumpFollowCount} />
         </div>
       </div>
       <LeadNotifier user={user} switchTab={switchTab} />

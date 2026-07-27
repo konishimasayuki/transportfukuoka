@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { tab: 'leads',     icon: '📥', label: 'リード管理' },
   { tab: 'contracts', icon: '✅', label: '成約管理' },
   { tab: 'follow',    icon: '🎯', label: '追客' },
+  { tab: 'quotes',    icon: '🧾', label: '見積り管理' },
   { tab: 'aircon',    icon: '❄️', label: 'エアコン依頼' },
   { tab: 'cardboard', icon: '📦', label: '段ボール配達' },
   { tab: 'call',      icon: '📞', label: '架電機能', mark: '未' },
