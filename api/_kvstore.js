@@ -24,11 +24,24 @@ export async function redisCmd(command) {
   return data.result
 }
 
+// 保存済みJSONを配列に戻す。
+// ★重要：壊れたJSONを「空配列」として扱ってはならない。
+//   そのまま read-modify-write を続けると、次の書き込みで全件が1件の配列に
+//   置き換わり、リードが丸ごと消える。壊れている時は書き込ませずエラーにする
+//   （1件の取り込み失敗で済ませ、全件消失を防ぐ）。
+function parseItems(raw, dataKey) {
+  if (raw == null || raw === '') return []
+  let v
+  try { v = JSON.parse(raw) } catch {
+    throw new Error(`stored data is corrupted (invalid JSON): ${dataKey}`)
+  }
+  if (!Array.isArray(v)) throw new Error(`stored data is not an array: ${dataKey}`)
+  return v
+}
+
 // 単純読み込み（バージョン不要な GET エンドポイント用）。
 export async function readItems(dataKey) {
-  const raw = await redisCmd(['GET', dataKey])
-  if (!raw) return []
-  try { return JSON.parse(raw) } catch { return [] }
+  return parseItems(await redisCmd(['GET', dataKey]), dataKey)
 }
 
 // data(JSON配列) と version を 1 往復で取得。
@@ -42,8 +55,8 @@ async function readVersioned(dataKey, verKey) {
   const r = await redisCmd(['EVAL', script, '2', dataKey, verKey])
   const raw = r && r[0]
   const ver = r && r[1]
-  let items = []
-  try { items = raw ? JSON.parse(raw) : [] } catch { items = [] }
+  // 壊れていれば parseItems が例外を投げる（＝書き込ませない）。
+  const items = parseItems(raw, dataKey)
   return { items, version: (ver == null || ver === '' ? '0' : String(ver)) }
 }
 
