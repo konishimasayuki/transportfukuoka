@@ -228,7 +228,14 @@ function kakakuLoop(gen, today) {
   // 復旧後に再送できるようにする。※これが無いと、深夜0時をまたいだ瞬間に
   //   未送信のリードが「当日でない」と判定されて取込済みに入り、永久に失われる。
   window.__tfKakakuFailed = window.__tfKakakuFailed || []
-  const failed = new Set(window.__tfKakakuFailed)
+  // 旧バージョンが残した「idの配列」も読めるよう正規化する（[id, 試行回数] のペアへ）
+  const failed = new Map((window.__tfKakakuFailed || []).map(e => (Array.isArray(e) ? e : [e, 1])))
+  // 送信に失敗したidと試行回数を保持する。日付が変わっても「非当日」として取込済み
+  // 扱いにせず、復旧後に再送できるようにする。※これが無いと、深夜0時をまたいだ瞬間に
+  //   未送信のリードが「当日でない」と判定されて取込済みに入り、永久に失われる。
+  // 上限を設ける理由：恒久的に失敗するリードが残ると、毎巡回で詳細ページを取得し続け
+  //   （取得元サイトへの負荷）、かつ1巡回の送信枠(PER)を占有して新着リードが送れなくなる。
+  const MAX_RETRY = 60 // 約12〜15秒間隔 → 10〜15分ぶん再送して駄目なら諦める
   const persist = () => { window.__tfKakakuSeen = Array.from(seen).slice(-5000); window.__tfKakakuFailed = Array.from(failed).slice(-500) }
   const PER = 8, GAP = 300, FAST_MS = 12000, SLOW_MS = 120000
   // 巡回間隔：ほぼ終日(7-24時)は12秒＋0〜4秒ジッター（最速12秒・最遅16秒）、深夜(0-7時)は120秒に減速（負荷・BAN配慮）
@@ -408,7 +415,9 @@ function kakakuLoop(gen, today) {
         let changed = false
         // 当日以外の既存行は「既知」登録のみ（過去ぶんの一括送信を防ぐ）
         parsed.forEach(r => { if (!isToday(r.requestedAt) && !seen.has(r.id) && !failed.has(r.id)) { seen.add(r.id); changed = true } })
-        const fresh = parsed.filter(r => (isToday(r.requestedAt) || failed.has(r.id)) && !seen.has(r.id))
+        const cand = parsed.filter(r => (isToday(r.requestedAt) || failed.has(r.id)) && !seen.has(r.id))
+        // 新着を優先し、再送待ちは後ろへ。再送が送信枠(PER)を占有して新着が送れなくなるのを防ぐ。
+        const fresh = [...cand.filter(r => !failed.has(r.id)), ...cand.filter(r => failed.has(r.id))]
         let cnt = 0
         for (const base of fresh.slice(0, PER)) {
           if (window.__tfKakakuGen !== gen) return
@@ -452,7 +461,13 @@ function kakakuLoop(gen, today) {
             const r = await send(lead)
             // 成功したら取込済みへ。失敗（5xx/通信断）は failed に残し、次の巡回で再送する。
             if (r && r.ok) { seen.add(base.id); failed.delete(base.id); changed = true; cnt++ }
-            else { failed.add(base.id); changed = true }
+            else {
+              // 上限まで再送し、それでも駄目なら諦めて取込済みにする（無限再送・枠の占有を防ぐ）。
+              const t = (failed.get(base.id) || 0) + 1
+              if (t >= MAX_RETRY) { console.warn('[リード監視] 再送上限に達したため打ち切ります', base.id); seen.add(base.id); failed.delete(base.id) }
+              else failed.set(base.id, t)
+              changed = true
+            }
           } catch (e) { /* skip */ }
           await new Promise(res => setTimeout(res, GAP))
         }
@@ -483,7 +498,14 @@ function samuraiLoop(gen, todayMD) {
   // 復旧後に再送できるようにする。※これが無いと、深夜0時をまたいだ瞬間に
   //   未送信のリードが「当日でない」と判定されて取込済みに入り、永久に失われる。
   window.__tfSamuraiFailed = window.__tfSamuraiFailed || []
-  const failed = new Set(window.__tfSamuraiFailed)
+  // 旧バージョンが残した「idの配列」も読めるよう正規化する（[id, 試行回数] のペアへ）
+  const failed = new Map((window.__tfSamuraiFailed || []).map(e => (Array.isArray(e) ? e : [e, 1])))
+  // 送信に失敗したidと試行回数を保持する。日付が変わっても「非当日」として取込済み
+  // 扱いにせず、復旧後に再送できるようにする。※これが無いと、深夜0時をまたいだ瞬間に
+  //   未送信のリードが「当日でない」と判定されて取込済みに入り、永久に失われる。
+  // 上限を設ける理由：恒久的に失敗するリードが残ると、毎巡回で詳細ページを取得し続け
+  //   （取得元サイトへの負荷）、かつ1巡回の送信枠(PER)を占有して新着リードが送れなくなる。
+  const MAX_RETRY = 60 // 約12〜15秒間隔 → 10〜15分ぶん再送して駄目なら諦める
   const persist = () => { window.__tfSamuraiSeen = Array.from(seen).slice(-5000); window.__tfSamuraiFailed = Array.from(failed).slice(-500) }
   // 巡回間隔：当日フィルターPOSTで軽く取れる時は日中約15秒。空/失敗で重い全件GETを使った回だけ、
   // 次回を45秒以上に空ける（tick末尾でheavy判定・最悪でも50秒以内）。深夜は120秒。
@@ -707,7 +729,9 @@ function samuraiLoop(gen, todayMD) {
         for (const a of links) { const m = (a.getAttribute('href') || '').match(/id\/(\d+)/); if (m && !dd.has(m[1])) { dd.add(m[1]); rows.push(baseOf(m[1], a.closest('tr'))) } }
         let changed = false
         rows.forEach(r => { if (!isToday(r.receivedAt) && !seen.has(r.id) && !failed.has(r.id)) { seen.add(r.id); changed = true } })
-        const fresh = rows.filter(r => (isToday(r.receivedAt) || failed.has(r.id)) && !seen.has(r.id))
+        const cand = rows.filter(r => (isToday(r.receivedAt) || failed.has(r.id)) && !seen.has(r.id))
+        // 新着を優先し、再送待ちは後ろへ。再送が送信枠(PER)を占有して新着が送れなくなるのを防ぐ。
+        const fresh = [...cand.filter(r => !failed.has(r.id)), ...cand.filter(r => failed.has(r.id))]
         let cnt = 0
         for (const base of fresh.slice(0, PER)) {
           if (window.__tfSamuraiGen !== gen) return
@@ -724,7 +748,13 @@ function samuraiLoop(gen, todayMD) {
             const r = await send(lead)
             // 成功したら取込済みへ。失敗（5xx/通信断）は failed に残し、次の巡回で再送する。
             if (r && r.ok) { seen.add(base.id); failed.delete(base.id); changed = true; cnt++ }
-            else { failed.add(base.id); changed = true }
+            else {
+              // 上限まで再送し、それでも駄目なら諦めて取込済みにする（無限再送・枠の占有を防ぐ）。
+              const t = (failed.get(base.id) || 0) + 1
+              if (t >= MAX_RETRY) { console.warn('[リード監視] 再送上限に達したため打ち切ります', base.id); seen.add(base.id); failed.delete(base.id) }
+              else failed.set(base.id, t)
+              changed = true
+            }
           } catch (e) { /* skip */ }
           await new Promise(res => setTimeout(res, GAP))
         }
