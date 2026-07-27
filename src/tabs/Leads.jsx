@@ -228,10 +228,12 @@ export default function Leads({ user, switchTab, onFollowDelta }) {
       return
     }
     try {
-      await fetch('/api/inbound', {
+      const res = await fetch('/api/inbound', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, status }),
       })
+      // 対象が特定できなかった場合は通知して再同期（保存が黙って消えるのを防ぐ）
+      if (!res.ok) { showToast('ステータスを保存できませんでした。画面を最新に戻します'); await fetchItems() }
     } catch (e) { console.error(e) }
   }
 
@@ -290,10 +292,14 @@ export default function Leads({ user, switchTab, onFollowDelta }) {
       return
     }
     try {
-      await fetch('/api/inbound', {
+      const res = await fetch('/api/inbound', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, ...patch }),
       })
+      // 保存先のリードが特定できなかった場合（404）は、画面だけ更新された状態を残さない。
+      // 楽観更新のまま放置すると「保存したのに再読込で消える」ように見えるため、
+      // 通知したうえでサーバの内容に再同期する。
+      if (!res.ok) { showToast('保存できませんでした。画面を最新に戻します'); await fetchItems(); return }
       // 金額を編集したら、紐づく成約（leadKey一致）にも反映（成約管理・売上管理に波及）
       if (patch.amount !== undefined) {
         await fetch('/api/contracts', {

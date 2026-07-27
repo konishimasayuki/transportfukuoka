@@ -32,14 +32,19 @@ export async function readItems(dataKey) {
 }
 
 // data(JSON配列) と version を 1 往復で取得。
+// ★重要：Lua テーブルを RESP へ変換する際、Redis は「最初の nil で配列を打ち切る」。
+//   そのため素の redis.call('GET', ...) をそのまま返すと、データキーが未作成・消失した
+//   場合に後続の version まで欠落し、version を 0 と誤読 → CAS が永久に失敗して
+//   全ての書き込みが 500 になる（＝リード取り込みが停止する）。
+//   nil を返さないよう Lua 側で必ず既定値に落とす。
 async function readVersioned(dataKey, verKey) {
-  const script = "return { redis.call('GET', KEYS[1]), redis.call('GET', KEYS[2]) }"
+  const script = "return { redis.call('GET', KEYS[1]) or '', redis.call('GET', KEYS[2]) or '0' }"
   const r = await redisCmd(['EVAL', script, '2', dataKey, verKey])
   const raw = r && r[0]
   const ver = r && r[1]
   let items = []
   try { items = raw ? JSON.parse(raw) : [] } catch { items = [] }
-  return { items, version: (ver == null ? '0' : String(ver)) }
+  return { items, version: (ver == null || ver === '' ? '0' : String(ver)) }
 }
 
 // version が期待値と一致する時だけ data と version を更新（原子的CAS）。成功=true。
