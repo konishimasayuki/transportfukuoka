@@ -48,9 +48,20 @@ async function setItems(items) {
   await redis(['SET', KEY, JSON.stringify(items)])
 }
 
-// 重複判定キー：明示key > 電話番号 > サイト+氏名
+// 重複判定（統合）キー。信頼できる識別子が無ければ null を返し、その場合は統合せず別リード扱いにする。
+// 優先順位：明示key > 電話番号 > サイト+氏名+受付日時。
+// ※ 以前は「サイト+氏名」だけを最終フォールバックにしていたため、
+//   電話・氏名が未取得のリード（例: 一覧取得段階のリードや名前欄が空のリード）が
+//   "サイト:"（空氏名）や同名で衝突し、別人のリードが統合されてしまっていた
+//   （＝新着リードに他リードのメモ・ステータスが混入する不具合）。
+//   氏名が空の場合はキー無し(null)とし、受付日時も含めて別リードの衝突を防ぐ。
 function leadKey(lead) {
-  return lead.key || lead.phone || `${lead.site || ''}:${lead.name || ''}`
+  if (lead.key) return String(lead.key)
+  if (lead.phone) return String(lead.phone)
+  const name = String(lead.name || '').trim()
+  if (!name) return null // 電話・キー・氏名がいずれも無い → 統合しない（一意リード扱い）
+  const at = String(lead.receivedAt || lead.requestedAt || '').trim()
+  return `${lead.site || ''}:${name}:${at}`
 }
 
 export default async function handler(req, res) {
@@ -100,7 +111,8 @@ export default async function handler(req, res) {
       const key = leadKey(body)
 
       // 既に取り込み済み：空でない新フィールドだけマージ（詳細ページ取得で情報を充実させる）
-      const idx = items.findIndex(i => leadKey(i) === key)
+      // key が null（信頼できる識別子なし）の場合は統合対象を探さない＝必ず新規リードとして追加する。
+      const idx = key ? items.findIndex(i => leadKey(i) === key) : -1
       if (idx !== -1) {
         const next = { ...items[idx] }
         let changed = false
@@ -117,9 +129,10 @@ export default async function handler(req, res) {
         return res.json({ ok: true, duplicate: true, merged: changed })
       }
 
+      // key が null のときは一意キーを発行し、以後この行が他リードへ統合されないようにする。
       const newItem = {
         ...body,
-        key,
+        key: key || `u:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         id: body.id || Date.now().toString(),
         savedAt: new Date().toISOString(),
       }
@@ -144,11 +157,14 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'key / phone / id required' })
       }
       const items = await getItems()
-      const updated = items.map(i => (
-        (body.key && i.key === body.key) ||
-        (body.phone && i.phone === body.phone) ||
-        (body.id && i.id === body.id)
-      ) ? { ...i, ...body, updatedAt: new Date().toISOString() } : i)
+      // 対象の特定は「最も確実な識別子」を1つだけ使う。
+      // 以前は key/phone/id のいずれかに一致で更新していたため、同じ電話番号を持つ
+      // 別リードまで一括で書き換わり、メモ・ステータスが他リードへ波及していた。
+      // key があれば key のみ、無ければ id、どちらも無ければ電話で特定する。
+      const matchFn = body.key ? (i => i.key === body.key)
+        : body.id ? (i => i.id === body.id)
+        : (i => body.phone && i.phone === body.phone)
+      const updated = items.map(i => matchFn(i) ? { ...i, ...body, updatedAt: new Date().toISOString() } : i)
       await setItems(updated)
       return res.json({ ok: true })
     }
@@ -159,12 +175,12 @@ export default async function handler(req, res) {
       let filtered
       if (body.all === true) {
         filtered = []
-      } else if (body.phone || body.key || body.id) {
-        filtered = items.filter(i => !(
-          (body.phone && i.phone === body.phone) ||
-          (body.key && i.key === body.key) ||
-          (body.id && i.id === body.id)
-        ))
+      } else if (body.key || body.id || body.phone) {
+        // 削除も「最も確実な識別子」を1つだけ使う（同一電話の別リードまで巻き込まないため）。
+        const matchFn = body.key ? (i => i.key === body.key)
+          : body.id ? (i => i.id === body.id)
+          : (i => body.phone && i.phone === body.phone)
+        filtered = items.filter(i => !matchFn(i))
       } else {
         return res.status(400).json({ error: 'phone / key / id or all:true required' })
       }
