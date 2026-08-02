@@ -31,6 +31,26 @@ const CRM_OWNED_FIELDS = new Set([
   'amount', 'contracted',  // 金額・成約フラグ
 ])
 
+// 巡回で「空欄を埋めるのは可、すでに値があれば上書きしない」項目。
+// 住所・要望・家財は、担当者が詳細画面で修正することがあるため巡回で書き換えない。
+// ただし完全に禁止すると不都合がある：ズバットは速度優先で
+//   ①基本情報（電話・氏名・区間）を先に送る → ②あとから住所・家財・要望を送る
+// という2段階のため、一切更新しないと住所・家財が永久に入らなくなる。
+// そこで「空のときだけ埋める」とし、取り込みは効かせつつ手入力は守る。
+const FILL_ONLY_FIELDS = new Set([
+  // 住所（引越し元・先）
+  'from', 'to',
+  'fromZip', 'fromAddress', 'fromType', 'fromFloor', 'fromElevator', 'fromLayout',
+  'toZip', 'toAddress', 'toType', 'toFloor', 'toElevator', 'toLayout',
+  // 要望
+  'request', 'option',
+  // 家財
+  'kazai', 'kazaiCount', 'kazaiUnknown', 'boxCount',
+])
+
+const isEmptyValue = (v) =>
+  v == null || v === '' || (Array.isArray(v) && v.length === 0)
+
 // 更新・削除の対象を1件だけ特定する。優先順位：key > id > 電話。
 // 電話は「一致が1件だけ」の時しか使わない。
 //   - 以前は key/id/電話の“いずれか一致”で更新していたため、同じ電話番号を持つ
@@ -133,7 +153,9 @@ export default async function handler(req, res) {
             // 担当者所有の項目は「自動巡回」では上書きしない（メモ・ステータス等の保護）。
             // 人手の取り込み（_manual）は担当者の意思なので従来どおり更新を許可する。
             if (!manual && CRM_OWNED_FIELDS.has(k)) continue
-            const empty = v == null || v === '' || (Array.isArray(v) && v.length === 0)
+            // 住所・要望・家財は、すでに値が入っていれば巡回では上書きしない（空欄なら埋める）。
+            if (!manual && FILL_ONLY_FIELDS.has(k) && !isEmptyValue(next[k])) continue
+            const empty = isEmptyValue(v)
             if (!empty && JSON.stringify(next[k]) !== JSON.stringify(v)) { next[k] = v; changed = true }
           }
           if (!changed) {
