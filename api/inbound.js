@@ -75,6 +75,19 @@ function findTargetIndex(items, body) {
   return -1
 }
 
+// 電話番号を照合用に正規化する（ハイフン・空白・全角の表記ゆれを吸収）。
+// ※各サイトで電話の書式が異なる（侍はハイフン必須、価格.comはハイフン無しもあり、
+//   ズバットはAPIの生値）。正規化しないと同一人物が別リードとして重複登録される。
+function normPhone(v) {
+  return String(v || '')
+    .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0)) // 全角数字→半角
+    .replace(/\D/g, '')                                                     // 数字以外を除去
+}
+function isPhoneLike(v) {
+  const d = normPhone(v)
+  return d.length >= 10 && d.length <= 11 && d.startsWith('0')
+}
+
 // 重複判定（統合）キー。信頼できる識別子が無ければ null を返し、その場合は統合せず別リード扱いにする。
 // 優先順位：明示key > 電話番号 > サイト+氏名+受付日時。
 // ※ 以前は「サイト+氏名」だけを最終フォールバックにしていたため、
@@ -83,8 +96,9 @@ function findTargetIndex(items, body) {
 //   （＝新着リードに他リードのメモ・ステータスが混入する不具合）。
 //   氏名が空の場合はキー無し(null)とし、受付日時も含めて別リードの衝突を防ぐ。
 function leadKey(lead) {
-  if (lead.key) return String(lead.key)
-  if (lead.phone) return String(lead.phone)
+  // キー・電話が電話番号なら正規化して比較する（保存値は元の表記のまま残す）
+  if (lead.key) return isPhoneLike(lead.key) ? 'tel:' + normPhone(lead.key) : String(lead.key)
+  if (lead.phone) return isPhoneLike(lead.phone) ? 'tel:' + normPhone(lead.phone) : String(lead.phone)
   const name = String(lead.name || '').trim()
   if (!name) return null // 電話・キー・氏名がいずれも無い → 統合しない（一意リード扱い）
   const at = String(lead.receivedAt || lead.requestedAt || '').trim()
@@ -144,7 +158,14 @@ export default async function handler(req, res) {
       const result = await mutate(KEY, VER_KEY, (items) => {
         // 既に取り込み済み：空でない新フィールドだけマージ（詳細ページ取得で情報を充実させる）
         // key が null（信頼できる識別子なし）の場合は統合対象を探さない＝必ず新規リードとして追加する。
-        const idx = key ? items.findIndex(i => leadKey(i) === key) : -1
+        let idx = key ? items.findIndex(i => leadKey(i) === key) : -1
+        // 電話の取得可否でキーが変わっても同一リードとみなす。
+        // 例：1回目は電話が取れず key='引越し侍:123'、2回目に電話が取れて key=電話 になると
+        //     別リードとして重複登録されてしまうため、サイト＋受付番号でも照合する。
+        if (idx === -1 && body.site && body.orderId) {
+          idx = items.findIndex(i => i.site === body.site && i.orderId != null && i.orderId !== '' &&
+                                     String(i.orderId) === String(body.orderId))
+        }
         if (idx !== -1) {
           const next = { ...items[idx] }
           let changed = false
@@ -158,6 +179,9 @@ export default async function handler(req, res) {
             const empty = isEmptyValue(v)
             if (!empty && JSON.stringify(next[k]) !== JSON.stringify(v)) { next[k] = v; changed = true }
           }
+          // 電話が後から判明したらキーを電話に昇格させる。
+          // これで以後は他サイトから同じ電話で届いても同一リードとして統合できる。
+          if (isPhoneLike(body.phone) && !isPhoneLike(next.key)) { next.key = String(body.phone); changed = true }
           if (!changed) {
             return { skipWrite: true, result: { ok: true, duplicate: true, merged: false } }
           }
