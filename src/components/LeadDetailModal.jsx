@@ -197,12 +197,13 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
     <div style={overlay}>
       <div style={box} className="print-area">
         {/* ヘッダー */}
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+        {/* スマホではボタンを潰さず折り返す（flexWrap） */}
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 800 }}>{v('name') || item.name || '（名前なし）'} <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>様</span></div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{item.site || ''}{item.orderId ? ` ／ 依頼番号 ${item.orderId}` : ''}</div>
           </div>
-          <div className="no-print" style={{ display: 'flex', gap: 6 }}>
+          <div className="no-print" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <button className="btn btn-sm btn-outline" onClick={doPrint}>🖨 印刷/PDF</button>
             {onSave && (
               <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`}
@@ -225,7 +226,8 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
 
         {/* 基本情報 */}
         {/* ── 顧客情報（帳票と同じ並び）── */}
-        <div style={{ padding: 12 }}>
+        {/* スマホでは帳票型の表（min-width あり）を横スワイプで見られるようにする */}
+        <div style={{ padding: 12, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={{ ...table4, ...fband(BAND.customer) }}>
             <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
             <tbody>

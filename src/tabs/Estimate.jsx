@@ -731,13 +731,17 @@ export default function Estimate({ user, switchTab }) {
       </div>
 
       {/* ══ 紙の御見積書（会社控）と同じ並びの入力フォーム ══ */}
+      {/* est-form / est-form-inner：スマホでは全体を1つの横スクロールにする（global.css参照） */}
       <div className="card" style={{ marginBottom: 14 }}>
-        <div className="card-body" style={{ padding: 14 }}>
+        <div className="card-body est-form" style={{ padding: 14 }}>
+          <div className="est-form-inner">
 
           {/* 1. 日程／車輌／発送内容／見積情報（帳票の最上段） */}
           <div className="scroll-x">
+            {/* tableLayout: fixed で date入力等の固有幅がグリッド列を押し広げないようにする（スマホのスワイプ距離を短く保つ） */}
             <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.95fr 1fr', gap: 8, minWidth: 760 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', ...fband('#9AA3AB') }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 0, ...fband('#9AA3AB') }}>
+                <colgroup><col style={{ width: 104 }} /><col /></colgroup>
                 <tbody>
                   {[['引越日', 'moveDate', 'moveAP'], ['お届日', 'deliverDate', 'deliverAP']].map(([lb, dk, ak]) => (
                     <tr key={dk}>
@@ -760,7 +764,8 @@ export default function Estimate({ user, switchTab }) {
                   </tr>
                 </tbody>
               </table>
-              <table style={{ width: '100%', borderCollapse: 'collapse', ...fband('#9AA3AB') }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 0, ...fband('#9AA3AB') }}>
+                <colgroup><col style={{ width: 104 }} /><col /></colgroup>
                 <tbody>
                   <tr><td style={flab}>スペース</td><td style={fcell}><input style={fin} value={form.spaceSize} onChange={e => set('spaceSize', e.target.value)} /></td></tr>
                   <tr><td style={flab}>作業量</td><td style={fcell}><input style={fin} value={form.workLoad} onChange={e => set('workLoad', e.target.value)} /></td></tr>
@@ -1183,6 +1188,7 @@ export default function Estimate({ user, switchTab }) {
           <div style={{ marginTop: 8, fontSize: 11, color: '#94A3B8' }}>
             ※ リード管理・追客の内容が自動で入り、ここで直した内容が優先されます。
           </div>
+          </div>
         </div>
       </div>
 
@@ -1286,7 +1292,8 @@ function PrintStyle() {
         html, body, #root { overflow: visible !important; height: auto !important; }
         body * { visibility: hidden !important; }
         .print-area, .print-area * { visibility: visible !important; }
-        .print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+        /* スマホの縮小表示（zoom）は印刷時に等倍へ戻す */
+        .print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 0; zoom: 1 !important; }
         .no-print { display: none !important; }
       }
     `}</style>
@@ -1296,6 +1303,14 @@ function PrintStyle() {
 function PreviewModal({ form, totals, onClose }) {
   // 紙の御見積書（会社控）を再現した印刷レイアウト。
   // 空欄は空欄のまま印刷する（紙と同じく、書いていない欄は白）。
+  // スマホでは紙面(880px)を画面幅に合わせて縮小表示する（印刷時は @media print で等倍に戻る）
+  const fitZoom = () => Math.min(1, (window.innerWidth - 12) / 880)
+  const [zoom, setZoom] = useState(fitZoom)
+  useEffect(() => {
+    const onResize = () => setZoom(fitZoom())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const bd = '1px solid #333'
   // minWidth: 0 が肝。global.css の table { min-width: 500px } が印刷面にも効いてしまい、
   // グリッド列が 500px まで押し広げられて右側のブロック（発送内容・見積日・料金C/D等）が
@@ -1326,7 +1341,7 @@ function PreviewModal({ form, totals, onClose }) {
           <button className="btn btn-primary" onClick={() => window.print()}>🖨 印刷 / PDF</button>
         </div>
 
-        <div className="print-area" style={{ width: 880, maxWidth: '97%', margin: '0 auto', background: '#fff', padding: 18, color: '#111', fontFamily: "'Noto Sans JP', sans-serif" }}>
+        <div className="print-area" style={{ width: 880, margin: '0 auto', background: '#fff', padding: 18, color: '#111', fontFamily: "'Noto Sans JP', sans-serif", zoom }}>
 
           {/* 見出し＋受付（紙と同じく受付(1)(2)は独立した2つの枠） */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>

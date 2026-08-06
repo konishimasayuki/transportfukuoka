@@ -226,6 +226,10 @@ tr:hover td { background: var(--bg); }
   th { padding: 0 7px 7px; }
   td { padding: 8px 7px; }
   .card-body.scroll-x { padding-left: 10px; padding-right: 10px; }
+  /* 見積書の紙型入力フォーム：スマホでは全体を1つの横スクロールにまとめる */
+  .est-form { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .est-form-inner { min-width: 984px; }
+  .est-form .scroll-x { overflow-x: visible; }
 }
 @media (max-width: 380px) {
   .kpi-val { font-size: 18px; }

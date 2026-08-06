@@ -129,12 +129,13 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
     <div style={overlay}>
       <div style={box}>
         {/* ヘッダー */}
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+        {/* スマホではボタンを潰さず折り返す（flexWrap） */}
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 800 }}>{isNew ? '新規成約' : (v('name') || '（名前なし）')} {!isNew && <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>様</span>}</div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{v('srcLabel') || ''}{v('date') ? ` ／ 引越し日 ${v('date')}` : ''}</div>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {!isNew && (
               <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`} onClick={() => setEdit(e2 => !e2)}>
                 {edit ? '閲覧に戻す' : '✏ 編集'}
@@ -149,7 +150,8 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
 
         {/* 基本情報 */}
         {/* ── 顧客情報（帳票と同じ並び。中身は成約の項目）── */}
-        <div style={{ padding: 12 }}>
+        {/* スマホでは帳票型の表（min-width あり）を横スワイプで見られるようにする */}
+        <div style={{ padding: 12, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={{ ...table4, ...fband(BAND.customer) }}>
             <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
             <tbody>
