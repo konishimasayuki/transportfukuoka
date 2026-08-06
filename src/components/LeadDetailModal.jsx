@@ -123,6 +123,20 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
     setEdit(false)
   }, [item && item.id, item && item.phone])
 
+  // 郵便番号が空のときは住所から自動で調べて表示する（確定できない時は何も出さない）。
+  // 表示のみの補完で、保存データには手を加えない。
+  // ※フックは早期 return より前に置くこと（return の後に置くと、モーダルを
+  //   開閉するたびにフックの数が変わって画面が真っ白になる）。
+  const [autoZip, setAutoZip] = useState({ from: '', to: '' })
+  useEffect(() => {
+    setAutoZip({ from: '', to: '' })
+    if (!item) return
+    const fa = item.fromAddress || item.from
+    const ta = item.toAddress || item.to
+    if (!item.fromZip && fa) zipFromAddress(fa).then(r => { if (r.zip) setAutoZip(p => ({ ...p, from: r.zip })) }).catch(() => {})
+    if (!item.toZip && ta) zipFromAddress(ta).then(r => { if (r.zip) setAutoZip(p => ({ ...p, to: r.zip })) }).catch(() => {})
+  }, [item && item.id])
+
   if (!item) return null
 
   const setField = (k, v) => { setDraft(p => ({ ...p, [k]: v })); setDirty(true) }
@@ -160,17 +174,6 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
   }
 
   const v = (k) => draft[k]
-
-  // 郵便番号が空のときは住所から自動で調べて表示する（確定できない時は何も出さない）。
-  // 表示のみの補完で、保存データには手を加えない。
-  const [autoZip, setAutoZip] = useState({ from: '', to: '' })
-  useEffect(() => {
-    setAutoZip({ from: '', to: '' })
-    const fa = item.fromAddress || item.from
-    const ta = item.toAddress || item.to
-    if (!item.fromZip && fa) zipFromAddress(fa).then(r => { if (r.zip) setAutoZip(p => ({ ...p, from: r.zip })) }).catch(() => {})
-    if (!item.toZip && ta) zipFromAddress(ta).then(r => { if (r.zip) setAutoZip(p => ({ ...p, to: r.zip })) }).catch(() => {})
-  }, [item.id])
 
   // 住所表示（閲覧時）
   const fromText = [v('fromZip'), v('fromAddress'), v('fromType') && `（${v('fromType')}）`].filter(Boolean).join(' ') || item.from
