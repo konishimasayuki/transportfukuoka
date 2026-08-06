@@ -154,50 +154,36 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
             <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
             <tbody>
               <tr>
-                <td style={flab}>フリガナ</td>
-                <td style={fcell}><Cell edit={edit} value={v('kana')} onChange={x => setField('kana', x)} /></td>
+                <td style={flab}>顧客名 *</td>
+                <td style={fcell}><Cell edit={edit} value={v('name')} onChange={x => setField('name', x)} /></td>
                 <td style={flab}>流入元</td>
                 <td style={fcell}><Cell edit={edit} value={v('srcLabel')} onChange={x => setField('srcLabel', x)} options={SOURCE_LIST} /></td>
               </tr>
               <tr>
-                <td style={flab}>顧客名 *</td>
-                <td style={fcell}><Cell edit={edit} value={v('name')} onChange={x => setField('name', x)} /></td>
+                <td style={flab}>電話番号</td>
+                <td style={fcell}><Cell edit={edit} value={v('phone')} onChange={x => setField('phone', x)} /></td>
                 <td style={flab}>引越し日</td>
                 <td style={fcell}><Cell edit={edit} value={v('date')} onChange={x => setField('date', x)} type="date" /></td>
               </tr>
               <tr>
-                <td style={flab}>電話番号</td>
-                <td style={fcell}><Cell edit={edit} value={v('phone')} onChange={x => setField('phone', x)} /></td>
-                <td style={flab}>希望日</td>
-                <td style={fcell}><Cell edit={edit} value={v('moveDateText')} onChange={x => setField('moveDateText', x)} /></td>
-              </tr>
-              <tr>
                 <td style={flab}>メールアドレス</td>
                 <td style={fcell}><Cell edit={edit} value={v('email')} onChange={x => setField('email', x)} type="email" /></td>
-                <td style={flab}>引越し人数</td>
-                <td style={fcell}><Cell edit={edit} value={v('persons')} onChange={x => setField('persons', x)} /></td>
+                <td style={flab}>売上登録日</td>
+                <td style={fcell}><Cell edit={edit} value={v('salesDate')} onChange={x => setField('salesDate', x)} type="date" /></td>
               </tr>
               <tr>
                 <td style={flab}>担当者</td>
                 <td style={fcell}><Cell edit={edit} value={v('staff')} onChange={x => setField('staff', x)} options={['', ...staffList]} /></td>
-                <td style={flab}>売上登録日</td>
-                <td style={fcell}><Cell edit={edit} value={v('salesDate')} onChange={x => setField('salesDate', x)} type="date" /></td>
+                <td style={flab} />
+                <td style={fcell} />
               </tr>
             </tbody>
           </table>
 
-          {/* ── 現住所 / 引越し先 ── */}
-          <table style={{ ...table4, ...fband(BAND.address) }}>
+          {/* ── 区間（成約では住所の詳細は持たないため区間のみ）── */}
+          <table style={{ ...table4, marginTop: 8, ...fband(BAND.address) }}>
             <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
             <tbody>
-              <tr>
-                <td style={flabAddress} colSpan={2}>現住所（引越し元）</td>
-                <td style={flabAddress} colSpan={2}>引越し先</td>
-              </tr>
-              <tr>
-                <td style={flab}>住所</td><td style={fcell}><Cell edit={edit} value={v('fromAddress')} onChange={x => setField('fromAddress', x)} /></td>
-                <td style={flab}>住所</td><td style={fcell}><Cell edit={edit} value={v('toAddress')} onChange={x => setField('toAddress', x)} /></td>
-              </tr>
               <tr>
                 <td style={flab}>区間（表示）</td>
                 <td style={fcell}><Cell edit={edit} value={v('route') || routeAuto} onChange={x => setField('route', x)} /></td>
