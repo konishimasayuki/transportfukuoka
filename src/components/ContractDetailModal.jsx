@@ -168,14 +168,8 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
               <tr>
                 <td style={flab}>メールアドレス</td>
                 <td style={fcell}><Cell edit={edit} value={v('email')} onChange={x => setField('email', x)} type="email" /></td>
-                <td style={flab}>売上登録日</td>
-                <td style={fcell}><Cell edit={edit} value={v('salesDate')} onChange={x => setField('salesDate', x)} type="date" /></td>
-              </tr>
-              <tr>
                 <td style={flab}>担当者</td>
                 <td style={fcell}><Cell edit={edit} value={v('staff')} onChange={x => setField('staff', x)} options={['', ...staffList]} /></td>
-                <td style={flab} />
-                <td style={fcell} />
               </tr>
             </tbody>
           </table>
