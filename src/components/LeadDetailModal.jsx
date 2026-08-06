@@ -4,7 +4,7 @@
 // onCreateEstimate(item)：「📝 見積書を作成」で見積書タブへプリフィル遷移
 import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
-import { fcell, flab, fin, fval, fband, BAND, flabAddress, flabDetail, WORK_ITEMS } from '../lib/detailStyles'
+import { fcell, flab, fin, fval, fband, BAND, flabAddress, flabDetail, WORK_ITEMS, table4, COLS4 } from '../lib/detailStyles'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '見積り': 'bc', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
@@ -226,7 +226,8 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
         {/* 基本情報 */}
         {/* ── 顧客情報（帳票と同じ並び）── */}
         <div style={{ padding: 12 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', ...fband(BAND.customer) }}>
+          <table style={{ ...table4, ...fband(BAND.customer) }}>
+            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
             <tbody>
               <tr>
                 <td style={flab}>フリガナ</td>
@@ -262,7 +263,8 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
           </table>
 
           {/* ── 現住所 / 引越し先 ── */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, ...fband(BAND.address) }}>
+          <table style={{ ...table4, ...fband(BAND.address) }}>
+            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
             <tbody>
               <tr>
                 <td style={flabAddress} colSpan={2}>現住所</td>
