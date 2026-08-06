@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { fcell, flab, fin, fval, fband, BAND, flabAddress, flabDetail, WORK_ITEMS, table4, COLS4 } from '../lib/detailStyles'
+import { zipFromAddress } from '../lib/gmaps'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '見積り': 'bc', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
@@ -160,6 +161,17 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
 
   const v = (k) => draft[k]
 
+  // 郵便番号が空のときは住所から自動で調べて表示する（確定できない時は何も出さない）。
+  // 表示のみの補完で、保存データには手を加えない。
+  const [autoZip, setAutoZip] = useState({ from: '', to: '' })
+  useEffect(() => {
+    setAutoZip({ from: '', to: '' })
+    const fa = item.fromAddress || item.from
+    const ta = item.toAddress || item.to
+    if (!item.fromZip && fa) zipFromAddress(fa).then(r => { if (r.zip) setAutoZip(p => ({ ...p, from: r.zip })) }).catch(() => {})
+    if (!item.toZip && ta) zipFromAddress(ta).then(r => { if (r.zip) setAutoZip(p => ({ ...p, to: r.zip })) }).catch(() => {})
+  }, [item.id])
+
   // 住所表示（閲覧時）
   const fromText = [v('fromZip'), v('fromAddress'), v('fromType') && `（${v('fromType')}）`].filter(Boolean).join(' ') || item.from
   const toText   = [v('toZip'),   v('toAddress'),   v('toType')   && `（${v('toType')}）`  ].filter(Boolean).join(' ') || item.to
@@ -273,8 +285,9 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
                 <td style={flabAddress} colSpan={2}>引越し先</td>
               </tr>
               <tr>
-                <td style={flab}>郵便番号</td><td style={fcell}><Cell edit={edit} value={v('fromZip')} onChange={x => setField('fromZip', x)} /></td>
-                <td style={flab}>郵便番号</td><td style={fcell}><Cell edit={edit} value={v('toZip')} onChange={x => setField('toZip', x)} /></td>
+                {/* 閲覧時は住所から求めた郵便番号も表示（編集時は保存値のみ） */}
+                <td style={flab}>郵便番号</td><td style={fcell}><Cell edit={edit} value={edit ? v('fromZip') : (v('fromZip') || autoZip.from)} onChange={x => setField('fromZip', x)} /></td>
+                <td style={flab}>郵便番号</td><td style={fcell}><Cell edit={edit} value={edit ? v('toZip') : (v('toZip') || autoZip.to)} onChange={x => setField('toZip', x)} /></td>
               </tr>
               <tr>
                 <td style={flab}>住所</td><td style={fcell}><Cell edit={edit} value={v('fromAddress')} onChange={x => setField('fromAddress', x)} /></td>

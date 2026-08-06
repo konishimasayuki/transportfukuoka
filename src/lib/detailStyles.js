@@ -14,7 +14,9 @@ export const fin = {
   fontSize: 12, fontFamily: 'inherit', background: 'transparent', color: '#0F172A',
 }
 // 閲覧時（編集していない時）の値表示。入力欄と同じ位置・余白に揃える。
-export const fval = { padding: '6px 8px', fontSize: 12, color: '#0F172A', minHeight: 17 }
+// whiteSpace: normal は必須（global.css の td { white-space: nowrap } を打ち消し、
+// 長い住所などがセルからはみ出して隣のラベルに重ならないようにする）
+export const fval = { padding: '6px 8px', fontSize: 12, color: '#0F172A', minHeight: 17, whiteSpace: 'normal', wordBreak: 'break-word' }
 // ブロックごとの色帯（顧客=グレー、住所=オレンジ、詳細=水色）
 export const fband = (color) => ({ borderLeft: `4px solid ${color}` })
 export const BAND = { customer: '#9AA3AB', address: '#F0A868', detail: '#6BB8CC' }

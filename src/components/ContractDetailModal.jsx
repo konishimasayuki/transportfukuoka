@@ -176,15 +176,14 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
             </tbody>
           </table>
 
-          {/* ── 区間（成約では住所の詳細は持たないため区間のみ）── */}
+          {/* ── 区間（成約では住所の詳細は持たないため区間のみ）──
+              長い住所でも収まるよう行全体を使う（訪問見積もり日はこの画面では扱わない） */}
           <table style={{ ...table4, marginTop: 8, ...fband(BAND.address) }}>
             <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
             <tbody>
               <tr>
                 <td style={flab}>区間（表示）</td>
-                <td style={fcell}><Cell edit={edit} value={v('route') || routeAuto} onChange={x => setField('route', x)} /></td>
-                <td style={flab}>訪問見積もり日</td>
-                <td style={fcell}><Cell edit={edit} value={v('visitEstimateDate')} onChange={x => setField('visitEstimateDate', x)} type="date" /></td>
+                <td style={fcell} colSpan={3}><Cell edit={edit} value={v('route') || routeAuto} onChange={x => setField('route', x)} /></td>
               </tr>
             </tbody>
           </table>
