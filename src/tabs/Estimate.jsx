@@ -75,10 +75,10 @@ const KAZAI_GROUPS = [
       { key: 'sofa_1',      name: 'ソファー',           size: '1人用', pt: 20 },
       { key: 'dresser',     name: 'ドレッサー',         size: '',     pt: 14 },
       { key: 'sugatami',    name: '姿見',               size: '',     pt: 4 },
-      { key: 'getabako',    name: '下駄箱',             size: '',     pt: 18 },
+      { key: 'getabako',    name: '下駄箱',             size: '縦',   pt: 18 },
       { key: 'getabako_y',  name: '下駄箱',             size: '横',   pt: 13 },
-      { key: 'denwadai',    name: '電話台',             size: '',     pt: 6 },
-      { key: 'tvdai',       name: 'テレビ台',           size: '',     pt: 14 },
+      { key: 'denwadai',    name: '電話台',             size: '',     pt: 5 },
+      { key: 'tvdai',       name: 'テレビ台',           size: '',     pt: 4 },
       { key: 'sukima',      name: 'すき間家具',         size: '',     pt: 6 },
       { key: 'lowboard',    name: 'ローボード',         size: '',     pt: 14 },
       { key: 'chest',       name: 'チェスト',           size: '',     pt: 16 },
@@ -96,11 +96,11 @@ const KAZAI_GROUPS = [
       { key: 'minicompo',    name: 'ミニコンポ',     size: '',      pt: 2 },
       { key: 'aircon_S',     name: 'エアコン',       size: 'S',     pt: 6 },
       { key: 'aircon_W',     name: 'エアコン',       size: 'W',     pt: 2 },
-      { key: 'washer_drum',  name: '洗濯機',         size: 'ドラム', pt: 15 },
-      { key: 'washer_full',  name: '洗濯機',         size: '全自動', pt: 13 },
+      { key: 'washer_drum',  name: '洗濯機ドラム',   size: '',      pt: 15 },
+      { key: 'washer_full',  name: '洗濯機全自動',   size: '',      pt: 13 },
       { key: 'dryer',        name: '乾燥機',         size: '',      pt: 8 },
-      { key: 'tv_brown',     name: 'TVブラ',         size: '( )',   pt: null },
-      { key: 'tv_thin',      name: 'TV薄型',         size: '( )',   pt: null },
+      { key: 'tv_brown',     name: 'TVプラ',         size: '( )',   pt: '' },
+      { key: 'tv_thin',      name: 'TV薄型',         size: '( )',   pt: '' },
       { key: 'video',        name: 'ビデオ',         size: '',      pt: 0.5 },
       { key: 'pc',           name: 'パソコン',       size: '',      pt: 10 },
       { key: 'range',        name: 'レンジ',         size: '',      pt: 2 },
@@ -122,7 +122,7 @@ const KAZAI_GROUPS = [
       { key: 'kotatsu',    name: 'こたつ',           size: '',        pt: 9 },
       { key: 'futonbukuro',name: 'ふとん袋',         size: '',        pt: 12 },
       { key: 'zabuton',    name: '座ぶとんケース',   size: '',        pt: 5 },
-      { key: 'ishou',      name: '衣装ケース',       size: '',        pt: 5 },
+      { key: 'ishou',      name: '衣裳ケース',       size: '',        pt: 3 },
       { key: 'juutan',     name: 'ジュータン',       size: '',        pt: 8 },
       { key: 'ningyou',    name: '人形ケース',       size: '',        pt: 5 },
       { key: 'gogatsu',    name: '五月人形',         size: '',        pt: 10 },
@@ -133,7 +133,7 @@ const KAZAI_GROUPS = [
       { key: 'piano_G',    name: 'ピアノ',           size: 'G',       pt: null },
       { key: 'electone_A', name: 'エレクトーン',     size: 'A',       pt: null },
       { key: 'electone_B', name: 'エレクトーン',     size: 'B',       pt: 24 },
-      { key: 'kinko',      name: '金庫',             size: '高さ40cm', pt: 3 },
+      { key: 'kinko',      name: '金庫',             size: '(高さ40cmまで)', pt: 3 },
       { key: 'shoumei',    name: '照明器具',         size: '',        pt: 1.5 },
       { key: 'gaku',       name: '額',               size: '',        pt: 1 },
       { key: 'colorbox',   name: 'カラーボックス',   size: '',        pt: 5 },
@@ -1357,31 +1357,32 @@ function PreviewModal({ form, totals, onClose }) {
               </tr>
             </tbody></table>
             <table style={tbl}><tbody>
-              <tr><td style={{ ...pl, width: 52, fontSize: 8 }}>スペース</td><td style={{ ...pc, fontSize: 8.5 }}>{form.spaceSize || <span style={gy}>〜</span>}</td></tr>
+              <tr><td style={{ ...pl, width: 52, fontSize: 8 }}>スペース</td><td style={{ ...pc, fontSize: 8.5 }}>{form.spaceSize}</td></tr>
               <tr><td style={{ ...pl, fontSize: 8 }}>作業量</td><td style={{ ...pc, fontSize: 8.5 }}>{form.workLoad || <span style={gy}>〜</span>}</td></tr>
               <tr><td style={{ ...pl, fontSize: 8 }}>梱包・開梱</td><td style={{ ...pc, fontSize: 8.5 }}>{form.packOpenCar || <span style={gy}>／</span>}</td></tr>
               <tr><td style={{ ...pl, fontSize: 8 }}>補助車輌</td><td style={{ ...pc, fontSize: 8.5 }}>{['現', '行'].includes(form.helperCar) ? <><Opt on={form.helperCar === '現'}>現</Opt>・<Opt on={form.helperCar === '行'}>行</Opt></> : (form.helperCar || <span style={gy}>現 ・ 行</span>)}</td></tr>
             </tbody></table>
             <table style={tbl}><tbody>
-              <tr><td style={{ ...pl, width: 46, fontSize: 8 }}>引 越</td><td style={{ ...pc, fontSize: 8.5 }}>{form.moveFF || <span style={gy}>F　F</span>}</td></tr>
-              <tr><td style={{ ...pl, fontSize: 7 }}>ピアノ/U・G</td><td style={{ ...pc, fontSize: 8.5 }}>{form.pianoFF || <span style={gy}>F　F</span>}</td></tr>
+              <tr><td style={{ ...pl, width: 52, fontSize: 8 }}>引 越</td><td style={{ ...pc, fontSize: 8.5 }}>{form.moveFF || <span style={gy}>F　F</span>}</td></tr>
+              <tr><td style={{ ...pl, fontSize: 6.5, padding: '2px 2px' }}>ピアノ/U・G</td><td style={{ ...pc, fontSize: 8.5 }}>{form.pianoFF || <span style={gy}>F　F</span>}</td></tr>
               <tr><td style={{ ...pl, fontSize: 8 }}>距 離</td><td style={{ ...pc, fontSize: 8.5 }}>{form.distanceKm ? `${form.distanceKm} km` : <span style={gy}>km</span>}</td></tr>
             </tbody></table>
             <table style={tbl}><tbody>
-              <tr><td style={{ ...pl, textAlign: 'center' }} colSpan={2}>発 送 内 容</td></tr>
+              <tr><td style={{ ...pl, textAlign: 'center' }}>発 送 内 容</td></tr>
               <tr>
-                <td style={{ ...pc, fontSize: 8, padding: '1px 2px', textAlign: 'center' }}><Opt on={form.sendType === '直送一式'}>直送一式</Opt></td>
-                <td style={{ ...pc, fontSize: 8, padding: '1px 2px', textAlign: 'center' }}><Opt on={form.sendType === '直送長距離'}>直送・長距離</Opt></td>
+                <td style={{ ...pc, fontSize: 7.5, padding: '0 2px', textAlign: 'center' }}><Opt tight on={form.sendType === '直送一式'}>直送一式</Opt>・<Opt tight on={form.sendType === '直送長距離'}>直送・長距離</Opt></td>
               </tr>
               <tr>
-                <td style={{ ...pc, fontSize: 8, padding: '1px 2px', textAlign: 'center' }}><Opt on={form.sendType === '限定混載便'}>限定　混載便</Opt></td>
-                <td style={{ ...pc, fontSize: 8, padding: '1px 2px', textAlign: 'center' }}><Opt on={form.sendType === '積切'}>積切</Opt></td>
+                <td style={{ ...pc, fontSize: 7.5, padding: '0 2px', textAlign: 'center' }}><Opt tight on={form.sendType === '限定混載便'}>限定　混載便</Opt></td>
+              </tr>
+              <tr>
+                <td style={{ ...pc, fontSize: 7.5, padding: '0 2px', textAlign: 'center' }}><Opt tight on={form.sendType === '積切'}>積切</Opt></td>
               </tr>
             </tbody></table>
             <table style={tbl}><tbody>
               <tr><td style={{ ...pl, width: 46 }}>見積日</td><td style={{ ...pc, fontSize: 8.5 }}>{form.estimateDate || <span style={gy}>年 月 日</span>}</td></tr>
               <tr><td style={pl}>受付日</td><td style={{ ...pc, fontSize: 8.5 }}>{form.requestDate || <span style={gy}>年 月 日</span>}</td></tr>
-              <tr><td style={{ ...pl, fontSize: 8 }}>見積者氏名</td><td style={{ ...pc, fontSize: 8.5 }}>{form.estimator}</td></tr>
+              <tr><td style={{ ...pl, fontSize: 7.5, lineHeight: 1.15 }}>見積者<br />氏 名</td><td style={{ ...pc, fontSize: 8.5 }}>{form.estimator}</td></tr>
             </tbody></table>
           </div>
 
@@ -1395,8 +1396,11 @@ function PreviewModal({ form, totals, onClose }) {
                   ○裏面の「確認書」をお読み下さい。<br />
                   ○このお見積は、お客様のお荷物を、御指定日に御指定の場所へお運びするためのものです。お運びする方法（車輌・人数）は、おまかせ下さい。
                 </td>
-                <td style={{ ...vert, width: 20, fontSize: 7, lineHeight: 1.1 }} rowSpan={2}>フ<br />ロ<br />ン<br />ト</td>
-                <td style={{ ...pc, width: 64 }} rowSpan={2}>{form.front}</td>
+                {/* フロントは紙と同じく横書きラベル＋記入欄 */}
+                <td style={{ ...pc, width: 74, padding: 0, verticalAlign: 'top' }} rowSpan={2}>
+                  <div style={{ background: '#F2F2F2', borderBottom: '1px solid #999', fontWeight: 700, fontSize: 7.5, textAlign: 'center', padding: '1px 2px' }}>フロント</div>
+                  <div style={{ fontSize: 9, padding: '2px 4px', minHeight: 16 }}>{form.front}</div>
+                </td>
               </tr>
               <tr>
                 <td style={pl}>お 名 前</td>
@@ -1500,7 +1504,7 @@ function PreviewModal({ form, totals, onClose }) {
                 <td style={{ ...pl, textAlign: 'center', fontSize: 8 }}>機械作業</td>
               </tr>
               <tr>
-                <td style={{ ...pl, fontSize: 8 }}>[C] 現地</td>
+                <td style={{ ...pl, fontSize: 7.5, textAlign: 'center', lineHeight: 1.15 }}>[C]<br />現地</td>
                 <td style={{ ...pc, fontSize: 9 }}>{form.twoPlace}</td>
                 <td style={{ ...pc, fontSize: 8, textAlign: 'center', padding: '1px 2px' }}>{ROAD_CHOICES.filter(Boolean).map((c, i) => <Fragment key={c}>{i > 0 && '・'}<Opt on={form.roadWidth === c}>{c}(ᵐ)</Opt></Fragment>)}</td>
                 <td style={{ ...pc, fontSize: 8, textAlign: 'center', padding: '1px 2px' }}><Opt on={form.elevator === '有'}>人乗(ᵐ)</Opt>・<Opt on={form.elevator === '無'}>無</Opt></td>
@@ -1508,35 +1512,51 @@ function PreviewModal({ form, totals, onClose }) {
                 <td style={{ ...pc, fontSize: 8, textAlign: 'center', padding: '1px 2px' }}><Opt on={form.machine === '要'}>要</Opt>・<Opt on={form.machine === '不要'}>不要</Opt></td>
               </tr>
               <tr>
-                <td style={{ ...pl, fontSize: 8 }}>[D] 行先</td>
+                <td style={{ ...pl, fontSize: 7.5, textAlign: 'center', lineHeight: 1.15 }}>[D]<br />行先</td>
                 <td style={pc}></td>
-                <td style={{ ...pc, fontSize: 8, textAlign: 'center', color: '#999' }}>S(ᵐ)・M(ᵐ)・L(ᵐ)</td>
-                <td style={{ ...pc, fontSize: 8, textAlign: 'center', color: '#999' }}>人乗(ᵐ)・無</td>
-                <td style={{ ...pc, fontSize: 8, textAlign: 'center', color: '#999' }}>F・無</td>
-                <td style={{ ...pc, fontSize: 8, textAlign: 'center', color: '#999' }}>要・不要</td>
+                <td style={{ ...pc, fontSize: 8, textAlign: 'center' }}>S(ᵐ)・M(ᵐ)・L(ᵐ)</td>
+                <td style={{ ...pc, fontSize: 8, textAlign: 'center' }}>人乗(ᵐ)・無</td>
+                <td style={{ ...pc, fontSize: 8, textAlign: 'center' }}>F・無</td>
+                <td style={{ ...pc, fontSize: 8, textAlign: 'center' }}>要・不要</td>
               </tr>
             </tbody>
           </table>
 
           {/* 家財（紙と同じ5列・全品目）＋右端に荷造資材の縦ブロック（紙と同じ6列構成） */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) 1.35fr', border: bd, marginTop: 3 }}>
-            {KAZAI_GROUPS.map((g) => (
-              <div key={g.title} style={{ borderRight: bd }}>
-                {g.items.map(it => {
-                  const q = num(form.items[it.key])
-                  return (
-                    <div key={it.key} style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #999' }}>
-                      <div style={{ flex: 1, fontSize: 8, padding: '1px 3px', whiteSpace: 'nowrap', overflow: 'hidden' }}>{it.name}{it.size ? ` ${it.size}` : ''}</div>
-                      <div style={{ width: 22, fontSize: 7.5, color: '#555', textAlign: 'right', paddingRight: 2 }}>{it.pt == null ? '/' : it.pt}</div>
-                      <div style={{ width: 24, borderLeft: '1px solid #999', fontSize: 9, fontWeight: 800, textAlign: 'center' }}>{q > 0 ? q : ''}</div>
+            {KAZAI_GROUPS.map((g) => {
+              // 紙と同じく、品目が少ない列は空行で埋めて小計を最下段に揃える
+              const maxRows = Math.max(...KAZAI_GROUPS.map(x => x.items.length))
+              return (
+                <div key={g.title} style={{ borderRight: bd, display: 'flex', flexDirection: 'column' }}>
+                  {g.items.map((it, i) => {
+                    const q = num(form.items[it.key])
+                    // 紙と同じく、同名が続く行は「〃」で表す
+                    const dispName = i > 0 && g.items[i - 1].name === it.name ? '〃' : it.name
+                    return (
+                      <div key={it.key} style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #999' }}>
+                        <div style={{ flex: 1, fontSize: 8, padding: '1px 3px', whiteSpace: 'nowrap', overflow: 'hidden' }}>{dispName === '〃' ? <span style={{ paddingLeft: 12 }}>〃</span> : dispName}{it.size ? ` ${it.size}` : ''}</div>
+                        <div style={{ width: 20, fontSize: 7.5, color: '#555', textAlign: 'right', paddingRight: 2 }}>{it.pt == null ? '/' : it.pt}</div>
+                        <div style={{ width: 20, borderLeft: '1px solid #999', fontSize: 9, fontWeight: 800, textAlign: 'center' }}>{q > 0 ? q : ''}</div>
+                        <div style={{ width: 13, borderLeft: '1px solid #999' }}></div>
+                      </div>
+                    )
+                  })}
+                  {Array.from({ length: maxRows - g.items.length }, (_, i) => (
+                    <div key={`fill-${i}`} style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #999' }}>
+                      <div style={{ flex: 1, fontSize: 8, padding: '1px 3px' }}>&nbsp;</div>
+                      <div style={{ width: 20 }}></div>
+                      <div style={{ width: 20, borderLeft: '1px solid #999' }}></div>
+                      <div style={{ width: 13, borderLeft: '1px solid #999' }}></div>
                     </div>
-                  )
-                })}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8.5, fontWeight: 800, padding: '1px 4px', background: '#F2F2F2' }}>
-                  <span>小 計</span><span>{gpts(g).toLocaleString('ja-JP')}</span>
+                  ))}
+                  <div style={{ flex: 1 }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8.5, fontWeight: 800, padding: '1px 4px', background: '#F2F2F2' }}>
+                    <span>小 計</span><span>{gpts(g).toLocaleString('ja-JP')}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
             {/* 6列目：荷造資材（レンタル日×2＋作業当日）→作成日・配達日・工具類→ポイント合計→保管→シークレット */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{ ...pl, border: 'none', borderBottom: '1px solid #999', textAlign: 'center' }}>荷 造 資 材</div>
@@ -1718,9 +1738,10 @@ function PreviewModal({ form, totals, onClose }) {
               ))}
               <tr><td style={pl}>小 計（D）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9 }}>{totals.d > 0 ? `¥ ${totals.d.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
               <tr>
-                <td style={{ ...pl, fontSize: 8, lineHeight: 1.3 }}>合 計<br />(A)+(B)+(C)+(D)</td>
+                <td style={{ ...pl, fontSize: 8, lineHeight: 1.3 }} rowSpan={2}>合 計<br />(A)+(B)+(C)+(D)</td>
                 <td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9.5 }}>{totals.goukei > 0 ? `¥ ${totals.goukei.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td>
               </tr>
+              <tr><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}><span style={gy}>¥</span></td></tr>
               <tr><td style={pl}>総 合 計</td><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}><span style={gy}>¥</span></td></tr>
               <tr><td style={pl}>消 費 税</td><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}>{totals.tax > 0 ? `¥ ${totals.tax.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
               <tr><td style={{ ...pl, fontSize: 11 }}>再 計</td><td style={{ ...pc, textAlign: 'right', fontWeight: 900, fontSize: 12 }}>{totals.saikei > 0 ? `¥${totals.saikei.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
@@ -1742,8 +1763,8 @@ function PreviewModal({ form, totals, onClose }) {
             <div style={{ border: bd, textAlign: 'center', fontSize: 8.5, lineHeight: 1.5, padding: 3 }}>
               <div style={{ fontSize: 12, fontWeight: 900 }}>{COMPANY.name}</div>
               <div>{COMPANY.zip} {COMPANY.address}</div>
-              <div>TEL {COMPANY.tel}　FAX {COMPANY.fax}</div>
-              <div>登録番号 {COMPANY.regNo}</div>
+              <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 1 }}>☎ {COMPANY.tel}</div>
+              <div>FAX {COMPANY.fax}　登録番号 {COMPANY.regNo}</div>
             </div>
             <table style={tbl}><tbody>
               <tr>
