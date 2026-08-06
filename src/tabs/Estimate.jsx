@@ -186,7 +186,8 @@ const sizeText = (sz) => {
 }
 
 // 依頼作業（帳票のチェック欄）。査定サイトの「依頼作業」に合わせる。
-const WORK_ITEMS = ['搬出/輸送/搬入', '荷造り/梱包', '家具梱包', '荷解き', '家具の配置', '不用品の処分', 'ペットの輸送']
+const WORK_ITEMS = ['搬出/輸送/搬入', '荷造り/梱包', '家具梱包', '荷解き', '家具の配置',
+  '不用品の処分', 'ペットの輸送', 'エアコン脱着', '窓吊り上下作業']
 
 // リードの家財語彙（LeadDetailModalの選択肢）→ 見積書の品目キー への対応表。
 // 語彙・サイズ表記が異なるため明示的に対応づける（一致すれば家財数量に自動反映）。
@@ -319,6 +320,8 @@ function emptyForm() {
 
 // 数値ユーティリティ
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0 }
+// 料金欄（自由記述）から先頭の金額を取り出す。「89,000円 〜 150,000円」なら 89000。
+const parseAmount = (t) => { const m = String(t || '').match(/[\d][\d,]*/); return m ? Number(m[0].replace(/,/g, '')) : 0 }
 const yen = (n) => '¥' + Math.round(num(n)).toLocaleString('ja-JP')
 const sumFee = (obj, list) => list.reduce((s, f) => s + num(obj?.[f.key]), 0)
 
@@ -514,7 +517,7 @@ export default function Estimate({ user, switchTab }) {
     const payload = {
       ...form,
       id: editId || Date.now().toString(),
-      total: totals.saikei,
+      total: parseAmount(form.priceText) || totals.saikei, // 料金欄に書いた金額を一覧の金額として使う
       points: totals.points,
     }
     if (isDemo) {
@@ -698,38 +701,7 @@ export default function Estimate({ user, switchTab }) {
         </button>
       </div>
 
-      {/* 基本情報 */}
-      <Section title="基本情報">
-        <div className="three-col">
-          <Field label="見積番号"><input style={inputStyle} value={form.estimateNo} onChange={e => set('estimateNo', e.target.value)} /></Field>
-          <Field label="見積日"><input type="date" style={inputStyle} value={form.estimateDate} onChange={e => set('estimateDate', e.target.value)} /></Field>
-          <Field label="見積者"><input style={inputStyle} value={form.estimator} onChange={e => set('estimator', e.target.value)} placeholder="担当者名" /></Field>
-        </div>
-        <div className="three-col" style={{ marginTop: 10 }}>
-          <Field label="引越日">
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input type="date" style={inputStyle} value={form.moveDate} onChange={e => set('moveDate', e.target.value)} />
-              <select style={{ ...inputStyle, width: 70 }} value={form.moveAP} onChange={e => set('moveAP', e.target.value)}><option>AM</option><option>PM</option></select>
-            </div>
-          </Field>
-          <Field label="お届日">
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input type="date" style={inputStyle} value={form.deliverDate} onChange={e => set('deliverDate', e.target.value)} />
-              <select style={{ ...inputStyle, width: 70 }} value={form.deliverAP} onChange={e => set('deliverAP', e.target.value)}><option>AM</option><option>PM</option></select>
-            </div>
-          </Field>
-          <Field label="距離（km）"><input type="number" style={inputStyle} value={form.distanceKm} onChange={e => set('distanceKm', e.target.value)} placeholder="例：12" /></Field>
-        </div>
-        <div className="three-col" style={{ marginTop: 10 }}>
-          <Field label="梱包日"><input type="date" style={inputStyle} value={form.packDate} onChange={e => set('packDate', e.target.value)} /></Field>
-          <Field label="開梱日"><input type="date" style={inputStyle} value={form.openDate} onChange={e => set('openDate', e.target.value)} /></Field>
-          <Field label="発送内容">
-            <select style={inputStyle} value={form.sendType} onChange={e => set('sendType', e.target.value)}>
-              {SEND_TYPES.map(s => <option key={s} value={s}>{s || '—'}</option>)}
-            </select>
-          </Field>
-        </div>
-      </Section>
+      {/* 基本情報セクションは廃止（見積番号は自動採番、見積者は顧客情報の表へ移動） */}
 
       {/* 顧客情報 */}
       {/* ── 顧客情報／住所／詳細内容：査定サイトの帳票と同じ並びの入力表 ── */}
@@ -739,7 +711,9 @@ export default function Estimate({ user, switchTab }) {
             <tbody>
               <tr>
                 <td style={flab}>フリガナ</td>
-                <td style={fcell} colSpan={3}><input style={fin} value={form.kana} onChange={e => set('kana', e.target.value)} /></td>
+                <td style={fcell}><input style={fin} value={form.kana} onChange={e => set('kana', e.target.value)} /></td>
+                <td style={flab}>見積者</td>
+                <td style={fcell}><input style={fin} value={form.estimator} onChange={e => set('estimator', e.target.value)} /></td>
               </tr>
               <tr>
                 <td style={flab}>名前</td>
@@ -926,66 +900,8 @@ export default function Estimate({ user, switchTab }) {
         </div>
       </div>
 
-      <Section title="作業内容・作業状況">
-        <div className="three-col">
-          <Field label="小物梱包"><Seg choices={PERSON_CHOICES} value={form.packSmallBy} onChange={v => set('packSmallBy', v)} /></Field>
-          <Field label="家具梱包"><Seg choices={PERSON_CHOICES} value={form.packFurniBy} onChange={v => set('packFurniBy', v)} /></Field>
-          <Field label="開梱作業"><Seg choices={PERSON_CHOICES} value={form.packOpenBy} onChange={v => set('packOpenBy', v)} /></Field>
-        </div>
-        <div className="three-col" style={{ marginTop: 10 }}>
-          <Field label="エアコン セパレート（台）"><input type="number" style={inputStyle} value={form.airconSep} onChange={e => set('airconSep', e.target.value)} /></Field>
-          <Field label="エアコン ウィンド（台）"><input type="number" style={inputStyle} value={form.airconWindow} onChange={e => set('airconWindow', e.target.value)} /></Field>
-          <Field label="ピアノ・エレクトーン作業"><input style={inputStyle} value={form.pianoWork} onChange={e => set('pianoWork', e.target.value)} placeholder="有無・備考" /></Field>
-        </div>
-        <div style={{ marginTop: 10 }}>
-          <Field label="オプション工事"><input style={inputStyle} value={form.optionWork} onChange={e => set('optionWork', e.target.value)} placeholder="内容を記入" /></Field>
-        </div>
-        <div className="three-col" style={{ marginTop: 10 }}>
-          <Field label="二ヶ所積み・降し"><input style={inputStyle} value={form.twoPlace} onChange={e => set('twoPlace', e.target.value)} placeholder="現地・行先 等" /></Field>
-          <Field label="道幅"><select style={inputStyle} value={form.roadWidth} onChange={e => set('roadWidth', e.target.value)}>{ROAD_CHOICES.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
-          <Field label="エレベーター作業"><select style={inputStyle} value={form.elevator} onChange={e => set('elevator', e.target.value)}>{YN.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
-        </div>
-        <div className="three-col" style={{ marginTop: 10 }}>
-          <Field label="窓吊り上下作業"><select style={inputStyle} value={form.windowLift} onChange={e => set('windowLift', e.target.value)}>{YN.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
-          <Field label="機械作業"><select style={inputStyle} value={form.machine} onChange={e => set('machine', e.target.value)}>{REQ_CHOICES.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
-          <div />
-        </div>
-      </Section>
-
-      {/* 家財は「詳細内容」の中（依頼作業の下）へ移動した */}
-
-      {/* 料金 */}
-      <Section title="料金（手入力）">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
-          <FeeBlock title="基本料金 (A)" list={FEE_A} obj={form.feeA} onChange={(k, v) => setFee('feeA', k, v)} subtotal={totals.a} />
-          <FeeBlock title="附帯料金 (B)" list={FEE_B} obj={form.feeB} onChange={(k, v) => setFee('feeB', k, v)} subtotal={totals.b} />
-          <FeeBlock title="資材の料金 (C)" list={FEE_C} obj={form.feeC} onChange={(k, v) => setFee('feeC', k, v)} subtotal={totals.c} />
-          <FeeBlock title="その他の料金 (D)" list={FEE_D} obj={form.feeD} onChange={(k, v) => setFee('feeD', k, v)} subtotal={totals.d} />
-        </div>
-
-        {/* 合計 */}
-        <div style={{ marginTop: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: 16 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'flex-end', alignItems: 'flex-end' }}>
-            <TotalLine label="小計(A)" value={yen(totals.a)} />
-            <TotalLine label="小計(B)" value={yen(totals.b)} />
-            <TotalLine label="小計(C)" value={yen(totals.c)} />
-            <TotalLine label="小計(D)" value={yen(totals.d)} />
-            <TotalLine label="合計 (A+B+C+D)" value={yen(totals.goukei)} />
-            <TotalLine label="消費税 (10%)" value={yen(totals.tax)} />
-            <TotalLine label="再計（総額）" value={yen(totals.saikei)} big />
-          </div>
-        </div>
-      </Section>
-
-      {/* お約束事項・支払 */}
-      <Section title="お約束事項・お支払い">
-        <div className="two-col">
-          <Field label="新居・お約束事項"><input style={inputStyle} value={form.requestTo} onChange={e => set('requestTo', e.target.value)} placeholder="例：新居（米曹屋郡笹栗町…）倍屋" /></Field>
-          <Field label="お支払方法"><select style={inputStyle} value={form.payment} onChange={e => set('payment', e.target.value)}>{PAY_METHODS.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
-        </div>
-        {/* 備考は「詳細内容」の備考・その他希望に一本化した（欄が2つあると入力先が分かれて紛らわしいため） */}
-        <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>お支払いは、積込終了時にお願い致します。</div>
-      </Section>
+      {/* 作業内容・作業状況／料金（手入力）／お約束事項・お支払い は帳票に無いため廃止した。
+          料金は「詳細内容」の料金欄、家財は依頼作業の下に集約している。 */}
 
       {/* 下部操作 */}
       <div className="no-print" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginBottom: 24 }}>
@@ -1141,7 +1057,8 @@ function PreviewModal({ form, totals, onClose }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', ...band('#9AA3AB') }}>
             <tbody>
               <tr>
-                <td style={lab}>フリガナ</td><td style={val} colSpan={3}>{form.kana}</td>
+                <td style={lab}>フリガナ</td><td style={val}>{form.kana}</td>
+                <td style={lab}>見積者</td><td style={val}>{form.estimator}</td>
               </tr>
               <tr>
                 <td style={lab}>名前</td><td style={val}>{form.name ? `${form.name} 様` : ''}</td>
