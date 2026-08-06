@@ -592,7 +592,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       ) : (
         <div className="card">
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
-            <table>
+            <table className="tbl-leads">
               <thead>
                 <tr>{sortableTh('receivedAt', '受付日時')}<th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>訪問見積もり日</th><th>タイムツリー</th><th>メモ</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>

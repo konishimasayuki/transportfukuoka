@@ -215,8 +215,8 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     setSortKey(null); setSortDir(null)
   }
   const sortArrow = (key) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
-  const sortableTh = (key, label) => (
-    <th onClick={() => cycleSort(key)} style={{ cursor: 'pointer', userSelect: 'none' }} title="クリックで並び替え">{label}{sortArrow(key)}</th>
+  const sortableTh = (key, label, cls) => (
+    <th className={cls} onClick={() => cycleSort(key)} style={{ cursor: 'pointer', userSelect: 'none' }} title="クリックで並び替え">{label}{sortArrow(key)}</th>
   )
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
@@ -600,17 +600,17 @@ export default function Contracts({ user, mode, onFollowDelta }) {
       ) : (
         <div className="card">
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
-            <table>
+            <table className="tbl-con">
               <thead>
                 <tr>
                   {mode === 'follow' && sortableTh('receivedAt', '受付日時')}
-                  {!meta && sortableTh('salesDate', '売上登録日')}
+                  {!meta && sortableTh('salesDate', '売上登録日', 'm-hide')}
                   <th>顧客名</th>
-                  <th>流入元</th>
+                  <th className="m-hide">流入元</th>
                   {sortableTh('date', '引越し日')}
-                  <th>区間</th><th>見積金額</th>
-                  {mode === 'follow' ? <><th>メモ</th><th>メモ最終更新日時</th></> : <><th>エアコン</th><th>段ボール</th></>}
-                  <th>タイムツリー</th><th>ステータス</th><th>担当者</th>{mode !== 'follow' && <th>操作</th>}
+                  <th className="m-hide">区間</th><th>見積金額</th>
+                  {mode === 'follow' ? <><th className="m-hide">メモ</th><th className="m-hide">メモ最終更新日時</th></> : <><th className="m-hide">エアコン</th><th className="m-hide">段ボール</th></>}
+                  <th className="m-hide">タイムツリー</th><th className="m-hide">ステータス</th><th className="m-hide">担当者</th>{mode !== 'follow' && <th>操作</th>}
                 </tr>
               </thead>
               <tbody>
@@ -621,29 +621,29 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                     onClick={() => item._isLead && setLeadDetailItem(item._lead)}
                     style={item._isLead ? { cursor: 'pointer' } : undefined}>
                     {mode === 'follow' && <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: '#64748B' }}>{fmtReceivedDate(item.receivedAt)}</td>}
-                    {!meta && <td>{item.salesDate || ''}</td>}
+                    {!meta && <td className="m-hide">{item.salesDate || ''}</td>}
                     <td><b>{item.name}</b></td>
-                    <td><SourceTag label={item.srcLabel} /></td>
+                    <td className="m-hide"><SourceTag label={item.srcLabel} /></td>
                     <td>{item.date}</td>
-                    <td title={contractRoute(item).full}>
+                    <td className="m-hide" title={contractRoute(item).full}>
                       <div style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractRoute(item).short}</div>
                     </td>
                     <td>{item.amount ? `¥${item.amount.toLocaleString()}` : '—'}</td>
                     {mode === 'follow' ? (
                       <>
-                        <td title={item.memo || ''}>
+                        <td className="m-hide" title={item.memo || ''}>
                           <div style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748B' }}>{item.memo || ''}</div>
                         </td>
-                        <td style={{ whiteSpace: 'nowrap', color: '#94A3B8', fontSize: 12 }}>{fmtMemoTime(item.memoUpdatedAt)}</td>
+                        <td className="m-hide" style={{ whiteSpace: 'nowrap', color: '#94A3B8', fontSize: 12 }}>{fmtMemoTime(item.memoUpdatedAt)}</td>
                       </>
                     ) : (
                       <>
-                        <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'aircon', AIRCON_OPTS)}</td>
-                        <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'cardboard', CARDBOARD_OPTS)}</td>
+                        <td className="m-hide">{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'aircon', AIRCON_OPTS)}</td>
+                        <td className="m-hide">{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'cardboard', CARDBOARD_OPTS)}</td>
                       </>
                     )}
-                    <td>{item._isLead ? leadTtCheckbox(item) : ttCheckbox(item)}</td>
-                    <td>
+                    <td className="m-hide">{item._isLead ? leadTtCheckbox(item) : ttCheckbox(item)}</td>
+                    <td className="m-hide">
                       {item._isLead ? (
                         <select value={item.status || ''} onClick={e => e.stopPropagation()} onChange={e => updateLeadStatus(item, e.target.value)}
                           className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}
@@ -660,7 +660,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                         </select>
                       )}
                     </td>
-                    <td>
+                    <td className="m-hide">
                       <select
                         value={item.staff || ''}
                         onClick={e => e.stopPropagation()}

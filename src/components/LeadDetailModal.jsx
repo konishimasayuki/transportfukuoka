@@ -226,8 +226,8 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
 
         {/* 基本情報 */}
         {/* ── 顧客情報（帳票と同じ並び）── */}
-        {/* スマホでは帳票型の表（min-width あり）を横スワイプで見られるようにする */}
-        <div style={{ padding: 12, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        {/* スマホでは帳票型の表を縦積みに組み替えて、横スクロールなしで全項目見られるようにする（global.css の .paper-stack） */}
+        <div className="paper-stack" style={{ padding: 12 }}>
           <table style={{ ...table4, ...fband(BAND.customer) }}>
             <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
             <tbody>

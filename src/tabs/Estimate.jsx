@@ -650,7 +650,7 @@ export default function Estimate({ user, switchTab }) {
         ) : (
           <div className="card">
             <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
-              <table>
+              <table className="tbl-est">
                 <thead>
                   <tr><th>種別</th><th>見積番号</th><th>顧客名</th><th>引越日</th><th>ポイント</th><th style={{ textAlign: 'right' }}>金額（税込）</th><th>状態</th><th>操作</th></tr>
                 </thead>
@@ -673,7 +673,8 @@ export default function Estimate({ user, switchTab }) {
                         <td>
                           <div style={{ display: 'flex', gap: 4 }}>
                             {isContract ? (
-                              <button className="btn btn-primary btn-sm" onClick={() => issueFromContract(item._contract)}>📝 見積書として作成</button>
+                              /* スマホでは「📝 見積作成」に短縮して列内に収める */
+                              <button className="btn btn-primary btn-sm" onClick={() => issueFromContract(item._contract)}>📝 見積<span className="m-hide">書として</span>作成</button>
                             ) : (
                               <>
                                 <button className="btn btn-outline btn-sm" onClick={() => openEdit(item)}>編集</button>
@@ -733,13 +734,13 @@ export default function Estimate({ user, switchTab }) {
       {/* ══ 紙の御見積書（会社控）と同じ並びの入力フォーム ══ */}
       {/* est-form / est-form-inner：スマホでは全体を1つの横スクロールにする（global.css参照） */}
       <div className="card" style={{ marginBottom: 14 }}>
-        <div className="card-body est-form" style={{ padding: 14 }}>
+        <div className="card-body est-form paper-stack" style={{ padding: 14 }}>
           <div className="est-form-inner">
 
           {/* 1. 日程／車輌／発送内容／見積情報（帳票の最上段） */}
           <div className="scroll-x">
-            {/* tableLayout: fixed で date入力等の固有幅がグリッド列を押し広げないようにする（スマホのスワイプ距離を短く保つ） */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.95fr 1fr', gap: 8, minWidth: 760 }}>
+            {/* tableLayout: fixed で date入力等の固有幅がグリッド列を押し広げないようにする。g-top はスマホで縦積み */}
+            <div className="g-top" style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.95fr 1fr', gap: 8, minWidth: 760 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 0, ...fband('#9AA3AB') }}>
                 <colgroup><col style={{ width: 104 }} /><col /></colgroup>
                 <tbody>
@@ -948,7 +949,7 @@ export default function Estimate({ user, switchTab }) {
               <span style={{ fontSize: 12, fontWeight: 800, color: '#1E5FA8' }}>ポイント合計 {totals.points.toLocaleString('ja-JP')}</span>
             </div>
             <div className="scroll-x">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(178px, 1fr))', minWidth: 900 }}>
+              <div className="g-kazai" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(178px, 1fr))', minWidth: 900 }}>
                 {KAZAI_GROUPS.map((g, gi) => {
                   const gpts = g.items.reduce((sum, it) => sum + (it.pt ? num(form.items[it.key]) * it.pt : 0), 0)
                   return (
@@ -981,7 +982,7 @@ export default function Estimate({ user, switchTab }) {
           <div style={{ marginTop: 8, border: '1px solid #CBD5E1', borderLeft: '4px solid #9AA3AB' }}>
             <div style={{ background: '#F4F6F8', padding: '6px 10px', borderBottom: '1px solid #CBD5E1', fontSize: 11, fontWeight: 700, color: '#334155' }}>荷造資材</div>
             <div className="scroll-x">
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+              <table className="keep-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
                 <thead>
                   <tr>
                     <td style={flab}>品名</td>
@@ -1102,7 +1103,7 @@ export default function Estimate({ user, switchTab }) {
 
           {/* 9. 料金（A〜D）＋合計 */}
           <div className="scroll-x" style={{ marginTop: 8 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(238px, 1fr))', gap: 8, minWidth: 984 }}>
+            <div className="g-fees" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(238px, 1fr))', gap: 8, minWidth: 984 }}>
               <FeeBlock title="基本料金（A）" list={FEE_A} obj={form.feeA} onChange={(k, v) => setFee('feeA', k, v)} subtotal={totals.a} />
               <FeeBlock title="附帯料金（B）" list={FEE_B} obj={form.feeB} onChange={(k, v) => setFee('feeB', k, v)} subtotal={totals.b} />
               {/* 資材の料金（C）：紙のとおり数量と金額の両方を書ける */}
@@ -1134,7 +1135,7 @@ export default function Estimate({ user, switchTab }) {
           {/* 合計（紙の右下と同じ並び：小計A〜D→合計→消費税→再計） */}
           <div style={{ marginTop: 8, border: '1px solid #CBD5E1', borderLeft: '4px solid #1E5FA8', background: '#F8FAFC', padding: '8px 12px' }}>
             <div className="scroll-x">
-              <div style={{ display: 'flex', gap: 22, justifyContent: 'flex-end', alignItems: 'flex-end', minWidth: 720 }}>
+              <div className="g-total" style={{ display: 'flex', gap: 22, justifyContent: 'flex-end', alignItems: 'flex-end', minWidth: 720 }}>
                 <TotalLine label="小計（A）" value={yen(totals.a)} />
                 <TotalLine label="小計（B）" value={yen(totals.b)} />
                 <TotalLine label="小計（C）" value={yen(totals.c)} />
