@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { DEMO_CONTRACTS } from '../lib/demoData'
 import { GMAPS_KEY, zipFromAddress } from '../lib/gmaps'
 
@@ -1294,28 +1294,22 @@ function PrintStyle() {
 }
 
 function PreviewModal({ form, totals, onClose }) {
-  // 家財は「数量が1以上のものだけ」を4分類に振り分けて出す。
-  // 最終見積のため、0の品目は帳票に載せない。
-  const byBucket = {}
-  KAZAI_BUCKETS.forEach(b => { byBucket[b] = [] })
-  ALL_ITEMS.forEach(it => {
-    const qty = num(form.items[it.key])
-    if (qty > 0) byBucket[bucketOf(it.key)].push({ ...it, qty })
-  })
-  const shownBuckets = KAZAI_BUCKETS.filter(b => byBucket[b].length > 0)
-  const works = form.works || {}
-  // 料金：手入力があればそれを、無ければ合計金額。どちらも無ければ空欄（¥0とは出さない）
-  const priceText = form.priceText || (totals.saikei > 0 ? yen(totals.saikei) : '')
-  // 引越し時間：未指定なら AM/PM を日本語表記に置き換える
-  const moveTimeText = form.moveTime || (form.moveDate ? ({ AM: '午前', PM: '午後' }[form.moveAP] || '') : '')
-
-  // 罫線つきセル（帳票の見た目に合わせる）
-  const bd = '1px solid #9AA3AB'
-  const cell = { border: bd, padding: '4px 7px', fontSize: 11, verticalAlign: 'middle' }
-  const lab  = { ...cell, background: '#F4F6F8', fontWeight: 700, whiteSpace: 'nowrap', width: 92 }
-  const val  = { ...cell, minWidth: 90 }
-  // ブロックごとの色帯（元帳票：顧客=グレー、住所=オレンジ、詳細=水色）
-  const band = (color) => ({ borderLeft: `4px solid ${color}` })
+  // 紙の御見積書（会社控）を再現した印刷レイアウト。
+  // 空欄は空欄のまま印刷する（紙と同じく、書いていない欄は白）。
+  const bd = '1px solid #333'
+  // minWidth: 0 が肝。global.css の table { min-width: 500px } が印刷面にも効いてしまい、
+  // グリッド列が 500px まで押し広げられて右側のブロック（発送内容・見積日・料金C/D等）が
+  // 紙面の外へはみ出す。tableLayout: fixed と合わせて紙の枠幅を守る。
+  const pl = { border: bd, background: '#F2F2F2', fontWeight: 700, fontSize: 9, padding: '2px 4px' }
+  const pc = { border: bd, fontSize: 10, padding: '2px 5px', overflow: 'hidden' }
+  const tbl = { borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed', minWidth: 0 }
+  // 選択肢：選ばれたものを丸で囲む（紙の「○で囲む」を再現）
+  const Opt = ({ on, children }) => (
+    <span style={{ display: 'inline-block', padding: '0 4px', margin: '0 1px', borderRadius: 9,
+      border: on ? '1.6px solid #C2410C' : '1.6px solid transparent', fontWeight: on ? 800 : 400 }}>{children}</span>
+  )
+  const Chk = ({ on }) => <span style={{ fontWeight: 800 }}>{on ? '☑' : '☐'}</span>
+  const gpts = (g) => g.items.reduce((sum, it) => sum + (it.pt ? num(form.items[it.key]) * it.pt : 0), 0)
 
   return (
     <div style={{ ...modalOverlay, alignItems: 'flex-start', overflow: 'auto', padding: 0 }}>
@@ -1325,144 +1319,347 @@ function PreviewModal({ form, totals, onClose }) {
           <button className="btn btn-primary" onClick={() => window.print()}>🖨 印刷 / PDF</button>
         </div>
 
-        <div className="print-area" style={{ width: 780, maxWidth: '96%', margin: '0 auto', background: '#fff', padding: 24, color: '#111', fontFamily: "'Noto Sans JP', sans-serif" }}>
-          {/* 見出し */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
-            <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: 2 }}>見積書</div>
-            <div style={{ textAlign: 'right', fontSize: 10, lineHeight: 1.5 }}>
-              <div style={{ fontSize: 12, fontWeight: 800 }}>{COMPANY.name}</div>
-              <div>{COMPANY.zip} {COMPANY.address}</div>
-              <div>TEL {COMPANY.tel} ／ FAX {COMPANY.fax}</div>
-              <div>見積番号 {form.estimateNo}　見積日 {form.estimateDate || '―'}</div>
+        <div className="print-area" style={{ width: 880, maxWidth: '97%', margin: '0 auto', background: '#fff', padding: 18, color: '#111', fontFamily: "'Noto Sans JP', sans-serif" }}>
+
+          {/* 見出し＋受付 */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: 3, flex: 1 }}>御 見 積 書 <span style={{ fontSize: 14 }}>（会社控）</span></div>
+            <table style={{ borderCollapse: 'collapse', width: 330, minWidth: 0 }}>
+              <tbody>
+                <tr>
+                  <td style={pl}>受付(1)</td><td style={{ ...pc, width: 110 }}>{form.reception1}</td>
+                  <td style={pl}>受付(2)</td><td style={{ ...pc, width: 110 }}>{form.reception2}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* 最上段：日程・車輌・発送内容・見積情報 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 0.85fr 0.9fr 1fr', gap: 4, marginTop: 4 }}>
+            <table style={tbl}><tbody>
+              <tr><td style={pl}>引越日</td><td style={pc}>{form.moveDate} {form.moveDate ? ({ AM: 'AM', PM: 'PM' }[form.moveAP] || '') : ''}</td></tr>
+              <tr><td style={pl}>お届日</td><td style={pc}>{form.deliverDate} {form.deliverDate ? form.deliverAP : ''}</td></tr>
+              <tr><td style={pl}>梱包日</td><td style={pc}>{form.packDate}</td></tr>
+              <tr><td style={pl}>開梱日</td><td style={pc}>{form.openDate}</td></tr>
+            </tbody></table>
+            <table style={tbl}><tbody>
+              <tr><td style={pl}>スペース</td><td style={pc}>{form.spaceSize}</td></tr>
+              <tr><td style={pl}>作業量</td><td style={pc}>{form.workLoad}</td></tr>
+              <tr><td style={pl}>梱包・開梱</td><td style={pc}>{form.packOpenCar}</td></tr>
+              <tr><td style={pl}>補助車輌</td><td style={pc}>{form.helperCar}</td></tr>
+              <tr><td style={pl}>距離</td><td style={pc}>{form.distanceKm}{form.distanceKm ? ' km' : ''}</td></tr>
+            </tbody></table>
+            <table style={tbl}><tbody>
+              <tr><td style={pl}>引越 F→F</td><td style={pc}>{form.moveFF}</td></tr>
+              <tr><td style={pl}>ピアノ/U・G</td><td style={pc}>{form.pianoFF}</td></tr>
+              <tr>
+                <td style={pl}>発送内容</td>
+                <td style={{ ...pc, fontSize: 8.5, padding: '1px 2px' }}>
+                  {/* 4択が1行に収まらないので折り返す（クリップさせない） */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+                    {SEND_TYPES.filter(Boolean).map(t => <Opt key={t} on={form.sendType === t}>{t}</Opt>)}
+                  </div>
+                </td>
+              </tr>
+            </tbody></table>
+            <table style={tbl}><tbody>
+              <tr><td style={pl}>見積日</td><td style={pc}>{form.estimateDate}</td></tr>
+              <tr><td style={pl}>受付日</td><td style={pc}>{form.requestDate}</td></tr>
+              <tr><td style={pl}>見積者氏名</td><td style={pc}>{form.estimator}</td></tr>
+            </tbody></table>
+          </div>
+
+          {/* お名前 */}
+          <table style={{ ...tbl, marginTop: 4 }}>
+            <tbody>
+              <tr>
+                <td style={{ ...pl, width: 70 }}>フリガナ</td>
+                <td style={{ ...pc, fontSize: 9 }}>{form.kana}</td>
+                <td style={{ ...pl, width: 60 }} rowSpan={2}>フロント</td>
+                <td style={{ ...pc, width: 110 }} rowSpan={2}>{form.front}</td>
+              </tr>
+              <tr>
+                <td style={pl}>お名前</td>
+                <td style={{ ...pc, fontSize: 14, fontWeight: 800 }}>{form.name}　様</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* [A]現住所／[B]転居先 */}
+          {[
+            ['[A] 現住所', form.fromZip, form.fromAddress, form.fromTelHome, form.fromTelWork, form.fromTelMobile, true],
+            ['[B] 転居先', form.toZip, form.toAddress, form.toTelHome, form.toTelWork, form.toTelMobile, false],
+          ].map(([title, zip, addr, home, work, mob, first]) => (
+            <table key={title} style={{ ...tbl, marginTop: 4 }}>
+              <tbody>
+                <tr>
+                  <td style={{ ...pl, width: 70 }} rowSpan={3}>{title}</td>
+                  <td style={{ ...pc, width: 120 }}>〒 {zip}</td>
+                  <td style={pc} rowSpan={2}>{addr}</td>
+                  <td style={{ ...pl, width: 52 }}>自宅</td>
+                  <td style={{ ...pc, width: 108 }}>{home}</td>
+                  {first
+                    ? <><td style={{ ...pl, width: 52 }}>確認日</td><td style={{ ...pc, width: 96 }}>{form.confirmDate}</td></>
+                    : <><td style={{ ...pl, width: 52 }} rowSpan={3}>確認者</td><td style={{ ...pc, width: 96 }} rowSpan={3}>{form.confirmer}</td></>}
+                </tr>
+                <tr>
+                  <td style={{ ...pc, fontSize: 8, color: '#555' }}>フリガナ</td>
+                  <td style={pl}>勤務先</td>
+                  <td style={pc}>{work}</td>
+                  {first && <td style={{ ...pc, fontSize: 8 }} colSpan={2} rowSpan={2}>裏面の「確認書」をお読み下さい。</td>}
+                </tr>
+                <tr>
+                  <td style={pc} colSpan={2}></td>
+                  <td style={pl}>携帯電話</td>
+                  <td style={pc}>{mob}</td>
+                </tr>
+              </tbody>
+            </table>
+          ))}
+
+          {/* 作業内容の確認／ピアノ／エアコン移設 */}
+          {/* 1行目が colSpan なので固定レイアウトの列幅が決まらない。colgroup で明示する */}
+          <table style={{ ...tbl, marginTop: 4 }}>
+            <colgroup>
+              {[64, 170, 90, null, 112, 68, null].map((w, i) => <col key={i} style={w ? { width: w } : undefined} />)}
+            </colgroup>
+            <tbody>
+              <tr>
+                <td style={{ ...pl, textAlign: 'center' }} colSpan={2}>作 業 内 容 の 確 認</td>
+                <td style={{ ...pl, textAlign: 'center' }} colSpan={2}>ピアノ/U・G エレクトーン作業</td>
+                <td style={{ ...pl, textAlign: 'center', fontSize: 8 }} colSpan={2}>エアコン移設（パイプ延長・ガス補充等別途）</td>
+                <td style={{ ...pl, textAlign: 'center' }}>オプション工事</td>
+              </tr>
+              <tr>
+                {/* 値セルに幅を明示して「（ALL・Part）」まで切れずに収める */}
+                <td style={{ ...pl, width: 64 }}>小物梱包</td>
+                <td style={{ ...pc, width: 170 }}>{PERSON_CHOICES.map(c => <Opt key={c} on={form.packSmallBy === c}>{c}</Opt>)}<span style={{ fontSize: 8, color: '#555' }}>（ALL・Part）</span></td>
+                <td style={{ ...pl, width: 90 }} rowSpan={3}>作業内容</td>
+                <td style={pc} rowSpan={3}>{form.pianoWork}</td>
+                <td style={{ ...pl, width: 96 }}>セパレートS/W</td>
+                <td style={{ ...pc, width: 60 }}>{form.airconSep}{form.airconSep ? ' 台' : ' 台'}</td>
+                <td style={pc} rowSpan={3}>{form.optionWork}</td>
+              </tr>
+              <tr>
+                <td style={pl}>家具梱包</td>
+                <td style={pc}>{PERSON_CHOICES.map(c => <Opt key={c} on={form.packFurniBy === c}>{c}</Opt>)}<span style={{ fontSize: 8, color: '#555' }}>（D・E）</span></td>
+                <td style={pl}>ウィンドS/W</td>
+                <td style={pc}>{form.airconWindow} 台</td>
+              </tr>
+              <tr>
+                <td style={pl}>開梱作業</td>
+                <td style={pc}>{PERSON_CHOICES.map(c => <Opt key={c} on={form.packOpenBy === c}>{c}</Opt>)}</td>
+                <td style={pc} colSpan={2}></td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* 作業状況 */}
+          <table style={{ ...tbl, marginTop: 4 }}>
+            <tbody>
+              <tr>
+                <td style={{ ...pl, width: 34, textAlign: 'center' }} rowSpan={2}>作業状況</td>
+                <td style={{ ...pl, width: 110 }}>二ヶ所 積み・降し</td>
+                <td style={pc}>{form.twoPlace}</td>
+                <td style={{ ...pl, width: 110 }}>道幅（横持ち作業）</td>
+                <td style={{ ...pc, width: 110 }}>{ROAD_CHOICES.filter(Boolean).map(c => <Opt key={c} on={form.roadWidth === c}>{c}</Opt>)}</td>
+                <td style={{ ...pl, width: 96 }}>エレベーター作業</td>
+                <td style={{ ...pc, width: 70 }}>{YN.filter(Boolean).map(c => <Opt key={c} on={form.elevator === c}>{c}</Opt>)}</td>
+              </tr>
+              <tr>
+                <td style={pl}>窓吊上下作業</td>
+                <td style={pc}>{YN.filter(Boolean).map(c => <Opt key={c} on={form.windowLift === c}>{c}</Opt>)}</td>
+                <td style={pl}>機械作業</td>
+                <td style={pc}>{REQ_CHOICES.filter(Boolean).map(c => <Opt key={c} on={form.machine === c}>{c}</Opt>)}</td>
+                <td style={pl}>依頼作業</td>
+                <td style={{ ...pc, fontSize: 8 }}>{WORK_ITEMS.filter(w => form.works?.[w]).join('・')}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* 家財（紙と同じ5列・全品目） */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', border: bd, borderBottom: 'none', marginTop: 4 }}>
+            {KAZAI_GROUPS.map((g, gi) => (
+              <div key={g.title} style={{ borderRight: gi < 4 ? bd : 'none' }}>
+                {g.items.map(it => {
+                  const q = num(form.items[it.key])
+                  return (
+                    <div key={it.key} style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #999' }}>
+                      <div style={{ flex: 1, fontSize: 8, padding: '1px 3px', whiteSpace: 'nowrap', overflow: 'hidden' }}>{it.name}{it.size ? ` ${it.size}` : ''}</div>
+                      <div style={{ width: 22, fontSize: 7.5, color: '#555', textAlign: 'right', paddingRight: 2 }}>{it.pt == null ? '/' : it.pt}</div>
+                      <div style={{ width: 24, borderLeft: '1px solid #999', fontSize: 9, fontWeight: 800, textAlign: 'center' }}>{q > 0 ? q : ''}</div>
+                    </div>
+                  )
+                })}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8.5, fontWeight: 800, padding: '1px 4px', background: '#F2F2F2' }}>
+                  <span>小 計</span><span>{gpts(g).toLocaleString('ja-JP')}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 荷造資材 */}
+          <table style={{ ...tbl, marginTop: 0 }}>
+            <tbody>
+              <tr>
+                <td style={{ ...pl, textAlign: 'center' }} colSpan={8}>荷 造 資 材</td>
+                <td style={{ ...pl, width: 120 }}>ポイント合計</td>
+                <td style={{ ...pc, fontWeight: 900, fontSize: 12 }}>{totals.points.toLocaleString('ja-JP')}</td>
+              </tr>
+              <tr>
+                {FEE_C.slice(0, 4).map(f => (
+                  <Fragment key={f.key}>
+                    <td style={{ ...pl, width: 76 }}>{f.label}</td>
+                    <td style={{ ...pc, fontSize: 8.5 }}>{form.matDay1?.[f.key]}{form.matDay2?.[f.key] ? ` ／ ${form.matDay2[f.key]}` : ''} {form.matOnDay?.[f.key] ? '当日' : ''} {num(form.matCount?.[f.key]) > 0 ? `${form.matCount[f.key]}${f.unit}` : ''}</td>
+                  </Fragment>
+                ))}
+                <td style={pl}>作成日</td><td style={pc}>{form.createDate}</td>
+              </tr>
+              <tr>
+                {FEE_C.slice(4).map(f => (
+                  <Fragment key={f.key}>
+                    <td style={pl}>{f.label}</td>
+                    <td style={{ ...pc, fontSize: 8.5 }}>{form.matDay1?.[f.key]}{form.matDay2?.[f.key] ? ` ／ ${form.matDay2[f.key]}` : ''} {form.matOnDay?.[f.key] ? '当日' : ''} {num(form.matCount?.[f.key]) > 0 ? `${form.matCount[f.key]}${f.unit}` : ''}</td>
+                  </Fragment>
+                ))}
+                <td style={pl}>配達日</td><td style={pc}>{form.delivDate}</td>
+              </tr>
+              <tr>
+                <td style={pl}>工具・資材</td>
+                <td style={{ ...pc, fontSize: 8.5 }} colSpan={3}>{GEAR_ITEMS.map(g => <Opt key={g} on={!!form.gear?.[g]}>{g}</Opt>)}</td>
+                <td style={pl}>保管</td>
+                <td style={pc}>{form.storageUntil}{form.storageUntil ? ' 迄' : ''}</td>
+                <td style={pl}>シークレット</td>
+                <td style={{ ...pc, fontSize: 8.5 }} colSpan={3}>{SECRET_ITEMS.map(g => <Opt key={g} on={!!form.secretFlags?.[g]}>{g}</Opt>)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* 請求先／確認／お支払方法 */}
+          <table style={{ ...tbl, marginTop: 4 }}>
+            <tbody>
+              <tr>
+                <td style={{ ...pl, width: 76 }}>請求先 会社名</td>
+                <td style={pc} colSpan={3}>{form.billCompany}</td>
+                <td style={{ ...pl, width: 60 }}>確認</td>
+                <td style={{ ...pc, width: 110 }}>{form.confirmVisit}</td>
+                <td style={{ ...pl, width: 90, textAlign: 'center' }} rowSpan={2}>お支払方法</td>
+                <td style={{ ...pc, fontSize: 9 }} rowSpan={2}>
+                  {['現金', '前受金', '会社請求', 'カード'].map(c => <Opt key={c} on={form.payment === c}>{c}</Opt>)}
+                  {form.cardNote ? `（${form.cardNote}）` : ''}
+                </td>
+              </tr>
+              <tr>
+                <td style={pl}>住所</td>
+                <td style={pc} colSpan={3}>{form.billAddress}</td>
+                <td style={pl}>領収書宛先名</td>
+                <td style={pc}>{form.receiptName}</td>
+              </tr>
+              <tr>
+                <td style={pl}>日〆／日払い</td>
+                <td style={{ ...pc, width: 90 }}>{form.billClose}{form.billClose ? ' 日〆' : ''}　{form.billPayday}{form.billPayday ? ' 日払い' : ''}</td>
+                <td style={{ ...pl, width: 44 }}>電話</td>
+                <td style={pc}>{form.billTel}</td>
+                <td style={pl}>担当者</td>
+                <td style={pc}>{form.billStaff}{form.billStaff ? ' 様' : ''}</td>
+                <td style={pl}>請求書発送</td>
+                <td style={pc}>{form.billSend}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* お約束事項＋注意書き＋黒帯 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 4, marginTop: 4 }}>
+            <div style={{ border: bd }}>
+              <div style={{ display: 'flex' }}>
+                <div style={{ ...pl, border: 'none', borderRight: bd, width: 30, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>お約束事項</div>
+                <div style={{ flex: 1, minHeight: 66, fontSize: 10, padding: '4px 6px', whiteSpace: 'pre-wrap' }}>
+                  {form.requestTo}
+                  {form.request ? `${form.requestTo ? '\n' : ''}${form.request}` : ''}
+                </div>
+              </div>
+              <div style={{ borderTop: bd, fontSize: 7.5, color: '#333', padding: '3px 6px', lineHeight: 1.6 }}>
+                注）電気製品の内部の故障は、外傷がない限り一切補償いたしかねますので、御了承ください。<br />
+                注）貴重品、貴金属、現金等は必ずお客様の方で管理して下さい。<br />
+                注）当日当社作業員が梱包した場合、梱包料として1ケースにつき1,500円頂く場合があります。<br />
+                注）裏面の注意事項をよくお読み下さい。
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111', color: '#fff', fontWeight: 800, fontSize: 11, padding: 8, textAlign: 'center' }}>
+              お支払は、積込終了時にお願い致します。
             </div>
           </div>
 
-          {/* ── 顧客情報（グレー帯）── */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', ...band('#9AA3AB') }}>
-            <tbody>
-              <tr>
-                <td style={lab}>フリガナ</td><td style={val}>{form.kana}</td>
-                <td style={lab}>依頼日</td><td style={val}>{form.requestDate}</td>
-              </tr>
-              <tr>
-                <td style={lab}>名前</td><td style={val}>{form.name ? `${form.name} 様` : ''}</td>
-                <td style={lab}>引越し日</td><td style={val}>{form.moveDate || ''}</td>
-              </tr>
-              <tr>
-                <td style={lab}>電話番号</td><td style={val}>{form.fromTelMobile || form.fromTelHome || ''}</td>
-                <td style={lab}>引越し時間</td><td style={val}>{moveTimeText}</td>
-              </tr>
-              <tr>
-                <td style={lab}>年代・性別</td><td style={val}>{form.ageGender}</td>
-                <td style={lab}>引越し人数</td><td style={val}>{form.persons}</td>
-              </tr>
-              <tr>
-                <td style={lab}>職業</td><td style={val}>{form.job}</td>
-                <td style={lab}>メールアドレス</td><td style={val}>{form.email}</td>
-              </tr>
-            </tbody>
-          </table>
+          {/* 料金（A〜D）＋合計 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1.15fr', gap: 4, marginTop: 4 }}>
+            <table style={tbl}><tbody>
+              <tr><td style={{ ...pl, textAlign: 'center' }} colSpan={2}>基 本 料 金</td></tr>
+              {FEE_A.map(f => (
+                <tr key={f.key}><td style={{ ...pl, fontWeight: 400 }}>{f.label}</td><td style={{ ...pc, textAlign: 'right' }}>{num(form.feeA?.[f.key]) > 0 ? num(form.feeA[f.key]).toLocaleString('ja-JP') : ''}</td></tr>
+              ))}
+              <tr><td style={pl}>小 計（A）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800 }}>{totals.a > 0 ? totals.a.toLocaleString('ja-JP') : ''}</td></tr>
+            </tbody></table>
+            <table style={tbl}><tbody>
+              <tr><td style={{ ...pl, textAlign: 'center' }} colSpan={2}>附 帯 料 金</td></tr>
+              {FEE_B.map(f => (
+                <tr key={f.key}><td style={{ ...pl, fontWeight: 400 }}>{f.label}</td><td style={{ ...pc, textAlign: 'right' }}>{num(form.feeB?.[f.key]) > 0 ? num(form.feeB[f.key]).toLocaleString('ja-JP') : ''}</td></tr>
+              ))}
+              <tr><td style={pl}>小 計（B）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800 }}>{totals.b > 0 ? totals.b.toLocaleString('ja-JP') : ''}</td></tr>
+            </tbody></table>
+            <table style={tbl}><tbody>
+              <tr><td style={{ ...pl, textAlign: 'center' }} colSpan={3}>資 材 の 料 金</td></tr>
+              {FEE_C.map(f => (
+                <tr key={f.key}>
+                  <td style={{ ...pl, fontWeight: 400 }}>{f.label}</td>
+                  <td style={{ ...pc, width: 44, textAlign: 'right', fontSize: 9 }}>{num(form.matCount?.[f.key]) > 0 ? `${form.matCount[f.key]} ${f.unit}` : ''}</td>
+                  <td style={{ ...pc, textAlign: 'right' }}>{num(form.feeC?.[f.key]) > 0 ? num(form.feeC[f.key]).toLocaleString('ja-JP') : ''}</td>
+                </tr>
+              ))}
+              <tr><td style={pl} colSpan={2}>小 計（C）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800 }}>{totals.c > 0 ? totals.c.toLocaleString('ja-JP') : ''}</td></tr>
+            </tbody></table>
+            <table style={tbl}><tbody>
+              <tr><td style={{ ...pl, textAlign: 'center' }} colSpan={2}>そ の 他 の 料 金</td></tr>
+              {FEE_D.map(f => (
+                <tr key={f.key}><td style={{ ...pl, fontWeight: 400, fontSize: 8 }}>{f.label}</td><td style={{ ...pc, textAlign: 'right' }}>{num(form.feeD?.[f.key]) > 0 ? num(form.feeD[f.key]).toLocaleString('ja-JP') : ''}</td></tr>
+              ))}
+              <tr><td style={pl}>小 計（D）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800 }}>{totals.d > 0 ? totals.d.toLocaleString('ja-JP') : ''}</td></tr>
+              <tr><td style={pl}>合 計 (A)+(B)+(C)+(D)</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800 }}>{totals.goukei > 0 ? totals.goukei.toLocaleString('ja-JP') : ''}</td></tr>
+              <tr><td style={pl}>消 費 税（10%）</td><td style={{ ...pc, textAlign: 'right' }}>{totals.tax > 0 ? totals.tax.toLocaleString('ja-JP') : ''}</td></tr>
+              <tr><td style={{ ...pl, fontSize: 11 }}>再 計</td><td style={{ ...pc, textAlign: 'right', fontWeight: 900, fontSize: 13 }}>{totals.saikei > 0 ? `¥${totals.saikei.toLocaleString('ja-JP')}` : ''}</td></tr>
+            </tbody></table>
+          </div>
 
-          {/* ── 現住所 / 引越し先（オレンジ帯）── */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 6, ...band('#F0A868') }}>
-            <tbody>
+          {/* 最下段：媒体・紹介先／会社情報／区分 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 0.9fr', gap: 4, marginTop: 4 }}>
+            <table style={tbl}><tbody>
               <tr>
-                <td style={{ ...lab, background: '#FDF1E4' }} colSpan={2}>現住所</td>
-                <td style={{ ...lab, background: '#FDF1E4' }} colSpan={2}>引越し先</td>
+                <td style={{ ...pc, fontSize: 8, padding: '1px 2px' }}>
+                  {/* 10項目あるので折り返す（クリップさせない） */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+                    {MEDIA_ITEMS.map(m => <Opt key={m} on={!!form.media?.[m]}>{m === '再利用' ? '再利用 回' : m}</Opt>)}
+                  </div>
+                </td>
               </tr>
               <tr>
-                <td style={lab}>郵便番号</td><td style={val}>{form.fromZip}</td>
-                <td style={lab}>郵便番号</td><td style={val}>{form.toZip}</td>
+                <td style={pc}><span style={{ ...pl, border: 'none', background: 'none', marginRight: 6 }}>ご紹介先</span>{form.refName}</td>
+              </tr>
+            </tbody></table>
+            <div style={{ border: bd, textAlign: 'center', fontSize: 9, lineHeight: 1.5, padding: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 900 }}>{COMPANY.name}</div>
+              <div>{COMPANY.zip} {COMPANY.address}</div>
+              <div>TEL {COMPANY.tel}　FAX {COMPANY.fax}</div>
+              <div>登録番号 {COMPANY.regNo}</div>
+            </div>
+            <table style={tbl}><tbody>
+              <tr>
+                <td style={{ ...pc, textAlign: 'center' }}>
+                  {BIZ_ITEMS.map(m => <Opt key={m} on={!!form.bizType?.[m]}>{m}</Opt>)}
+                </td>
               </tr>
               <tr>
-                <td style={lab}>住所</td><td style={val}>{form.fromAddress}</td>
-                <td style={lab}>住所</td><td style={val}>{form.toAddress}</td>
+                <td style={pc}><span style={{ fontSize: 8, color: '#555' }}>その他</span>　{form.bizOther}</td>
               </tr>
-              <tr>
-                <td style={lab}>建物種別</td><td style={val}>{form.fromType}</td>
-                <td style={lab}>建物種別</td><td style={val}>{form.toType}</td>
-              </tr>
-              <tr>
-                <td style={lab}>建物階数</td><td style={val}>{form.fromFloor}</td>
-                <td style={lab}>建物階数</td><td style={val}>{form.toFloor}</td>
-              </tr>
-              <tr>
-                <td style={lab}>エレベーター</td><td style={val}>{form.fromElevator}</td>
-                <td style={lab}>エレベーター</td><td style={val}>{form.toElevator}</td>
-              </tr>
-              <tr>
-                <td style={lab}>間取り</td><td style={val}>{form.fromLayout}</td>
-                <td style={lab}>間取り</td><td style={val}>{form.toLayout}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* ── 詳細内容（水色帯）── */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 6, ...band('#6BB8CC') }}>
-            <tbody>
-              <tr><td style={{ ...lab, background: '#E6F4F8' }} colSpan={6}>詳細内容</td></tr>
-              <tr>
-                <td style={lab}>備考・その他希望</td>
-                <td style={{ ...cell, whiteSpace: 'pre-wrap' }} colSpan={5}>{form.request}</td>
-              </tr>
-              <tr>
-                <td style={lab}>料金</td>
-                <td style={{ ...cell, fontWeight: 800 }} colSpan={5}>{priceText}</td>
-              </tr>
-              {/* 依頼作業：チェック形式 */}
-              <tr>
-                <td style={lab} rowSpan={2}>依頼作業</td>
-                {WORK_ITEMS.slice(0, 5).map(w => (
-                  <td key={w} style={{ ...cell, textAlign: 'center', fontSize: 10 }}>
-                    <span style={{ fontWeight: 800, marginRight: 3 }}>{works[w] ? '☑' : '☐'}</span>{w}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                {WORK_ITEMS.slice(5).map(w => (
-                  <td key={w} style={{ ...cell, textAlign: 'center', fontSize: 10 }}>
-                    <span style={{ fontWeight: 800, marginRight: 3 }}>{works[w] ? '☑' : '☐'}</span>{w}
-                  </td>
-                ))}
-                <td style={cell} colSpan={5 - WORK_ITEMS.slice(5).length} />
-              </tr>
-              {/* 家財：0の品目は載せない。「家財」ラベルは全行にまたがる */}
-              {shownBuckets.length === 0 ? (
-                <tr><td style={lab}>家財</td><td style={cell} colSpan={5}>（記載なし）</td></tr>
-              ) : (() => {
-                // 先に「行」を平坦化してから描画する（分類ごとに4品目ずつ折り返す）
-                const rows = []
-                shownBuckets.forEach(b => {
-                  const list = byBucket[b]
-                  const n = Math.ceil(list.length / 4)
-                  for (let r = 0; r < n; r++) {
-                    rows.push({ bucket: b, span: r === 0 ? n : 0, cells: list.slice(r * 4, r * 4 + 4) })
-                  }
-                })
-                return rows.map((row, i) => (
-                  <tr key={i}>
-                    {i === 0 && <td style={lab} rowSpan={rows.length}>家財</td>}
-                    {row.span > 0 && (
-                      <td style={{ ...lab, width: 62, background: '#FAFBFC' }} rowSpan={row.span}>{row.bucket}</td>
-                    )}
-                    {Array.from({ length: 4 }).map((_, c) => {
-                      const it = row.cells[c]
-                      return (
-                        <td key={c} style={{ ...cell, fontSize: 10 }}>
-                          {it ? (<span>{it.name}{sizeText(it.size)}　<b>{it.qty}</b></span>) : ''}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))
-              })()}
-            </tbody>
-          </table>
-
-          {/* お約束・支払い */}
-          {form.requestTo && <div style={{ marginTop: 2, fontSize: 10 }}>お約束事項：{form.requestTo}</div>}
-          <div style={{ marginTop: 8, fontSize: 10, color: '#333' }}>
-            お支払いは、積込終了時にお願い致します。{form.payment ? `（${form.payment}）` : ''}
+            </tbody></table>
           </div>
         </div>
       </div>
