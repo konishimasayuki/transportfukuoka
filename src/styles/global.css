@@ -152,6 +152,7 @@ html, body, #root {
 
 .two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.four-col  { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
 
 .scroll-x { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
 /* スクロール可能なことが分かるよう、細いスクロールバーを常時表示気味に */
@@ -218,6 +219,7 @@ tr:hover td { background: var(--bg); }
   .kpi-3 { grid-template-columns: repeat(2, 1fr); }
   .two-col   { grid-template-columns: 1fr; }
   .three-col { grid-template-columns: 1fr; }
+  .four-col  { grid-template-columns: 1fr 1fr; }
   .setting-input { width: 130px; }
   /* モバイルではテーブルを詰めて表示（横スクロールは .scroll-x が担当） */
   table { font-size: 11px; }
