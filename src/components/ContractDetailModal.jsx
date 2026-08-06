@@ -3,7 +3,7 @@
 // onSave(patch)：保存時に呼ばれる。呼び出し元が /api/contracts への POST/PUT を担当する。
 import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
-import { fcell, flab, fin, fval, fband, BAND, flabAddress, flabDetail, WORK_ITEMS, table4, COLS4 } from '../lib/detailStyles'
+import { fcell, flab, fin, fval, fband, BAND, flabAddress, flabDetail, table4, COLS4 } from '../lib/detailStyles'
 
 export const STATUS_LIST    = ['成約済み', '交渉中', '見積済み', '連絡待ち', '要追客', '失注']
 export const STATUS_BADGE   = { '成約済み': 'bg', '交渉中': 'bb', '見積済み': 'bo', '連絡待ち': 'bp', '要追客': 'by', '失注': 'br' }
@@ -16,7 +16,7 @@ export const EMPTY_CONTRACT = {
   srcLabel: 'サムライ', salesDate: '', date: '', moveDateText: '', persons: '',
   fromAddress: '', toAddress: '', visitEstimateDate: '', route: '',
   amount: '', status: '交渉中', aircon: '必要なし', cardboard: '必要なし', timetree: false,
-  staff: '', memo: '', works: {},
+  staff: '', memo: '',
 }
 
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }
@@ -102,9 +102,6 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
 
   const setField = (k, v) => { setDraft(p => ({ ...p, [k]: v })); setDirty(true) }
   const v = (k) => draft[k]
-  // 依頼作業のチェック状態。未設定や旧データ（文字列）は空として扱う。
-  const worksRaw = v('works')
-  const works = (worksRaw && typeof worksRaw === 'object' && !Array.isArray(worksRaw)) ? worksRaw : {}
   const routeAuto = [v('fromAddress'), v('toAddress')].filter(Boolean).join(' → ')
 
   const save = async () => {
@@ -218,51 +215,7 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
                 <td style={flab}>見積金額（円）</td>
                 <td style={fcell} colSpan={5}><Cell edit={edit} value={v('amount')} onChange={x => setField('amount', x)} type="number" /></td>
               </tr>
-              {/* 依頼作業：チェック形式 */}
-              <tr>
-                <td style={flab} rowSpan={2}>依頼作業</td>
-                {WORK_ITEMS.slice(0, 5).map(w => (
-                  <td key={w} style={{ ...fcell, textAlign: 'center' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 10, padding: '6px 4px', cursor: edit ? 'pointer' : 'default' }}>
-                      <input type="checkbox" disabled={!edit} checked={!!works[w]}
-                        onChange={e => setField('works', { ...works, [w]: e.target.checked })} />
-                      {w}
-                    </label>
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                {WORK_ITEMS.slice(5).map(w => (
-                  <td key={w} style={{ ...fcell, textAlign: 'center' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 10, padding: '6px 4px', cursor: edit ? 'pointer' : 'default' }}>
-                      <input type="checkbox" disabled={!edit} checked={!!works[w]}
-                        onChange={e => setField('works', { ...works, [w]: e.target.checked })} />
-                      {w}
-                    </label>
-                  </td>
-                ))}
-                <td style={fcell} colSpan={5 - WORK_ITEMS.slice(5).length} />
-              </tr>
-              {/* 家財：リードから引き継いだぶんを数量1以上だけ表示 */}
-              {(() => {
-                const list = Array.isArray(item.kazai) ? item.kazai.filter(k => Number(k.qty) > 0) : []
-                if (!list.length && !item.boxCount) return null
-                return (
-                  <tr>
-                    <td style={flab}>家財</td>
-                    <td style={fcell} colSpan={5}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: 6 }}>
-                        {list.map((k, i) => (
-                          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, background: '#EFF6FF', color: '#1D4ED8', borderRadius: 6, padding: '3px 8px', fontWeight: 600 }}>
-                            {k.name}×{k.qty}
-                          </span>
-                        ))}
-                        {item.boxCount && <span style={{ fontSize: 11, color: '#64748B' }}>ダンボール {item.boxCount} 箱</span>}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })()}
+              {/* 依頼作業・家財は成約管理では扱わないため置かない（現行の項目のみ） */}
             </tbody>
           </table>
 
