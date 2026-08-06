@@ -272,6 +272,11 @@ const FEE_D = [
   { key: 'washer',     label: '洗濯機（ドラム・全自動）' },
 ]
 
+const GEAR_ITEMS = ['ロープ', 'ハシゴ', '工具', '台車', '養生資材']
+const SECRET_ITEMS = ['車輌', '資材', '制服', '引越先']
+const MEDIA_ITEMS = ['電波', 'net', 'HP', '不動産', '電話帳', '法人名', 'DM', '再利用', 'チラシ', '紹介']
+const BIZ_ITEMS = ['引越', '片付け', 'リユース']
+
 const SEND_TYPES = ['', '直送一式', '直送長距離', '限定混載便', '積切']
 const PAY_METHODS = ['', '現金', '前受金', '会社請求', 'カード']
 const PERSON_CHOICES = ['お客様', '当社']
@@ -321,6 +326,17 @@ function emptyForm() {
     billCompany: '', billAddress: '', billTel: '', billStaff: '',   // 請求先
     receiptName: '', storageUntil: '',                              // 領収書宛先名／保管（〜迄）
     matCount: {},                                                   // 資材の枚数（資材の料金Cの数量）
+    reception1: '', reception2: '',                                 // 受付(1)(2)
+    front: '',                                                      // フロント
+    confirmDate: '', confirmer: '',                                 // 確認日・確認者
+    matDay1: {}, matDay2: {}, matOnDay: {},                         // 荷造資材の配達日（／日・／日・作業当日）
+    gear: {},                                                       // ロープ・ハシゴ・工具・台車・養生資材
+    createDate: '', delivDate: '',                                  // 作成日・配達日
+    secretFlags: {},                                                // シークレット（車輌・資材・制服・引越先）
+    billClose: '', billPayday: '', billSend: '',                    // 日〆・日払い・請求書発送
+    confirmVisit: '', cardNote: '',                                 // 確認（AM/PM 時）・カード（）
+    media: {}, refName: '',                                         // 媒体（電波・net…）・ご紹介先
+    bizType: {}, bizOther: '',                                      // 引越・片付け・リユース／その他
     // 成約管理由来の場合に元レコードを参照（重複表示防止に使う）
     contractId: '',
   }
@@ -764,6 +780,8 @@ export default function Estimate({ user, switchTab }) {
               <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', ...fband('#9AA3AB') }}>
                 <colgroup><col style={{ width: '44%' }} /><col style={{ width: '56%' }} /></colgroup>
                 <tbody>
+                  <tr><td style={flab}>受付(1)</td><td style={fcell}><input style={fin} value={form.reception1} onChange={e => set('reception1', e.target.value)} /></td></tr>
+                  <tr><td style={flab}>受付(2)</td><td style={fcell}><input style={fin} value={form.reception2} onChange={e => set('reception2', e.target.value)} /></td></tr>
                   <tr><td style={{ ...flab, whiteSpace: 'normal' }}>引越 F→F</td><td style={fcell}><input style={fin} value={form.moveFF} onChange={e => set('moveFF', e.target.value)} placeholder="例：2F → 3F" /></td></tr>
                   <tr><td style={{ ...flab, whiteSpace: 'normal' }}>ピアノ/U・G F→F</td><td style={fcell}><input style={fin} value={form.pianoFF} onChange={e => set('pianoFF', e.target.value)} /></td></tr>
                   <tr>
@@ -786,7 +804,9 @@ export default function Estimate({ user, switchTab }) {
             <tbody>
               <tr>
                 <td style={flab}>フリガナ</td>
-                <td style={fcell} colSpan={3}><input style={fin} value={form.kana} onChange={e => set('kana', e.target.value)} /></td>
+                <td style={fcell}><input style={fin} value={form.kana} onChange={e => set('kana', e.target.value)} /></td>
+                <td style={flab}>フロント</td>
+                <td style={fcell}><input style={fin} value={form.front} onChange={e => set('front', e.target.value)} /></td>
               </tr>
               <tr>
                 <td style={flab}>お名前</td>
@@ -834,6 +854,19 @@ export default function Estimate({ user, switchTab }) {
               </tbody>
             </table>
           ))}
+
+          {/* 確認日・確認者（紙では住所欄の右） */}
+          <table style={{ ...table4, marginTop: 8, ...fband('#F0A868') }}>
+            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+            <tbody>
+              <tr>
+                <td style={flab}>確認日</td>
+                <td style={fcell}><input type="date" style={fin} value={form.confirmDate} onChange={e => set('confirmDate', e.target.value)} /></td>
+                <td style={flab}>確認者</td>
+                <td style={fcell}><input style={fin} value={form.confirmer} onChange={e => set('confirmer', e.target.value)} /></td>
+              </tr>
+            </tbody>
+          </table>
 
           {/* 4. 作業内容の確認／ピアノ・エレクトーン／エアコン移設 */}
           <table style={{ ...table4, marginTop: 8, ...fband('#6BB8CC') }}>
@@ -939,6 +972,69 @@ export default function Estimate({ user, switchTab }) {
             </div>
           </div>
 
+          {/* 荷造資材（配達日・作業当日／工具類／作成日・配達日／保管・シークレット） */}
+          <div style={{ marginTop: 8, border: '1px solid #CBD5E1', borderLeft: '4px solid #9AA3AB' }}>
+            <div style={{ background: '#F4F6F8', padding: '6px 10px', borderBottom: '1px solid #CBD5E1', fontSize: 11, fontWeight: 700, color: '#334155' }}>荷造資材</div>
+            <div className="scroll-x">
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+                <thead>
+                  <tr>
+                    <td style={flab}>品名</td>
+                    <td style={{ ...flab, width: 120 }}>／日</td>
+                    <td style={{ ...flab, width: 120 }}>／日</td>
+                    <td style={{ ...flab, width: 80, textAlign: 'center' }}>作業当日</td>
+                    <td style={flab}>工具・資材</td>
+                  </tr>
+                </thead>
+                <tbody>
+                  {FEE_C.map((f, i) => (
+                    <tr key={f.key}>
+                      <td style={{ ...fcell, padding: '4px 8px', fontSize: 11, color: '#475569', whiteSpace: 'nowrap' }}>{f.label}</td>
+                      <td style={fcell}><input style={fin} value={form.matDay1?.[f.key] ?? ''} onChange={e => set('matDay1', { ...(form.matDay1 || {}), [f.key]: e.target.value })} /></td>
+                      <td style={fcell}><input style={fin} value={form.matDay2?.[f.key] ?? ''} onChange={e => set('matDay2', { ...(form.matDay2 || {}), [f.key]: e.target.value })} /></td>
+                      <td style={{ ...fcell, textAlign: 'center' }}>
+                        <input type="checkbox" checked={!!form.matOnDay?.[f.key]} onChange={e => set('matOnDay', { ...(form.matOnDay || {}), [f.key]: e.target.checked })} />
+                      </td>
+                      {i === 0 && (
+                        <td style={{ ...fcell, verticalAlign: 'top' }} rowSpan={FEE_C.length}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 8 }}>
+                            {GEAR_ITEMS.map(g => (
+                              <label key={g} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, cursor: 'pointer' }}>
+                                <input type="checkbox" checked={!!form.gear?.[g]} onChange={e => set('gear', { ...(form.gear || {}), [g]: e.target.checked })} />
+                                {g}
+                              </label>
+                            ))}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  <tr>
+                    <td style={flab}>作成日</td>
+                    <td style={fcell}><input type="date" style={fin} value={form.createDate} onChange={e => set('createDate', e.target.value)} /></td>
+                    <td style={flab}>配達日</td>
+                    <td style={fcell} colSpan={2}><input type="date" style={fin} value={form.delivDate} onChange={e => set('delivDate', e.target.value)} /></td>
+                  </tr>
+                  <tr>
+                    <td style={flab}>保管（迄）</td>
+                    <td style={fcell}><input type="date" style={fin} value={form.storageUntil} onChange={e => set('storageUntil', e.target.value)} /></td>
+                    <td style={flab}>シークレット</td>
+                    <td style={fcell} colSpan={2}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', padding: '4px 8px' }}>
+                        {SECRET_ITEMS.map(g => (
+                          <label key={g} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, cursor: 'pointer' }}>
+                            <input type="checkbox" checked={!!form.secretFlags?.[g]} onChange={e => set('secretFlags', { ...(form.secretFlags || {}), [g]: e.target.checked })} />
+                            {g}
+                          </label>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {/* 7. 請求先／お支払方法 */}
           <table style={{ ...table4, marginTop: 8, ...fband('#9AA3AB') }}>
             <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
@@ -960,6 +1056,23 @@ export default function Estimate({ user, switchTab }) {
                 <td style={fcell}><input style={fin} value={form.billTel} onChange={e => set('billTel', e.target.value)} /></td>
                 <td style={flab}>担当者</td>
                 <td style={fcell}><input style={fin} value={form.billStaff} onChange={e => set('billStaff', e.target.value)} /></td>
+              </tr>
+              <tr>
+                <td style={flab}>日〆／日払い</td>
+                <td style={fcell}>
+                  <div style={{ display: 'flex' }}>
+                    <input style={{ ...fin, borderRight: '1px solid #E2E8F0' }} value={form.billClose} onChange={e => set('billClose', e.target.value)} placeholder="日〆" />
+                    <input style={fin} value={form.billPayday} onChange={e => set('billPayday', e.target.value)} placeholder="日払い" />
+                  </div>
+                </td>
+                <td style={flab}>請求書発送</td>
+                <td style={fcell}><input style={fin} value={form.billSend} onChange={e => set('billSend', e.target.value)} /></td>
+              </tr>
+              <tr>
+                <td style={flab}>確認</td>
+                <td style={fcell}><input style={fin} value={form.confirmVisit} onChange={e => set('confirmVisit', e.target.value)} placeholder="／ AM・PM 時" /></td>
+                <td style={flab}>カード（　）</td>
+                <td style={fcell}><input style={fin} value={form.cardNote} onChange={e => set('cardNote', e.target.value)} /></td>
               </tr>
             </tbody>
           </table>
@@ -1030,6 +1143,42 @@ export default function Estimate({ user, switchTab }) {
           <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: '#334155', textAlign: 'center', background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '6px 10px' }}>
             お支払は、積込終了時にお願い致します。
           </div>
+
+          {/* 媒体・ご紹介先・区分（紙の最下段） */}
+          <table style={{ ...table4, marginTop: 8, ...fband('#9AA3AB') }}>
+            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+            <tbody>
+              <tr>
+                <td style={flab}>媒体</td>
+                <td style={fcell} colSpan={3}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', padding: '4px 8px' }}>
+                    {MEDIA_ITEMS.map(m => (
+                      <label key={m} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        <input type="checkbox" checked={!!form.media?.[m]} onChange={e => set('media', { ...(form.media || {}), [m]: e.target.checked })} />
+                        {m === '再利用' ? '再利用（回）' : m}
+                      </label>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style={flab}>ご紹介先</td>
+                <td style={fcell}><input style={fin} value={form.refName} onChange={e => set('refName', e.target.value)} /></td>
+                <td style={flab}>区分</td>
+                <td style={fcell}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', padding: '4px 8px', alignItems: 'center' }}>
+                    {BIZ_ITEMS.map(m => (
+                      <label key={m} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={!!form.bizType?.[m]} onChange={e => set('bizType', { ...(form.bizType || {}), [m]: e.target.checked })} />
+                        {m}
+                      </label>
+                    ))}
+                    <input style={{ ...fin, width: 120, border: '1px solid #E2E8F0', borderRadius: 4, padding: '3px 6px' }} value={form.bizOther} onChange={e => set('bizOther', e.target.value)} placeholder="その他" />
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
           <div style={{ marginTop: 8, fontSize: 11, color: '#94A3B8' }}>
             ※ リード管理・追客の内容が自動で入り、ここで直した内容が優先されます。
