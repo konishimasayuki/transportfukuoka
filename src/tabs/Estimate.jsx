@@ -252,16 +252,17 @@ const FEE_B = [
   { key: 'twoPlace',  label: '二ヶ所積料' },
 ]
 const FEE_C = [
-  { key: 'mtSmall',  label: '小（枚）' },
-  { key: 'mtMid',    label: '中（枚）' },
-  { key: 'mtWa',     label: '和（枚）' },
-  { key: 'tape',     label: 'ガムテープ' },
-  { key: 'futon',    label: 'ふとん袋' },
-  { key: 'hbox',     label: 'ハンガーボックス' },
-  { key: 'lightron', label: 'ライトロン・クレープ紙・エアキャップ' },
+  { key: 'mtSmall',  label: '小', unit: '枚' },
+  { key: 'mtMid',    label: '中', unit: '枚' },
+  { key: 'mtWa',     label: '和', unit: '枚' },
+  { key: 'tape',     label: 'ガムテープ', unit: 'ケ' },
+  { key: 'futon',    label: 'ふとん袋', unit: '枚' },
+  { key: 'hbox',     label: 'ハンガーボックス', unit: 'ケ' },
+  { key: 'lightron', label: 'ライトロンクレープ紙', unit: '枚' },
+  { key: 'aircap',   label: 'エアーキャップ', unit: '本' },
 ]
 const FEE_D = [
-  { key: 'aircon',     label: 'エアコン基本工事（取付）' },
+  { key: 'aircon',     label: 'エアコン基本工事（外し・付け）' },
   { key: 'antenna',    label: 'アンテナ（脱・着）' },
   { key: 'tvWire',     label: 'テレビ配線' },
   { key: 'videoWire',  label: 'ビデオ・DVD配線' },
@@ -314,6 +315,12 @@ function emptyForm() {
     // その他
     memo: '', requestTo: '', payment: '',
     status: '作成中',
+    // 紙の御見積書（会社控）にある項目
+    spaceSize: '', workLoad: '', packOpenCar: '', helperCar: '',   // スペース／作業量／梱包・開梱／補助車輌
+    moveFF: '', pianoFF: '',                                        // 引越 F→F ／ ピアノ・エレクトーン F→F
+    billCompany: '', billAddress: '', billTel: '', billStaff: '',   // 請求先
+    receiptName: '', storageUntil: '',                              // 領収書宛先名／保管（〜迄）
+    matCount: {},                                                   // 資材の枚数（資材の料金Cの数量）
     // 成約管理由来の場合に元レコードを参照（重複表示防止に使う）
     contractId: '',
   }
@@ -341,6 +348,9 @@ const fcell = { border: fBd, padding: 0, verticalAlign: 'middle' }
 const flab  = { border: fBd, background: '#F4F6F8', fontWeight: 700, fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap', width: 104, color: '#334155' }
 const fin   = { width: '100%', border: 'none', outline: 'none', padding: '6px 8px', fontSize: 12, fontFamily: 'inherit', background: 'transparent', color: '#0F172A' }
 const fband = (color) => ({ borderLeft: `4px solid ${color}` })
+// 「ラベル｜値｜ラベル｜値」4列テーブル（左右の幅を固定して揃える）
+const table4 = { width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }
+const COLS4 = ['15%', '35%', '15%', '35%']
 // 家財を1品目ずつ並べる小さな枠（品名＋数量＋外すボタン）
 const kchip = { display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #E2E8F0', borderRadius: 6, background: '#F8FAFC', padding: '2px 4px 2px 8px' }
 const kqty  = { width: 46, padding: '3px 4px', border: '1px solid #CBD5E1', borderRadius: 4, fontSize: 12, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }
@@ -388,6 +398,8 @@ export default function Estimate({ user, switchTab }) {
     ;['ageGender', 'job', 'email', 'persons', 'moveTime', 'priceText', 'requestDate',
       'fromType', 'fromFloor', 'fromElevator', 'fromLayout',
       'toType', 'toFloor', 'toElevator', 'toLayout'].forEach(k => { if (p[k]) f[k] = p[k] })
+    // 依頼作業のチェック（リード詳細で付けたもの）を引き継ぐ
+    if (p.works && typeof p.works === 'object' && !Array.isArray(p.works)) f.works = { ...p.works }
     // 備考は「備考・その他希望」に集約する（欄が2つあると入力先が分かれて紛らわしいため）。
     // ※上のループより後に置くこと。ループに request を含めると、ここでまとめた値が上書きされる。
     f.request = [p.request, p.memo].filter(Boolean).join(' / ')
@@ -518,7 +530,7 @@ export default function Estimate({ user, switchTab }) {
     const payload = {
       ...form,
       id: editId || Date.now().toString(),
-      total: parseAmount(form.priceText) || totals.saikei, // 料金欄に書いた金額を一覧の金額として使う
+      total: totals.saikei > 0 ? totals.saikei : parseAmount(form.priceText), // 料金(A〜D)を入力したらその再計、無ければ料金欄の金額
       points: totals.points,
     }
     if (isDemo) {
@@ -702,207 +714,329 @@ export default function Estimate({ user, switchTab }) {
         </button>
       </div>
 
-      {/* 基本情報セクションは廃止（見積番号は自動採番、見積者は顧客情報の表へ移動） */}
-
-      {/* 顧客情報 */}
-      {/* ── 顧客情報／住所／詳細内容：査定サイトの帳票と同じ並びの入力表 ── */}
+      {/* ══ 紙の御見積書（会社控）と同じ並びの入力フォーム ══ */}
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card-body" style={{ padding: 14 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', ...fband('#9AA3AB') }}>
-            <tbody>
-              <tr>
-                <td style={flab}>フリガナ</td>
-                <td style={fcell}><input style={fin} value={form.kana} onChange={e => set('kana', e.target.value)} /></td>
-                <td style={flab}>依頼日</td>
-                <td style={fcell}><input style={fin} value={form.requestDate} onChange={e => set('requestDate', e.target.value)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>名前</td>
-                <td style={fcell}><input style={fin} value={form.name} onChange={e => set('name', e.target.value)} /></td>
-                <td style={flab}>引越し日</td>
-                <td style={fcell}><input type="date" style={fin} value={form.moveDate} onChange={e => set('moveDate', e.target.value)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>電話番号</td>
-                <td style={fcell}><input style={fin} value={form.fromTelMobile} onChange={e => set('fromTelMobile', e.target.value)} /></td>
-                <td style={flab}>引越し時間</td>
-                <td style={fcell}><input style={fin} value={form.moveTime} onChange={e => set('moveTime', e.target.value)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>年代・性別</td>
-                <td style={fcell}><input style={fin} value={form.ageGender} onChange={e => set('ageGender', e.target.value)} /></td>
-                <td style={flab}>引越し人数</td>
-                <td style={fcell}><input style={fin} value={form.persons} onChange={e => set('persons', e.target.value)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>職業</td>
-                <td style={fcell}><input style={fin} value={form.job} onChange={e => set('job', e.target.value)} /></td>
-                <td style={flab}>メールアドレス</td>
-                <td style={fcell}><input style={fin} value={form.email} onChange={e => set('email', e.target.value)} /></td>
-              </tr>
-            </tbody>
-          </table>
 
-          {/* 現住所 / 引越し先 */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, ...fband('#F0A868') }}>
-            <tbody>
-              <tr>
-                <td style={{ ...flab, background: '#FDF1E4' }} colSpan={2}>現住所</td>
-                <td style={{ ...flab, background: '#FDF1E4' }} colSpan={2}>引越し先</td>
-              </tr>
-              <tr>
-                <td style={flab}>郵便番号</td>
-                <td style={fcell}>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <input style={fin} value={form.fromZip} onChange={e => set('fromZip', e.target.value)} />
-                    <button type="button" className="btn btn-outline btn-sm" style={{ margin: 3, whiteSpace: 'nowrap', fontSize: 10 }} onClick={() => lookupZip('from')} disabled={zipBusy === 'from'}>{zipBusy === 'from' ? '…' : '住所から'}</button>
-                  </div>
-                </td>
-                <td style={flab}>郵便番号</td>
-                <td style={fcell}>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <input style={fin} value={form.toZip} onChange={e => set('toZip', e.target.value)} />
-                    <button type="button" className="btn btn-outline btn-sm" style={{ margin: 3, whiteSpace: 'nowrap', fontSize: 10 }} onClick={() => lookupZip('to')} disabled={zipBusy === 'to'}>{zipBusy === 'to' ? '…' : '住所から'}</button>
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                <td style={flab}>住所</td>
-                <td style={fcell}><input style={fin} value={form.fromAddress} onChange={e => set('fromAddress', e.target.value)} /></td>
-                <td style={flab}>住所</td>
-                <td style={fcell}><input style={fin} value={form.toAddress} onChange={e => set('toAddress', e.target.value)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>建物種別</td>
-                <td style={fcell}><input style={fin} value={form.fromType} onChange={e => set('fromType', e.target.value)} /></td>
-                <td style={flab}>建物種別</td>
-                <td style={fcell}><input style={fin} value={form.toType} onChange={e => set('toType', e.target.value)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>建物階数</td>
-                <td style={fcell}><input style={fin} value={form.fromFloor} onChange={e => set('fromFloor', e.target.value)} /></td>
-                <td style={flab}>建物階数</td>
-                <td style={fcell}><input style={fin} value={form.toFloor} onChange={e => set('toFloor', e.target.value)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>エレベーター</td>
-                <td style={fcell}>
-                  <select style={fin} value={form.fromElevator} onChange={e => set('fromElevator', e.target.value)}>{['', 'あり', 'なし'].map(o => <option key={o} value={o}>{o}</option>)}</select>
-                </td>
-                <td style={flab}>エレベーター</td>
-                <td style={fcell}>
-                  <select style={fin} value={form.toElevator} onChange={e => set('toElevator', e.target.value)}>{['', 'あり', 'なし'].map(o => <option key={o} value={o}>{o}</option>)}</select>
-                </td>
-              </tr>
-              <tr>
-                <td style={flab}>間取り</td>
-                <td style={fcell}><input style={fin} value={form.fromLayout} onChange={e => set('fromLayout', e.target.value)} /></td>
-                <td style={flab}>間取り</td>
-                <td style={fcell}><input style={fin} value={form.toLayout} onChange={e => set('toLayout', e.target.value)} /></td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* 詳細内容 */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, ...fband('#6BB8CC') }}>
-            <tbody>
-              <tr><td style={{ ...flab, background: '#E6F4F8' }} colSpan={6}>詳細内容</td></tr>
-              <tr>
-                <td style={flab}>備考・その他希望</td>
-                <td style={fcell} colSpan={5}>
-                  <textarea style={{ ...fin, minHeight: 46, resize: 'vertical' }} value={form.request} onChange={e => set('request', e.target.value)} />
-                </td>
-              </tr>
-              <tr>
-                <td style={flab}>料金</td>
-                <td style={fcell} colSpan={5}>
-                  <input style={fin} value={form.priceText} onChange={e => set('priceText', e.target.value)} />
-                </td>
-              </tr>
-              <tr>
-                <td style={flab} rowSpan={2}>依頼作業</td>
-                {WORK_ITEMS.slice(0, 5).map(w => (
-                  <td key={w} style={{ ...fcell, textAlign: 'center' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 10, padding: '6px 4px', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={!!form.works?.[w]} onChange={e => set('works', { ...(form.works || {}), [w]: e.target.checked })} />
-                      {w}
-                    </label>
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                {WORK_ITEMS.slice(5).map(w => (
-                  <td key={w} style={{ ...fcell, textAlign: 'center' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 10, padding: '6px 4px', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={!!form.works?.[w]} onChange={e => set('works', { ...(form.works || {}), [w]: e.target.checked })} />
-                      {w}
-                    </label>
-                  </td>
-                ))}
-                <td style={fcell} colSpan={5 - WORK_ITEMS.slice(5).length} />
-              </tr>
-
-              {/* 家財：数量が1以上のものだけを出す。増減はここで、品目の追加は下の欄から */}
-              {(() => {
-                const groups = KAZAI_BUCKETS
-                  .map(b => ({ bucket: b, list: ALL_ITEMS.filter(it => bucketOf(it.key) === b && num(form.items[it.key]) > 0) }))
-                  .filter(g => g.list.length > 0)
-                const span = groups.length + 1 // +1 は「家財を追加」行
-                return (
-                  <>
-                    {groups.map((g, i) => (
-                      <tr key={g.bucket}>
-                        {i === 0 && <td style={flab} rowSpan={span}>家財</td>}
-                        <td style={{ ...flab, width: 64, background: '#FAFBFC' }}>{g.bucket}</td>
-                        <td style={fcell} colSpan={4}>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: 6 }}>
-                            {g.list.map(it => (
-                              <span key={it.key} style={kchip}>
-                                <span style={{ fontSize: 11 }}>{it.name}{sizeText(it.size)}</span>
-                                <input type="number" min={0} inputMode="numeric" value={form.items[it.key] ?? ''}
-                                  onChange={e => setItemQty(it.key, e.target.value)} style={kqty} />
-                                <button type="button" title="この品目を外す" onClick={() => setItemQty(it.key, 0)}
-                                  style={kdel}>×</button>
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    <tr>
-                      {groups.length === 0 && <td style={flab}>家財</td>}
-                      <td style={fcell} colSpan={groups.length === 0 ? 5 : 5}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 6, flexWrap: 'wrap' }}>
-                          <select value="" onChange={e => { if (e.target.value) setItemQty(e.target.value, 1) }}
-                            style={{ ...fin, width: 'auto', minWidth: 220, border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 8px' }}>
-                            <option value="">＋ 家財を追加…</option>
-                            {KAZAI_BUCKETS.map(b => (
-                              <optgroup key={b} label={b}>
-                                {ALL_ITEMS.filter(it => bucketOf(it.key) === b && !(num(form.items[it.key]) > 0))
-                                  .map(it => <option key={it.key} value={it.key}>{it.name}{sizeText(it.size)}</option>)}
-                              </optgroup>
-                            ))}
-                          </select>
-                          <span style={{ fontSize: 11, color: '#94A3B8' }}>
-                            選ぶと数量1で追加されます　／　ポイント合計 {totals.points.toLocaleString('ja-JP')} 才
-                          </span>
+          {/* 1. 日程／車輌／発送内容／見積情報（帳票の最上段） */}
+          <div className="scroll-x">
+            <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.95fr 1fr', gap: 8, minWidth: 760 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', ...fband('#9AA3AB') }}>
+                <tbody>
+                  {[['引越日', 'moveDate', 'moveAP'], ['お届日', 'deliverDate', 'deliverAP']].map(([lb, dk, ak]) => (
+                    <tr key={dk}>
+                      <td style={flab}>{lb}</td>
+                      <td style={fcell}>
+                        <div style={{ display: 'flex' }}>
+                          <input type="date" style={{ ...fin, flex: 1 }} value={form[dk]} onChange={e => set(dk, e.target.value)} />
+                          <select style={{ ...fin, width: 62, flex: 'none' }} value={form[ak]} onChange={e => set(ak, e.target.value)}><option>AM</option><option>PM</option></select>
                         </div>
                       </td>
                     </tr>
-                  </>
-                )
-              })()}
+                  ))}
+                  <tr>
+                    <td style={flab}>梱包日</td>
+                    <td style={fcell}><input type="date" style={fin} value={form.packDate} onChange={e => set('packDate', e.target.value)} /></td>
+                  </tr>
+                  <tr>
+                    <td style={flab}>開梱日</td>
+                    <td style={fcell}><input type="date" style={fin} value={form.openDate} onChange={e => set('openDate', e.target.value)} /></td>
+                  </tr>
+                </tbody>
+              </table>
+              <table style={{ width: '100%', borderCollapse: 'collapse', ...fband('#9AA3AB') }}>
+                <tbody>
+                  <tr><td style={flab}>スペース</td><td style={fcell}><input style={fin} value={form.spaceSize} onChange={e => set('spaceSize', e.target.value)} /></td></tr>
+                  <tr><td style={flab}>作業量</td><td style={fcell}><input style={fin} value={form.workLoad} onChange={e => set('workLoad', e.target.value)} /></td></tr>
+                  <tr><td style={flab}>梱包・開梱</td><td style={fcell}><input style={fin} value={form.packOpenCar} onChange={e => set('packOpenCar', e.target.value)} /></td></tr>
+                  <tr><td style={flab}>補助車輌</td><td style={fcell}><input style={fin} value={form.helperCar} onChange={e => set('helperCar', e.target.value)} placeholder="現・行" /></td></tr>
+                  <tr>
+                    <td style={flab}>距離</td>
+                    <td style={fcell}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <input type="number" min={0} style={fin} value={form.distanceKm} onChange={e => set('distanceKm', e.target.value)} />
+                        <span style={{ fontSize: 11, color: '#64748B', padding: '0 8px' }}>km</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', ...fband('#9AA3AB') }}>
+                <colgroup><col style={{ width: '44%' }} /><col style={{ width: '56%' }} /></colgroup>
+                <tbody>
+                  <tr><td style={{ ...flab, whiteSpace: 'normal' }}>引越 F→F</td><td style={fcell}><input style={fin} value={form.moveFF} onChange={e => set('moveFF', e.target.value)} placeholder="例：2F → 3F" /></td></tr>
+                  <tr><td style={{ ...flab, whiteSpace: 'normal' }}>ピアノ/U・G F→F</td><td style={fcell}><input style={fin} value={form.pianoFF} onChange={e => set('pianoFF', e.target.value)} /></td></tr>
+                  <tr>
+                    <td style={flab}>発送内容</td>
+                    <td style={fcell}>
+                      <select style={fin} value={form.sendType} onChange={e => set('sendType', e.target.value)}>{SEND_TYPES.map(t => <option key={t} value={t}>{t || '—'}</option>)}</select>
+                    </td>
+                  </tr>
+                  <tr><td style={flab}>見積日</td><td style={fcell}><input type="date" style={fin} value={form.estimateDate} onChange={e => set('estimateDate', e.target.value)} /></td></tr>
+                  <tr><td style={flab}>受付日</td><td style={fcell}><input style={fin} value={form.requestDate} onChange={e => set('requestDate', e.target.value)} /></td></tr>
+                  <tr><td style={flab}>見積者氏名</td><td style={fcell}><input style={fin} value={form.estimator} onChange={e => set('estimator', e.target.value)} /></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 2. お名前 */}
+          <table style={{ ...table4, marginTop: 8, ...fband('#9AA3AB') }}>
+            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+            <tbody>
+              <tr>
+                <td style={flab}>フリガナ</td>
+                <td style={fcell} colSpan={3}><input style={fin} value={form.kana} onChange={e => set('kana', e.target.value)} /></td>
+              </tr>
+              <tr>
+                <td style={flab}>お名前</td>
+                <td style={fcell} colSpan={3}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <input style={fin} value={form.name} onChange={e => set('name', e.target.value)} />
+                    <span style={{ fontSize: 12, color: '#334155', padding: '0 10px', fontWeight: 700 }}>様</span>
+                  </div>
+                </td>
+              </tr>
             </tbody>
           </table>
 
+          {/* 3. [A]現住所／[B]転居先 */}
+          {[
+            ['[A] 現住所', 'fromZip', 'fromAddress', 'fromTelMobile', 'fromTelHome', 'fromTelWork', 'from'],
+            ['[B] 転居先', 'toZip', 'toAddress', 'toTelMobile', 'toTelHome', 'toTelWork', 'to'],
+          ].map(([title, zipK, adK, mobK, homeK, workK, dir]) => (
+            <table key={title} style={{ ...table4, marginTop: 8, ...fband('#F0A868') }}>
+              <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+              <tbody>
+                <tr><td style={{ ...flab, background: '#FDF1E4' }} colSpan={4}>{title}</td></tr>
+                <tr>
+                  <td style={flab}>〒</td>
+                  <td style={fcell}>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <input style={fin} value={form[zipK]} onChange={e => set(zipK, e.target.value)} />
+                      <button type="button" className="btn btn-outline btn-sm" style={{ margin: 3, whiteSpace: 'nowrap', fontSize: 10 }} onClick={() => lookupZip(dir)} disabled={zipBusy === dir}>{zipBusy === dir ? '…' : '住所から'}</button>
+                    </div>
+                  </td>
+                  <td style={flab}>携帯電話</td>
+                  <td style={fcell}><input style={fin} value={form[mobK]} onChange={e => set(mobK, e.target.value)} /></td>
+                </tr>
+                <tr>
+                  <td style={flab}>住所</td>
+                  <td style={fcell}><input style={fin} value={form[adK]} onChange={e => set(adK, e.target.value)} /></td>
+                  <td style={flab}>自宅／勤務先</td>
+                  <td style={fcell}>
+                    <div style={{ display: 'flex' }}>
+                      <input style={{ ...fin, borderRight: '1px solid #E2E8F0' }} value={form[homeK]} onChange={e => set(homeK, e.target.value)} placeholder="自宅" />
+                      <input style={fin} value={form[workK]} onChange={e => set(workK, e.target.value)} placeholder="勤務先" />
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          ))}
+
+          {/* 4. 作業内容の確認／ピアノ・エレクトーン／エアコン移設 */}
+          <table style={{ ...table4, marginTop: 8, ...fband('#6BB8CC') }}>
+            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+            <tbody>
+              <tr>
+                <td style={{ ...flab, background: '#E6F4F8' }} colSpan={2}>作業内容の確認</td>
+                <td style={{ ...flab, background: '#E6F4F8' }} colSpan={2}>ピアノ/U・G エレクトーン・エアコン移設</td>
+              </tr>
+              <tr>
+                <td style={flab}>小物梱包</td>
+                <td style={fcell}><div style={{ padding: 4 }}><Seg choices={PERSON_CHOICES} value={form.packSmallBy} onChange={v => set('packSmallBy', v)} /></div></td>
+                <td style={flab}>ピアノ・エレクトーン作業</td>
+                <td style={fcell}><input style={fin} value={form.pianoWork} onChange={e => set('pianoWork', e.target.value)} placeholder="階段・エレベーター・窓出し 等" /></td>
+              </tr>
+              <tr>
+                <td style={flab}>家具梱包</td>
+                <td style={fcell}><div style={{ padding: 4 }}><Seg choices={PERSON_CHOICES} value={form.packFurniBy} onChange={v => set('packFurniBy', v)} /></div></td>
+                <td style={flab}>エアコン セパレート（台）</td>
+                <td style={fcell}><input type="number" min={0} style={fin} value={form.airconSep} onChange={e => set('airconSep', e.target.value)} /></td>
+              </tr>
+              <tr>
+                <td style={flab}>開梱作業</td>
+                <td style={fcell}><div style={{ padding: 4 }}><Seg choices={PERSON_CHOICES} value={form.packOpenBy} onChange={v => set('packOpenBy', v)} /></div></td>
+                <td style={flab}>エアコン ウィンド（台）</td>
+                <td style={fcell}><input type="number" min={0} style={fin} value={form.airconWindow} onChange={e => set('airconWindow', e.target.value)} /></td>
+              </tr>
+              <tr>
+                <td style={flab}>オプション工事</td>
+                <td style={fcell} colSpan={3}><input style={fin} value={form.optionWork} onChange={e => set('optionWork', e.target.value)} /></td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* 5. 作業状況 */}
+          <table style={{ ...table4, marginTop: 8, ...fband('#6BB8CC') }}>
+            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+            <tbody>
+              <tr><td style={{ ...flab, background: '#E6F4F8' }} colSpan={4}>作業状況</td></tr>
+              <tr>
+                <td style={flab}>二ヶ所積み・降し</td>
+                <td style={fcell}><input style={fin} value={form.twoPlace} onChange={e => set('twoPlace', e.target.value)} placeholder="[C]現地・[D]行先" /></td>
+                <td style={flab}>道幅（横持ち作業）</td>
+                <td style={fcell}><select style={fin} value={form.roadWidth} onChange={e => set('roadWidth', e.target.value)}>{ROAD_CHOICES.map(o => <option key={o} value={o}>{o || '—'}</option>)}</select></td>
+              </tr>
+              <tr>
+                <td style={flab}>エレベーター作業</td>
+                <td style={fcell}><select style={fin} value={form.elevator} onChange={e => set('elevator', e.target.value)}>{YN.map(o => <option key={o} value={o}>{o || '—'}</option>)}</select></td>
+                <td style={flab}>窓吊り上下作業</td>
+                <td style={fcell}><select style={fin} value={form.windowLift} onChange={e => set('windowLift', e.target.value)}>{YN.map(o => <option key={o} value={o}>{o || '—'}</option>)}</select></td>
+              </tr>
+              <tr>
+                <td style={flab}>機械作業</td>
+                <td style={fcell}><select style={fin} value={form.machine} onChange={e => set('machine', e.target.value)}>{REQ_CHOICES.map(o => <option key={o} value={o}>{o || '—'}</option>)}</select></td>
+                <td style={flab}>依頼作業</td>
+                <td style={fcell}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', padding: '4px 6px' }}>
+                    {WORK_ITEMS.map(w => (
+                      <label key={w} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        <input type="checkbox" checked={!!form.works?.[w]} onChange={e => set('works', { ...(form.works || {}), [w]: e.target.checked })} />
+                        {w}
+                      </label>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* 6. 家財（紙と同じ5列・全品目に数量を書き込む） */}
+          <div style={{ marginTop: 8, border: '1px solid #CBD5E1', borderLeft: '4px solid #9AA3AB' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F4F6F8', padding: '6px 10px', borderBottom: '1px solid #CBD5E1' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155' }}>家財（数量を記入）</span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: '#1E5FA8' }}>ポイント合計 {totals.points.toLocaleString('ja-JP')}</span>
+            </div>
+            <div className="scroll-x">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(178px, 1fr))', minWidth: 900 }}>
+                {KAZAI_GROUPS.map((g, gi) => {
+                  const gpts = g.items.reduce((sum, it) => sum + (it.pt ? num(form.items[it.key]) * it.pt : 0), 0)
+                  return (
+                    <div key={g.title} style={{ borderRight: gi < 4 ? '1px solid #E2E8F0' : 'none', display: 'flex', flexDirection: 'column' }}>
+                      {g.items.map(it => {
+                        const q = num(form.items[it.key])
+                        return (
+                          <div key={it.key} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #F1F5F9', background: q > 0 ? '#EFF6FF' : '#fff' }}>
+                            <div style={{ flex: 1, minWidth: 0, fontSize: 10, padding: '2px 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {it.name}{it.size ? ` ${it.size}` : ''}
+                            </div>
+                            <div style={{ width: 26, fontSize: 9, color: '#94A3B8', textAlign: 'right', flex: 'none' }}>{it.pt == null ? '/' : it.pt}</div>
+                            <input type="number" min={0} inputMode="numeric" value={form.items[it.key] ?? ''}
+                              onChange={e => setItemQty(it.key, e.target.value)}
+                              style={{ width: 38, flex: 'none', margin: 1, padding: '2px 3px', border: '1px solid #E2E8F0', borderRadius: 4, fontSize: 11, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }} />
+                          </div>
+                        )
+                      })}
+                      <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', padding: '3px 6px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', fontSize: 10, fontWeight: 700 }}>
+                        <span style={{ color: '#64748B' }}>小計</span><span>{gpts.toLocaleString('ja-JP')}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* 7. 請求先／お支払方法 */}
+          <table style={{ ...table4, marginTop: 8, ...fband('#9AA3AB') }}>
+            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+            <tbody>
+              <tr>
+                <td style={flab}>請求先 会社名</td>
+                <td style={fcell}><input style={fin} value={form.billCompany} onChange={e => set('billCompany', e.target.value)} /></td>
+                <td style={flab}>お支払方法</td>
+                <td style={fcell}><select style={fin} value={form.payment} onChange={e => set('payment', e.target.value)}>{PAY_METHODS.map(o => <option key={o} value={o}>{o || '—'}</option>)}</select></td>
+              </tr>
+              <tr>
+                <td style={flab}>住所</td>
+                <td style={fcell}><input style={fin} value={form.billAddress} onChange={e => set('billAddress', e.target.value)} /></td>
+                <td style={flab}>領収書宛先名</td>
+                <td style={fcell}><input style={fin} value={form.receiptName} onChange={e => set('receiptName', e.target.value)} /></td>
+              </tr>
+              <tr>
+                <td style={flab}>電話</td>
+                <td style={fcell}><input style={fin} value={form.billTel} onChange={e => set('billTel', e.target.value)} /></td>
+                <td style={flab}>担当者</td>
+                <td style={fcell}><input style={fin} value={form.billStaff} onChange={e => set('billStaff', e.target.value)} /></td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* 8. お約束事項・備考 */}
+          <table style={{ ...table4, marginTop: 8, ...fband('#9AA3AB') }}>
+            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+            <tbody>
+              <tr>
+                <td style={flab}>お約束事項</td>
+                <td style={fcell} colSpan={3}><textarea style={{ ...fin, minHeight: 52, resize: 'vertical' }} value={form.requestTo} onChange={e => set('requestTo', e.target.value)} placeholder="例：新居（〇〇町…）借家" /></td>
+              </tr>
+              <tr>
+                <td style={flab}>備考・その他希望</td>
+                <td style={fcell} colSpan={3}><textarea style={{ ...fin, minHeight: 40, resize: 'vertical' }} value={form.request} onChange={e => set('request', e.target.value)} /></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 4, lineHeight: 1.7 }}>
+            注）電気製品の内部の故障は、外傷がない限り一切補償いたしかねますので、御了承ください。／貴重品、貴金属、現金等は必ずお客様の方で管理して下さい。／当日当社作業員が梱包した場合、梱包料として1ケースにつき1,500円頂く場合があります。
+          </div>
+
+          {/* 9. 料金（A〜D）＋合計 */}
+          <div className="scroll-x" style={{ marginTop: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(238px, 1fr))', gap: 8, minWidth: 984 }}>
+              <FeeBlock title="基本料金（A）" list={FEE_A} obj={form.feeA} onChange={(k, v) => setFee('feeA', k, v)} subtotal={totals.a} />
+              <FeeBlock title="附帯料金（B）" list={FEE_B} obj={form.feeB} onChange={(k, v) => setFee('feeB', k, v)} subtotal={totals.b} />
+              {/* 資材の料金（C）：紙のとおり数量と金額の両方を書ける */}
+              <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
+                <div style={{ background: '#F1F5FB', padding: '7px 10px', fontSize: 11, fontWeight: 800, color: '#334155' }}>資材の料金（C）</div>
+                <div style={{ padding: '6px 10px' }}>
+                  {FEE_C.map(f => (
+                    <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 0' }}>
+                      <div style={{ flex: 1, minWidth: 40, fontSize: 11, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.label}>{f.label}</div>
+                      <input type="number" min={0} inputMode="numeric" value={form.matCount?.[f.key] ?? ''}
+                        onChange={e => set('matCount', { ...(form.matCount || {}), [f.key]: e.target.value })}
+                        style={{ ...feeInput, width: 44, flex: 'none' }} title={`数量（${f.unit}）`} />
+                      <span style={{ fontSize: 10, color: '#94A3B8', width: 14 }}>{f.unit}</span>
+                      <span style={{ fontSize: 11, color: '#94A3B8' }}>¥</span>
+                      <input type="number" min={0} inputMode="numeric" value={form.feeC?.[f.key] ?? ''}
+                        onChange={e => setFee('feeC', f.key, e.target.value)}
+                        style={{ ...feeInput, width: 66, flex: 'none' }} />
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #E2E8F0', marginTop: 6, paddingTop: 6, fontSize: 12, fontWeight: 800 }}>
+                    <span style={{ color: '#64748B' }}>小計（C）</span><span>{yen(totals.c)}</span>
+                  </div>
+                </div>
+              </div>
+              <FeeBlock title="その他の料金（D）" list={FEE_D} obj={form.feeD} onChange={(k, v) => setFee('feeD', k, v)} subtotal={totals.d} />
+            </div>
+          </div>
+
+          {/* 合計（紙の右下と同じ並び：小計A〜D→合計→消費税→再計） */}
+          <div style={{ marginTop: 8, border: '1px solid #CBD5E1', borderLeft: '4px solid #1E5FA8', background: '#F8FAFC', padding: '8px 12px' }}>
+            <div className="scroll-x">
+              <div style={{ display: 'flex', gap: 22, justifyContent: 'flex-end', alignItems: 'flex-end', minWidth: 720 }}>
+                <TotalLine label="小計（A）" value={yen(totals.a)} />
+                <TotalLine label="小計（B）" value={yen(totals.b)} />
+                <TotalLine label="小計（C）" value={yen(totals.c)} />
+                <TotalLine label="小計（D）" value={yen(totals.d)} />
+                <TotalLine label="合計 (A)+(B)+(C)+(D)" value={yen(totals.goukei)} />
+                <TotalLine label="消費税（10%）" value={yen(totals.tax)} />
+                <TotalLine label="再計" value={yen(totals.saikei)} big />
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: '#334155', textAlign: 'center', background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '6px 10px' }}>
+            お支払は、積込終了時にお願い致します。
+          </div>
+
           <div style={{ marginTop: 8, fontSize: 11, color: '#94A3B8' }}>
-            ※ リード管理・追客の内容が自動で入り、ここで直した内容が見積書に反映されます（この画面の入力が優先）。
+            ※ リード管理・追客の内容が自動で入り、ここで直した内容が優先されます。
           </div>
         </div>
       </div>
 
-      {/* 作業内容・作業状況／料金（手入力）／お約束事項・お支払い は帳票に無いため廃止した。
-          料金は「詳細内容」の料金欄、家財は依頼作業の下に集約している。 */}
 
       {/* 下部操作 */}
       <div className="no-print" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginBottom: 24 }}>
@@ -951,12 +1085,12 @@ function FeeBlock({ title, list, obj, onChange, subtotal }) {
       <div style={{ padding: '6px 10px' }}>
         {list.map(f => (
           <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
-            <div style={{ flex: 1, fontSize: 11, color: '#475569' }}>{f.label}</div>
+            <div style={{ flex: 1, fontSize: 11, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={f.label}>{f.label}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <span style={{ fontSize: 11, color: '#94A3B8' }}>¥</span>
               <input type="number" min={0} inputMode="numeric" value={obj?.[f.key] ?? ''}
                 onChange={e => onChange(f.key, e.target.value)}
-                style={{ width: 90, ...feeInput }} />
+                style={{ ...feeInput, width: 84, flex: 'none' }} />
             </div>
           </div>
         ))}
