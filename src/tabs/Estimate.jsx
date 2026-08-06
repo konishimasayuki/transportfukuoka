@@ -337,6 +337,10 @@ const fcell = { border: fBd, padding: 0, verticalAlign: 'middle' }
 const flab  = { border: fBd, background: '#F4F6F8', fontWeight: 700, fontSize: 11, padding: '6px 8px', whiteSpace: 'nowrap', width: 104, color: '#334155' }
 const fin   = { width: '100%', border: 'none', outline: 'none', padding: '6px 8px', fontSize: 12, fontFamily: 'inherit', background: 'transparent', color: '#0F172A' }
 const fband = (color) => ({ borderLeft: `4px solid ${color}` })
+// 家財を1品目ずつ並べる小さな枠（品名＋数量＋外すボタン）
+const kchip = { display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #E2E8F0', borderRadius: 6, background: '#F8FAFC', padding: '2px 4px 2px 8px' }
+const kqty  = { width: 46, padding: '3px 4px', border: '1px solid #CBD5E1', borderRadius: 4, fontSize: 12, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }
+const kdel  = { border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }
 
 export default function Estimate({ user, switchTab }) {
   const isDemo = user?.mode === 'demo'
@@ -376,11 +380,13 @@ export default function Estimate({ user, switchTab }) {
     if (p.estimator) f.estimator = p.estimator
     if (p.moveDate) { f.moveDate = p.moveDate; f.deliverDate = p.moveDate } // お届日は引越日と同日を既定に
     if (p.moveAP) { f.moveAP = p.moveAP; f.deliverAP = p.moveAP }
-    if (p.memo) f.memo = p.memo
     // 帳票レイアウト用の項目（空でない値だけ引き継ぐ＝見積書側の編集を消さない）
-    ;['ageGender', 'job', 'email', 'persons', 'moveTime', 'request', 'priceText',
+    ;['ageGender', 'job', 'email', 'persons', 'moveTime', 'priceText',
       'fromType', 'fromFloor', 'fromElevator', 'fromLayout',
       'toType', 'toFloor', 'toElevator', 'toLayout'].forEach(k => { if (p[k]) f[k] = p[k] })
+    // 備考は「備考・その他希望」に集約する（欄が2つあると入力先が分かれて紛らわしいため）。
+    // ※上のループより後に置くこと。ループに request を含めると、ここでまとめた値が上書きされる。
+    f.request = [p.request, p.memo].filter(Boolean).join(' / ')
     // 家財をリードから自動マッピング（語彙が異なるため対応表で変換）
     if (Array.isArray(p.kazai)) {
       p.kazai.forEach(k => {
@@ -575,13 +581,12 @@ export default function Estimate({ user, switchTab }) {
       f.toAddress = c.toAddress || ''
       f.moveDate = (c.date && /^\d{4}-\d{2}-\d{2}/.test(c.date)) ? c.date : ''
       f.deliverDate = f.moveDate // お届日は引越日と同日を既定に
-      f.memo = c.memo || ''
       // 帳票レイアウト用の項目（成約が持っているものだけ補完。見積書側での編集が優先）
       f.email = c.email || ''
       f.persons = c.persons ? `${c.persons}人` : ''
       f.fromZip = c.fromZip || f.fromZip
       f.toZip = c.toZip || f.toZip
-      f.request = c.request || ''
+      f.request = [c.request, c.memo].filter(Boolean).join(' / ')
       f.priceText = c.amount ? yen(c.amount) : ''
       f.contractId = c.id
       f.contractAmount = num(c.amount) // 参考表示用
@@ -734,25 +739,25 @@ export default function Estimate({ user, switchTab }) {
             <tbody>
               <tr>
                 <td style={flab}>フリガナ</td>
-                <td style={fcell} colSpan={3}><input style={fin} value={form.kana} onChange={e => set('kana', e.target.value)} placeholder="サンプル タロウ" /></td>
+                <td style={fcell} colSpan={3}><input style={fin} value={form.kana} onChange={e => set('kana', e.target.value)} /></td>
               </tr>
               <tr>
                 <td style={flab}>名前</td>
-                <td style={fcell}><input style={fin} value={form.name} onChange={e => set('name', e.target.value)} placeholder="サンプル 太郎" /></td>
+                <td style={fcell}><input style={fin} value={form.name} onChange={e => set('name', e.target.value)} /></td>
                 <td style={flab}>引越し日</td>
                 <td style={fcell}><input type="date" style={fin} value={form.moveDate} onChange={e => set('moveDate', e.target.value)} /></td>
               </tr>
               <tr>
                 <td style={flab}>電話番号</td>
-                <td style={fcell}><input style={fin} value={form.fromTelMobile} onChange={e => set('fromTelMobile', e.target.value)} placeholder="090-0000-0000" /></td>
+                <td style={fcell}><input style={fin} value={form.fromTelMobile} onChange={e => set('fromTelMobile', e.target.value)} /></td>
                 <td style={flab}>引越し時間</td>
-                <td style={fcell}><input style={fin} value={form.moveTime} onChange={e => set('moveTime', e.target.value)} placeholder="午前" /></td>
+                <td style={fcell}><input style={fin} value={form.moveTime} onChange={e => set('moveTime', e.target.value)} /></td>
               </tr>
               <tr>
                 <td style={flab}>年代・性別</td>
-                <td style={fcell}><input style={fin} value={form.ageGender} onChange={e => set('ageGender', e.target.value)} placeholder="30代・男性" /></td>
+                <td style={fcell}><input style={fin} value={form.ageGender} onChange={e => set('ageGender', e.target.value)} /></td>
                 <td style={flab}>引越し人数</td>
-                <td style={fcell}><input style={fin} value={form.persons} onChange={e => set('persons', e.target.value)} placeholder="3人" /></td>
+                <td style={fcell}><input style={fin} value={form.persons} onChange={e => set('persons', e.target.value)} /></td>
               </tr>
               <tr>
                 <td style={flab}>職業</td>
@@ -774,29 +779,29 @@ export default function Estimate({ user, switchTab }) {
                 <td style={flab}>郵便番号</td>
                 <td style={fcell}>
                   <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <input style={fin} value={form.fromZip} onChange={e => set('fromZip', e.target.value)} placeholder="815-0000" />
+                    <input style={fin} value={form.fromZip} onChange={e => set('fromZip', e.target.value)} />
                     <button type="button" className="btn btn-outline btn-sm" style={{ margin: 3, whiteSpace: 'nowrap', fontSize: 10 }} onClick={() => lookupZip('from')} disabled={zipBusy === 'from'}>{zipBusy === 'from' ? '…' : '住所から'}</button>
                   </div>
                 </td>
                 <td style={flab}>郵便番号</td>
                 <td style={fcell}>
                   <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <input style={fin} value={form.toZip} onChange={e => set('toZip', e.target.value)} placeholder="819-0000" />
+                    <input style={fin} value={form.toZip} onChange={e => set('toZip', e.target.value)} />
                     <button type="button" className="btn btn-outline btn-sm" style={{ margin: 3, whiteSpace: 'nowrap', fontSize: 10 }} onClick={() => lookupZip('to')} disabled={zipBusy === 'to'}>{zipBusy === 'to' ? '…' : '住所から'}</button>
                   </div>
                 </td>
               </tr>
               <tr>
                 <td style={flab}>住所</td>
-                <td style={fcell}><input style={fin} value={form.fromAddress} onChange={e => set('fromAddress', e.target.value)} placeholder="福岡市…" /></td>
+                <td style={fcell}><input style={fin} value={form.fromAddress} onChange={e => set('fromAddress', e.target.value)} /></td>
                 <td style={flab}>住所</td>
-                <td style={fcell}><input style={fin} value={form.toAddress} onChange={e => set('toAddress', e.target.value)} placeholder="福岡市…" /></td>
+                <td style={fcell}><input style={fin} value={form.toAddress} onChange={e => set('toAddress', e.target.value)} /></td>
               </tr>
               <tr>
                 <td style={flab}>建物種別</td>
-                <td style={fcell}><input style={fin} value={form.fromType} onChange={e => set('fromType', e.target.value)} placeholder="マンション" /></td>
+                <td style={fcell}><input style={fin} value={form.fromType} onChange={e => set('fromType', e.target.value)} /></td>
                 <td style={flab}>建物種別</td>
-                <td style={fcell}><input style={fin} value={form.toType} onChange={e => set('toType', e.target.value)} placeholder="戸建て" /></td>
+                <td style={fcell}><input style={fin} value={form.toType} onChange={e => set('toType', e.target.value)} /></td>
               </tr>
               <tr>
                 <td style={flab}>建物階数</td>
@@ -816,9 +821,9 @@ export default function Estimate({ user, switchTab }) {
               </tr>
               <tr>
                 <td style={flab}>間取り</td>
-                <td style={fcell}><input style={fin} value={form.fromLayout} onChange={e => set('fromLayout', e.target.value)} placeholder="2LDK" /></td>
+                <td style={fcell}><input style={fin} value={form.fromLayout} onChange={e => set('fromLayout', e.target.value)} /></td>
                 <td style={flab}>間取り</td>
-                <td style={fcell}><input style={fin} value={form.toLayout} onChange={e => set('toLayout', e.target.value)} placeholder="3LDK" /></td>
+                <td style={fcell}><input style={fin} value={form.toLayout} onChange={e => set('toLayout', e.target.value)} /></td>
               </tr>
             </tbody>
           </table>
@@ -836,7 +841,7 @@ export default function Estimate({ user, switchTab }) {
               <tr>
                 <td style={flab}>料金</td>
                 <td style={fcell} colSpan={5}>
-                  <input style={fin} value={form.priceText} onChange={e => set('priceText', e.target.value)} placeholder="空欄なら合計金額を印刷（例：89,000円 〜 150,000円）" />
+                  <input style={fin} value={form.priceText} onChange={e => set('priceText', e.target.value)} />
                 </td>
               </tr>
               <tr>
@@ -861,6 +866,57 @@ export default function Estimate({ user, switchTab }) {
                 ))}
                 <td style={fcell} colSpan={5 - WORK_ITEMS.slice(5).length} />
               </tr>
+
+              {/* 家財：数量が1以上のものだけを出す。増減はここで、品目の追加は下の欄から */}
+              {(() => {
+                const groups = KAZAI_BUCKETS
+                  .map(b => ({ bucket: b, list: ALL_ITEMS.filter(it => bucketOf(it.key) === b && num(form.items[it.key]) > 0) }))
+                  .filter(g => g.list.length > 0)
+                const span = groups.length + 1 // +1 は「家財を追加」行
+                return (
+                  <>
+                    {groups.map((g, i) => (
+                      <tr key={g.bucket}>
+                        {i === 0 && <td style={flab} rowSpan={span}>家財</td>}
+                        <td style={{ ...flab, width: 64, background: '#FAFBFC' }}>{g.bucket}</td>
+                        <td style={fcell} colSpan={4}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: 6 }}>
+                            {g.list.map(it => (
+                              <span key={it.key} style={kchip}>
+                                <span style={{ fontSize: 11 }}>{it.name}{sizeText(it.size)}</span>
+                                <input type="number" min={0} inputMode="numeric" value={form.items[it.key] ?? ''}
+                                  onChange={e => setItemQty(it.key, e.target.value)} style={kqty} />
+                                <button type="button" title="この品目を外す" onClick={() => setItemQty(it.key, 0)}
+                                  style={kdel}>×</button>
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr>
+                      {groups.length === 0 && <td style={flab}>家財</td>}
+                      <td style={fcell} colSpan={groups.length === 0 ? 5 : 5}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 6, flexWrap: 'wrap' }}>
+                          <select value="" onChange={e => { if (e.target.value) setItemQty(e.target.value, 1) }}
+                            style={{ ...fin, width: 'auto', minWidth: 220, border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 8px' }}>
+                            <option value="">＋ 家財を追加…</option>
+                            {KAZAI_BUCKETS.map(b => (
+                              <optgroup key={b} label={b}>
+                                {ALL_ITEMS.filter(it => bucketOf(it.key) === b && !(num(form.items[it.key]) > 0))
+                                  .map(it => <option key={it.key} value={it.key}>{it.name}{sizeText(it.size)}</option>)}
+                              </optgroup>
+                            ))}
+                          </select>
+                          <span style={{ fontSize: 11, color: '#94A3B8' }}>
+                            選ぶと数量1で追加されます　／　ポイント合計 {totals.points.toLocaleString('ja-JP')} 才
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  </>
+                )
+              })()}
             </tbody>
           </table>
 
@@ -896,48 +952,7 @@ export default function Estimate({ user, switchTab }) {
         </div>
       </Section>
 
-      {/* 家財リスト */}
-      <Section
-        title="家財リスト（数量を入力）"
-        right={<span style={{ fontSize: 12, fontWeight: 800, color: '#1E5FA8' }}>ポイント合計 {totals.points.toLocaleString('ja-JP')} 才</span>}
-      >
-        {/* 帳票と同じ「家具／家電／その他／重量物」の並びで数量を入力する */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
-          {KAZAI_BUCKETS.map(bucket => (
-            <div key={bucket} style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ background: '#F1F5FB', padding: '7px 10px', fontSize: 11, fontWeight: 800, color: '#334155' }}>{bucket}</div>
-              <div>
-                {ALL_ITEMS.filter(it => bucketOf(it.key) === bucket).map(it => {
-                  const q = num(form.items[it.key])
-                  return (
-                    <div key={it.key} style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px',
-                      borderTop: '1px solid #F1F5F9', background: q > 0 ? '#EFF6FF' : '#fff',
-                    }}>
-                      <div style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
-                        {it.name}{it.size && <span style={{ color: '#94A3B8' }}> {it.size}</span>}
-                        <span style={{ color: '#CBD5E1', fontSize: 10 }}> {it.pt == null ? '(別途)' : `${it.pt}才`}</span>
-                      </div>
-                      {q > 0 && it.pt != null && (
-                        <span style={{ fontSize: 10, color: '#1E5FA8', fontWeight: 700, whiteSpace: 'nowrap' }}>{(q * it.pt).toLocaleString('ja-JP')}才</span>
-                      )}
-                      <input
-                        type="number" min={0} inputMode="numeric"
-                        value={form.items[it.key] ?? ''}
-                        onChange={e => setItemQty(it.key, e.target.value)}
-                        style={{ width: 52, padding: '5px 6px', border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 13, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}
-                      />
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ marginTop: 10, fontSize: 11, color: '#94A3B8' }}>
-          ※ ポイント（才数）は数量×単価の自動合計です。「(別途)」項目（ピアノ・TV等）はサイズ別のため合計に含めません。車種判定は現在未実装です。
-        </div>
-      </Section>
+      {/* 家財は「詳細内容」の中（依頼作業の下）へ移動した */}
 
       {/* 料金 */}
       <Section title="料金（手入力）">
@@ -968,9 +983,7 @@ export default function Estimate({ user, switchTab }) {
           <Field label="新居・お約束事項"><input style={inputStyle} value={form.requestTo} onChange={e => set('requestTo', e.target.value)} placeholder="例：新居（米曹屋郡笹栗町…）倍屋" /></Field>
           <Field label="お支払方法"><select style={inputStyle} value={form.payment} onChange={e => set('payment', e.target.value)}>{PAY_METHODS.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
         </div>
-        <div style={{ marginTop: 10 }}>
-          <Field label="備考"><textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 60 }} value={form.memo} onChange={e => set('memo', e.target.value)} /></Field>
-        </div>
+        {/* 備考は「詳細内容」の備考・その他希望に一本化した（欄が2つあると入力先が分かれて紛らわしいため） */}
         <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>お支払いは、積込終了時にお願い致します。</div>
       </Section>
 
@@ -1246,7 +1259,6 @@ function PreviewModal({ form, totals, onClose }) {
           </table>
 
           {/* お約束・支払い */}
-          {form.memo && form.memo !== form.request && <div style={{ marginTop: 8, fontSize: 10 }}>備考：{form.memo}</div>}
           {form.requestTo && <div style={{ marginTop: 2, fontSize: 10 }}>お約束事項：{form.requestTo}</div>}
           <div style={{ marginTop: 8, fontSize: 10, color: '#333' }}>
             お支払いは、積込終了時にお願い致します。{form.payment ? `（${form.payment}）` : ''}
