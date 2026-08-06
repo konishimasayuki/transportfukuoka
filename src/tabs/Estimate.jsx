@@ -296,6 +296,7 @@ function emptyForm() {
     toZip: '', toAddress: '', toTelHome: '', toTelWork: '', toTelMobile: '',
     // 帳票（見積書レイアウト）用の項目
     ageGender: '', job: '', email: '', persons: '', moveTime: '',
+    requestDate: '',       // 依頼日（査定サイトに依頼が入った日時）
     fromType: '', fromFloor: '', fromElevator: '', fromLayout: '',
     toType: '', toFloor: '', toElevator: '', toLayout: '',
     request: '',           // 備考・その他希望
@@ -384,7 +385,7 @@ export default function Estimate({ user, switchTab }) {
     if (p.moveDate) { f.moveDate = p.moveDate; f.deliverDate = p.moveDate } // お届日は引越日と同日を既定に
     if (p.moveAP) { f.moveAP = p.moveAP; f.deliverAP = p.moveAP }
     // 帳票レイアウト用の項目（空でない値だけ引き継ぐ＝見積書側の編集を消さない）
-    ;['ageGender', 'job', 'email', 'persons', 'moveTime', 'priceText',
+    ;['ageGender', 'job', 'email', 'persons', 'moveTime', 'priceText', 'requestDate',
       'fromType', 'fromFloor', 'fromElevator', 'fromLayout',
       'toType', 'toFloor', 'toElevator', 'toLayout'].forEach(k => { if (p[k]) f[k] = p[k] })
     // 備考は「備考・その他希望」に集約する（欄が2つあると入力先が分かれて紛らわしいため）。
@@ -712,8 +713,8 @@ export default function Estimate({ user, switchTab }) {
               <tr>
                 <td style={flab}>フリガナ</td>
                 <td style={fcell}><input style={fin} value={form.kana} onChange={e => set('kana', e.target.value)} /></td>
-                <td style={flab}>見積者</td>
-                <td style={fcell}><input style={fin} value={form.estimator} onChange={e => set('estimator', e.target.value)} /></td>
+                <td style={flab}>依頼日</td>
+                <td style={fcell}><input style={fin} value={form.requestDate} onChange={e => set('requestDate', e.target.value)} /></td>
               </tr>
               <tr>
                 <td style={flab}>名前</td>
@@ -1058,7 +1059,7 @@ function PreviewModal({ form, totals, onClose }) {
             <tbody>
               <tr>
                 <td style={lab}>フリガナ</td><td style={val}>{form.kana}</td>
-                <td style={lab}>見積者</td><td style={val}>{form.estimator}</td>
+                <td style={lab}>依頼日</td><td style={val}>{form.requestDate}</td>
               </tr>
               <tr>
                 <td style={lab}>名前</td><td style={val}>{form.name ? `${form.name} 様` : ''}</td>

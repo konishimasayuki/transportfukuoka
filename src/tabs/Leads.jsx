@@ -365,6 +365,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       email: item.email || '',
       persons: item.count || '',
       moveTime: item.preferredTime || '',
+      requestDate: item.requestedAt || item.receivedAt || '', // 依頼日（査定サイトの受付日時）
       fromType: item.fromType || '', fromFloor: item.fromFloor || '',
       fromElevator: item.fromElevator || '', fromLayout: item.fromLayout || '',
       toType: item.toType || '', toFloor: item.toFloor || '',
