@@ -4,8 +4,6 @@
 // onCreateEstimate(item)：「📝 見積書を作成」で見積書タブへプリフィル遷移
 import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
-import { fcell, flab, fin, fval, fband, BAND, flabAddress, flabDetail, WORK_ITEMS, table4, COLS4 } from '../lib/detailStyles'
-import { zipFromAddress } from '../lib/gmaps'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '見積り': 'bc', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
@@ -53,25 +51,7 @@ const EDITABLE_KEYS = [
   'request', 'option', 'referenceFee',
   // 対応・メモ
   'memo',
-  // 依頼作業のチェック状態（査定サイトの依頼作業に対応。オブジェクトで保持）
-  'works',
 ]
-
-// 帳票レイアウトの表セル。編集中は入力欄、閲覧時は値をそのまま出す。
-function Cell({ edit, value, onChange, type = 'text', options, multiline }) {
-  if (!edit) return <div style={fval}>{value || ''}</div>
-  if (options) {
-    return (
-      <select value={value ?? ''} onChange={e => onChange(e.target.value)} style={fin}>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-    )
-  }
-  if (multiline) {
-    return <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} style={{ ...fin, minHeight: 46, resize: 'vertical' }} />
-  }
-  return <input type={type} value={value ?? ''} onChange={e => onChange(e.target.value)} style={fin} />
-}
 
 // 編集／閲覧共通のフィールド行
 function Row({ label, value, edit, onChange, type = 'text', options, placeholder, wide }) {
@@ -123,20 +103,6 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
     setEdit(false)
   }, [item && item.id, item && item.phone])
 
-  // 郵便番号が空のときは住所から自動で調べて表示する（確定できない時は何も出さない）。
-  // 表示のみの補完で、保存データには手を加えない。
-  // ※フックは早期 return より前に置くこと（return の後に置くと、モーダルを
-  //   開閉するたびにフックの数が変わって画面が真っ白になる）。
-  const [autoZip, setAutoZip] = useState({ from: '', to: '' })
-  useEffect(() => {
-    setAutoZip({ from: '', to: '' })
-    if (!item) return
-    const fa = item.fromAddress || item.from
-    const ta = item.toAddress || item.to
-    if (!item.fromZip && fa) zipFromAddress(fa).then(r => { if (r.zip) setAutoZip(p => ({ ...p, from: r.zip })) }).catch(() => {})
-    if (!item.toZip && ta) zipFromAddress(ta).then(r => { if (r.zip) setAutoZip(p => ({ ...p, to: r.zip })) }).catch(() => {})
-  }, [item && item.id])
-
   if (!item) return null
 
   const setField = (k, v) => { setDraft(p => ({ ...p, [k]: v })); setDirty(true) }
@@ -180,10 +146,6 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
   const toText   = [v('toZip'),   v('toAddress'),   v('toType')   && `（${v('toType')}）`  ].filter(Boolean).join(' ') || item.to
 
   // 編集中の家財をカテゴリ別にまとめる
-  // 依頼作業のチェック状態。未設定や旧データ（文字列）は空として扱う。
-  const worksRaw = v('works')
-  const works = (worksRaw && typeof worksRaw === 'object' && !Array.isArray(worksRaw)) ? worksRaw : {}
-
   const grouped = {}
   kazai.forEach((k, idx) => {
     const c = categoryOf(k.name)
@@ -212,13 +174,12 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
     <div style={overlay}>
       <div style={box} className="print-area">
         {/* ヘッダー */}
-        {/* スマホではボタンを潰さず折り返す（flexWrap） */}
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 800 }}>{v('name') || item.name || '（名前なし）'} <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>様</span></div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{item.site || ''}{item.orderId ? ` ／ 依頼番号 ${item.orderId}` : ''}</div>
           </div>
-          <div className="no-print" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div className="no-print" style={{ display: 'flex', gap: 6 }}>
             <button className="btn btn-sm btn-outline" onClick={doPrint}>🖨 印刷/PDF</button>
             {onSave && (
               <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`}
@@ -240,205 +201,117 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
         </div>
 
         {/* 基本情報 */}
-        {/* ── 顧客情報（帳票と同じ並び）── */}
-        {/* スマホでは帳票型の表を縦積みに組み替えて、横スクロールなしで全項目見られるようにする（global.css の .paper-stack） */}
-        <div className="paper-stack" style={{ padding: 12 }}>
-          <table style={{ ...table4, ...fband(BAND.customer) }}>
-            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
-            <tbody>
-              <tr>
-                <td style={flab}>フリガナ</td>
-                <td style={fcell}><Cell edit={edit} value={v('kana')} onChange={x => setField('kana', x)} /></td>
-                <td style={flab}>依頼日</td>
-                <td style={fcell}><Cell edit={edit} value={v('requestedAt') || item.receivedAt} onChange={x => setField('requestedAt', x)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>名前</td>
-                <td style={fcell}><Cell edit={edit} value={v('name')} onChange={x => setField('name', x)} /></td>
-                <td style={flab}>引越し日</td>
-                <td style={fcell}><Cell edit={edit} value={v('moveDateDetail') || item.moveDate} onChange={x => setField('moveDateDetail', x)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>電話番号</td>
-                <td style={fcell}><Cell edit={edit} value={v('phone')} onChange={x => setField('phone', x)} /></td>
-                <td style={flab}>引越し時間</td>
-                <td style={fcell}><Cell edit={edit} value={v('preferredTime')} onChange={x => setField('preferredTime', x)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>年代・性別</td>
-                <td style={fcell}><Cell edit={edit} value={v('ageGender')} onChange={x => setField('ageGender', x)} /></td>
-                <td style={flab}>引越し人数</td>
-                <td style={fcell}><Cell edit={edit} value={v('count')} onChange={x => setField('count', x)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>職業</td>
-                <td style={fcell}><Cell edit={edit} value={v('job')} onChange={x => setField('job', x)} /></td>
-                <td style={flab}>メールアドレス</td>
-                <td style={fcell}><Cell edit={edit} value={v('email')} onChange={x => setField('email', x)} /></td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* ── 現住所 / 引越し先 ── */}
-          <table style={{ ...table4, ...fband(BAND.address) }}>
-            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
-            <tbody>
-              <tr>
-                <td style={flabAddress} colSpan={2}>現住所</td>
-                <td style={flabAddress} colSpan={2}>引越し先</td>
-              </tr>
-              <tr>
-                {/* 閲覧時は住所から求めた郵便番号も表示（編集時は保存値のみ） */}
-                <td style={flab}>郵便番号</td><td style={fcell}><Cell edit={edit} value={edit ? v('fromZip') : (v('fromZip') || autoZip.from)} onChange={x => setField('fromZip', x)} /></td>
-                <td style={flab}>郵便番号</td><td style={fcell}><Cell edit={edit} value={edit ? v('toZip') : (v('toZip') || autoZip.to)} onChange={x => setField('toZip', x)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>住所</td><td style={fcell}><Cell edit={edit} value={v('fromAddress')} onChange={x => setField('fromAddress', x)} /></td>
-                <td style={flab}>住所</td><td style={fcell}><Cell edit={edit} value={v('toAddress')} onChange={x => setField('toAddress', x)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>建物種別</td><td style={fcell}><Cell edit={edit} value={v('fromType')} onChange={x => setField('fromType', x)} /></td>
-                <td style={flab}>建物種別</td><td style={fcell}><Cell edit={edit} value={v('toType')} onChange={x => setField('toType', x)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>建物階数</td><td style={fcell}><Cell edit={edit} value={v('fromFloor')} onChange={x => setField('fromFloor', x)} /></td>
-                <td style={flab}>建物階数</td><td style={fcell}><Cell edit={edit} value={v('toFloor')} onChange={x => setField('toFloor', x)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>エレベーター</td><td style={fcell}><Cell edit={edit} value={v('fromElevator')} onChange={x => setField('fromElevator', x)} options={YN} /></td>
-                <td style={flab}>エレベーター</td><td style={fcell}><Cell edit={edit} value={v('toElevator')} onChange={x => setField('toElevator', x)} options={YN} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>間取り</td><td style={fcell}><Cell edit={edit} value={v('fromLayout')} onChange={x => setField('fromLayout', x)} /></td>
-                <td style={flab}>間取り</td><td style={fcell}><Cell edit={edit} value={v('toLayout')} onChange={x => setField('toLayout', x)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>訪問見積もり日</td>
-                <td style={fcell} colSpan={3}><Cell edit={edit} value={v('visitEstimateDate')} onChange={x => setField('visitEstimateDate', x)} type="date" /></td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* ── 詳細内容 ── */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, ...fband(BAND.detail) }}>
-            <tbody>
-              <tr><td style={flabDetail} colSpan={6}>詳細内容</td></tr>
-              <tr>
-                <td style={flab}>備考・その他希望</td>
-                <td style={fcell} colSpan={5}><Cell edit={edit} value={v('request')} onChange={x => setField('request', x)} multiline /></td>
-              </tr>
-              <tr>
-                <td style={flab}>料金</td>
-                <td style={fcell} colSpan={5}><Cell edit={edit} value={v('referenceFee')} onChange={x => setField('referenceFee', x)} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>対応状況</td>
-                <td style={fcell} colSpan={5}>
-                  <div style={fval}>{[item.telStatus, item.mailStatus].filter(Boolean).join(' / ') || '—'}</div>
-                </td>
-              </tr>
-              {/* 依頼作業：チェック形式（サイト側の記載は下に併記） */}
-              <tr>
-                <td style={flab} rowSpan={2}>依頼作業</td>
-                {WORK_ITEMS.slice(0, 5).map(w => (
-                  <td key={w} style={{ ...fcell, textAlign: 'center' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 10, padding: '6px 4px', cursor: onSave ? 'pointer' : 'default' }}>
-                      <input type="checkbox" disabled={!onSave} checked={!!works[w]}
-                        onChange={e => setField('works', { ...works, [w]: e.target.checked })} />
-                      {w}
-                    </label>
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                {WORK_ITEMS.slice(5).map(w => (
-                  <td key={w} style={{ ...fcell, textAlign: 'center' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 10, padding: '6px 4px', cursor: onSave ? 'pointer' : 'default' }}>
-                      <input type="checkbox" disabled={!onSave} checked={!!works[w]}
-                        onChange={e => setField('works', { ...works, [w]: e.target.checked })} />
-                      {w}
-                    </label>
-                  </td>
-                ))}
-                <td style={fcell} colSpan={5 - WORK_ITEMS.slice(5).length} />
-              </tr>
-              {v('option') && (
-                <tr>
-                  <td style={flab}>サイト記載</td>
-                  <td style={fcell} colSpan={5}><div style={{ ...fval, color: '#64748B' }}>{v('option')}</div></td>
-                </tr>
-              )}
-
-              {/* 家財：数量1以上のものだけ。追加はリード管理と同じ「選ぶ→数量→追加」方式 */}
-              {(() => {
-                const cats = ['家具', '家電', 'その他', '重量物'].filter(c => grouped[c] && grouped[c].length > 0)
-                const span = cats.length + (onSave ? 1 : 0) || 1
-                return (
-                  <>
-                    {cats.map((cat, i) => (
-                      <tr key={cat}>
-                        {i === 0 && <td style={flab} rowSpan={span}>家財</td>}
-                        <td style={{ ...flab, width: 64, background: '#FAFBFC' }}>{cat}</td>
-                        <td style={fcell} colSpan={4}>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: 6 }}>
-                            {grouped[cat].map(k => (
-                              <span key={k._idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, background: '#EFF6FF', color: '#1D4ED8', borderRadius: 6, padding: '3px 6px 3px 8px', fontWeight: 600 }}>
-                                {k.name}×
-                                {onSave ? (
-                                  <input type="number" min={0} value={k.qty} onChange={e => setQty(k._idx, e.target.value)}
-                                    style={{ width: 40, padding: '1px 4px', border: '1px solid #BFDBFE', borderRadius: 4, background: '#fff', color: '#1D4ED8', fontWeight: 700, fontSize: 12 }} />
-                                ) : k.qty}
-                                {onSave && <button onClick={() => removeRow(k._idx)} title="削除" style={{ background: 'none', border: 'none', color: '#1D4ED8', cursor: 'pointer', fontWeight: 700, fontSize: 14, lineHeight: 1, padding: 0, marginLeft: 2 }}>×</button>}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {onSave && (
-                      <tr>
-                        {cats.length === 0 && <td style={flab}>家財</td>}
-                        <td style={fcell} colSpan={5}>
-                          <div className="no-print" style={{ display: 'flex', gap: 6, padding: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                            {customKazai ? (
-                              <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
-                                <input type="text" autoFocus value={addName} onChange={e => setAddName(e.target.value)}
-                                  placeholder="品名を入力…" style={{ ...inp, width: '100%', paddingRight: 26 }} />
-                                <button type="button" onClick={() => { setCustomKazai(false); setAddName('') }} title="自由入力をキャンセル"
-                                  style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: 15, fontWeight: 700, lineHeight: 1, padding: 4 }}>×</button>
-                              </div>
-                            ) : (
-                              <select value={addName} onChange={e => chooseAddName(e.target.value)} style={{ ...inp, flex: 1, minWidth: 180, width: 'auto' }}>
-                                <option value="">＋ 家財を追加…</option>
-                                <option value="__custom__">✏ 自由入力（品名を直接入力）</option>
-                                {Object.entries(KAZAI_CATEGORY).map(([cat, list]) => (
-                                  <optgroup key={cat} label={cat}>{list.map(n => <option key={n} value={n}>{n}</option>)}</optgroup>
-                                ))}
-                              </select>
-                            )}
-                            <input type="number" min={1} value={addQty} onChange={e => setAddQty(e.target.value)} style={{ ...inp, width: 70, textAlign: 'center' }} />
-                            <button className="btn btn-outline btn-sm" onClick={addRow} disabled={!addName}>追加</button>
-                            <span style={{ fontSize: 11, color: '#64748B', marginLeft: 8 }}>ダンボール</span>
-                            <input value={boxCount} onChange={e => { setBoxCount(e.target.value); setDirty(true) }} style={{ ...inp, width: 70, textAlign: 'center' }} />
-                            <span style={{ fontSize: 11, color: '#94A3B8' }}>箱</span>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    {!onSave && boxCount && (
-                      <tr>
-                        {cats.length === 0 && <td style={flab}>家財</td>}
-                        <td style={fcell} colSpan={5}><div style={fval}>ダンボール {boxCount} 箱</div></td>
-                      </tr>
-                    )}
-                  </>
-                )
-              })()}
-            </tbody>
-          </table>
+        <div style={sectionBar}>基本情報</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid #EEF2F7' }}>
+          <Row label="フリガナ"      edit={edit} value={v('kana')}     onChange={x => setField('kana', x)} />
+          <Row label="名前"          edit={edit} value={v('name')}     onChange={x => setField('name', x)} />
+          <Row label="電話番号"      edit={edit} value={v('phone')}    onChange={x => setField('phone', x)} placeholder="090-…" />
+          <Row label="メールアドレス" edit={edit} value={v('email')}   onChange={x => setField('email', x)} type="email" />
+          <Row label="年代・性別"    edit={edit} value={v('ageGender')} onChange={x => setField('ageGender', x)} placeholder="例：30代 男性" />
+          <Row label="職業"          edit={edit} value={v('job')}      onChange={x => setField('job', x)} />
+          <Row label="引越し人数"    edit={edit} value={v('count')}    onChange={x => setField('count', x)} placeholder="例：2人" />
+          <Row label="依頼日"        edit={edit} value={v('requestedAt') || item.receivedAt} onChange={x => setField('requestedAt', x)} />
+          <Row label="引越し希望日"  edit={edit} value={v('moveDateDetail') || item.moveDate} onChange={x => setField('moveDateDetail', x)} wide />
+          <Row label="希望時間帯"    edit={edit} value={v('preferredTime')} onChange={x => setField('preferredTime', x)} placeholder="例：午前 / 13:00〜" wide />
         </div>
 
-        {/* ── 対応・メモ（従来のまま。ステータス・タイムツリー・メモ）── */}
+        {/* 引越し元 */}
+        <div style={sectionBar}>現住所（引越し元）</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid #EEF2F7' }}>
+          <Row label="〒"            edit={edit} value={v('fromZip')}     onChange={x => setField('fromZip', x)} placeholder="815-0000" />
+          <Row label="住所"          edit={edit} value={v('fromAddress')} onChange={x => setField('fromAddress', x)} placeholder="福岡市…" wide />
+          <Row label="建物種別"      edit={edit} value={v('fromType')}    onChange={x => setField('fromType', x)} placeholder="マンション / 戸建て / アパート" />
+          <Row label="建物階数"      edit={edit} value={v('fromFloor')}   onChange={x => setField('fromFloor', x)} placeholder="例：3階" />
+          <Row label="エレベーター"  edit={edit} value={v('fromElevator')} onChange={x => setField('fromElevator', x)} options={YN} />
+          <Row label="間取り"        edit={edit} value={v('fromLayout')}  onChange={x => setField('fromLayout', x)} placeholder="例：2LDK" />
+          {!edit && !fromText && <div style={{ fontSize: 12, color: '#94A3B8', padding: 10, gridColumn: '1 / -1' }}>（未入力）</div>}
+        </div>
+
+        {/* 引越し先 */}
+        <div style={sectionBar}>転居先（引越し先）</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid #EEF2F7' }}>
+          <Row label="〒"            edit={edit} value={v('toZip')}     onChange={x => setField('toZip', x)} />
+          <Row label="住所"          edit={edit} value={v('toAddress')} onChange={x => setField('toAddress', x)} wide />
+          <Row label="建物種別"      edit={edit} value={v('toType')}    onChange={x => setField('toType', x)} />
+          <Row label="建物階数"      edit={edit} value={v('toFloor')}   onChange={x => setField('toFloor', x)} />
+          <Row label="エレベーター"  edit={edit} value={v('toElevator')} onChange={x => setField('toElevator', x)} options={YN} />
+          <Row label="間取り"        edit={edit} value={v('toLayout')}  onChange={x => setField('toLayout', x)} />
+          <Row label="訪問見積もり日" edit={edit} value={v('visitEstimateDate')} onChange={x => setField('visitEstimateDate', x)} type="date" wide />
+          {!edit && !toText && !v('visitEstimateDate') && <div style={{ fontSize: 12, color: '#94A3B8', padding: 10, gridColumn: '1 / -1' }}>（未入力）</div>}
+        </div>
+
+        {/* 詳細内容 */}
+        <div style={sectionBar}>詳細内容</div>
+        <div style={{ borderBottom: '1px solid #EEF2F7' }}>
+          <Row label="備考・要望"    edit={edit} value={v('request')} onChange={x => setField('request', x)} wide />
+          <Row label="依頼作業"      edit={edit} value={v('option')}  onChange={x => setField('option', x)} placeholder="搬出/輸送/搬入 / 家具梱包 等" wide />
+          <Row label="表示料金相場"  edit={edit} value={v('referenceFee')} onChange={x => setField('referenceFee', x)} placeholder="例：89,000円 〜 150,000円" wide />
+          <Row label="対応状況"      edit={false} value={[item.telStatus, item.mailStatus].filter(Boolean).join(' / ')} wide />
+        </div>
+
+        {/* 家財（常時編集可） */}
+        <div style={sectionBar}>家財{onSave ? '（編集可）' : ''}</div>
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid #EEF2F7' }}>
+          {['家具', '家電', 'その他', '重量物'].map(cat => (
+            grouped[cat] && grouped[cat].length > 0 && (
+              <div key={cat} style={{ display: 'flex', gap: 10, marginBottom: 8, alignItems: 'flex-start' }}>
+                <div style={{ width: 48, flexShrink: 0, fontSize: 11, fontWeight: 700, color: '#64748B', paddingTop: 6 }}>{cat}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {grouped[cat].map((k) => (
+                    <span key={k._idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, background: '#EFF6FF', color: '#1D4ED8', borderRadius: 6, padding: '3px 6px 3px 8px', fontWeight: 600 }}>
+                      {k.name}×
+                      {onSave ? (
+                        <input type="number" min={0} value={k.qty}
+                          onChange={e => setQty(k._idx, e.target.value)}
+                          style={{ width: 40, padding: '1px 4px', border: '1px solid #BFDBFE', borderRadius: 4, background: '#fff', color: '#1D4ED8', fontWeight: 700, fontSize: 12 }} />
+                      ) : k.qty}
+                      {onSave && (
+                        <button onClick={() => removeRow(k._idx)} title="削除" style={{ background: 'none', border: 'none', color: '#1D4ED8', cursor: 'pointer', fontWeight: 700, fontSize: 14, lineHeight: 1, padding: 0, marginLeft: 2 }}>×</button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )
+          ))}
+          {item.kazaiUnknown > 0 && !onSave && (
+            <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>他{item.kazaiUnknown}品（詳細ページを開くと品名表示）</div>
+          )}
+          {onSave && (
+            <div className="no-print" style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              {customKazai ? (
+                <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
+                  <input type="text" autoFocus value={addName} onChange={e => setAddName(e.target.value)}
+                    placeholder="品名を入力…" style={{ ...inp, width: '100%', paddingRight: 26 }} />
+                  <button type="button" onClick={() => { setCustomKazai(false); setAddName('') }} title="自由入力をキャンセル"
+                    style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: 15, fontWeight: 700, lineHeight: 1, padding: 4 }}>×</button>
+                </div>
+              ) : (
+                <select value={addName} onChange={e => chooseAddName(e.target.value)} style={{ ...inp, flex: 1, minWidth: 180, width: 'auto' }}>
+                  <option value="">＋ 家財を追加…</option>
+                  <option value="__custom__">✏ 自由入力（品名を直接入力）</option>
+                  {Object.entries(KAZAI_CATEGORY).map(([cat, list]) => (
+                    <optgroup key={cat} label={cat}>
+                      {list.map(n => <option key={n} value={n}>{n}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              )}
+              <input type="number" min={1} value={addQty} onChange={e => setAddQty(e.target.value)} style={{ ...inp, width: 70, textAlign: 'center' }} />
+              <button className="btn btn-outline btn-sm" onClick={addRow} disabled={!addName}>追加</button>
+            </div>
+          )}
+          {onSave && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: '#64748B' }}>ダンボール</span>
+              <input value={boxCount} onChange={e => { setBoxCount(e.target.value); setDirty(true) }} placeholder="例：10" style={{ ...inp, width: 80, textAlign: 'center' }} />
+              <span style={{ fontSize: 11, color: '#94A3B8' }}>箱</span>
+            </div>
+          )}
+          {!onSave && boxCount && <div style={{ fontSize: 12, color: '#64748B', marginTop: 6 }}>ダンボール {boxCount}</div>}
+        </div>
+
+        {/* 対応・メモ */}
         <div style={sectionBar}>対応・メモ</div>
         <div style={{ borderBottom: '1px solid #EEF2F7' }}>
           <Row label="ステータス" edit={false} value={statusSelect} wide />
@@ -466,6 +339,7 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
           </div>
         </div>
 
+        {/* メモ最終更新日時 */}
         {item.memoUpdatedAt && (
           <div style={{ fontSize: 11, color: '#94A3B8', padding: '10px 14px', borderBottom: '1px solid #EEF2F7' }}>
             メモ最終更新: {new Date(item.memoUpdatedAt).toLocaleString('ja-JP')}

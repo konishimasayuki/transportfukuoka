@@ -3,7 +3,6 @@
 // onSave(patch)：保存時に呼ばれる。呼び出し元が /api/contracts への POST/PUT を担当する。
 import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
-import { fcell, flab, fin, fval, fband, BAND, flabAddress, flabDetail, table4, COLS4 } from '../lib/detailStyles'
 
 export const STATUS_LIST    = ['成約済み', '交渉中', '見積済み', '連絡待ち', '要追客', '失注']
 export const STATUS_BADGE   = { '成約済み': 'bg', '交渉中': 'bb', '見積済み': 'bo', '連絡待ち': 'bp', '要追客': 'by', '失注': 'br' }
@@ -34,20 +33,6 @@ function flagColors(val) {
   const color = (val === '依頼済み') ? '#15803D' : (val === '未依頼' || val === '要配達') ? '#C2410C' : '#94A3B8'
   const border = (val === '依頼済み') ? '#BBF7D0' : (val === '未依頼' || val === '要配達') ? '#FED7AA' : '#E2E8F0'
   return { bg, color, border }
-}
-
-// 帳票レイアウトの表セル。編集中は入力欄、閲覧時は値をそのまま出す。
-function Cell({ edit, value, onChange, type = 'text', options, multiline }) {
-  if (!edit) return <div style={fval}>{value || ''}</div>
-  if (options) {
-    return (
-      <select value={value ?? ''} onChange={e => onChange(e.target.value)} style={fin}>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-    )
-  }
-  if (multiline) return <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} style={{ ...fin, minHeight: 46, resize: 'vertical' }} />
-  return <input type={type} value={value ?? ''} onChange={e => onChange(e.target.value)} style={fin} />
 }
 
 // 編集／閲覧共通のフィールド行（LeadDetailModalと同じ体裁）
@@ -129,13 +114,12 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
     <div style={overlay}>
       <div style={box}>
         {/* ヘッダー */}
-        {/* スマホではボタンを潰さず折り返す（flexWrap） */}
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 800 }}>{isNew ? '新規成約' : (v('name') || '（名前なし）')} {!isNew && <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>様</span>}</div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{v('srcLabel') || ''}{v('date') ? ` ／ 引越し日 ${v('date')}` : ''}</div>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
             {!isNew && (
               <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`} onClick={() => setEdit(e2 => !e2)}>
                 {edit ? '閲覧に戻す' : '✏ 編集'}
@@ -149,86 +133,56 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
         </div>
 
         {/* 基本情報 */}
-        {/* ── 顧客情報（帳票と同じ並び。中身は成約の項目）── */}
-        {/* スマホでは帳票型の表を縦積みに組み替えて、横スクロールなしで全項目見られるようにする（global.css の .paper-stack） */}
-        <div className="paper-stack" style={{ padding: 12 }}>
-          <table style={{ ...table4, ...fband(BAND.customer) }}>
-            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
-            <tbody>
-              <tr>
-                <td style={flab}>顧客名 *</td>
-                <td style={fcell}><Cell edit={edit} value={v('name')} onChange={x => setField('name', x)} /></td>
-                <td style={flab}>流入元</td>
-                <td style={fcell}><Cell edit={edit} value={v('srcLabel')} onChange={x => setField('srcLabel', x)} options={SOURCE_LIST} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>電話番号</td>
-                <td style={fcell}><Cell edit={edit} value={v('phone')} onChange={x => setField('phone', x)} /></td>
-                <td style={flab}>引越し日</td>
-                <td style={fcell}><Cell edit={edit} value={v('date')} onChange={x => setField('date', x)} type="date" /></td>
-              </tr>
-              <tr>
-                <td style={flab}>メールアドレス</td>
-                <td style={fcell}><Cell edit={edit} value={v('email')} onChange={x => setField('email', x)} type="email" /></td>
-                <td style={flab}>担当者</td>
-                <td style={fcell}><Cell edit={edit} value={v('staff')} onChange={x => setField('staff', x)} options={['', ...staffList]} /></td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* ── 区間（成約では住所の詳細は持たないため区間のみ）──
-              長い住所でも収まるよう行全体を使う（訪問見積もり日はこの画面では扱わない） */}
-          <table style={{ ...table4, marginTop: 8, ...fband(BAND.address) }}>
-            <colgroup>{COLS4.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
-            <tbody>
-              <tr>
-                <td style={flab}>区間（表示）</td>
-                <td style={fcell} colSpan={3}><Cell edit={edit} value={v('route') || routeAuto} onChange={x => setField('route', x)} /></td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* ── 詳細内容 ── */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, ...fband(BAND.detail) }}>
-            <tbody>
-              <tr><td style={flabDetail} colSpan={6}>詳細内容</td></tr>
-              <tr>
-                <td style={flab}>見積金額（円）</td>
-                <td style={fcell} colSpan={5}><Cell edit={edit} value={v('amount')} onChange={x => setField('amount', x)} type="number" /></td>
-              </tr>
-              {/* 依頼作業・家財は成約管理では扱わないため置かない（現行の項目のみ） */}
-            </tbody>
-          </table>
-
-          {/* ── 手配状況 ── */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, ...fband('#7BC47F') }}>
-            <tbody>
-              <tr><td style={{ ...flab, background: '#EAF7EB' }} colSpan={4}>手配状況</td></tr>
-              <tr>
-                <td style={flab}>エアコン</td>
-                <td style={fcell}><Cell edit={edit} value={v('aircon') || '必要なし'} onChange={x => setField('aircon', x)} options={AIRCON_OPTS} /></td>
-                <td style={flab}>段ボール</td>
-                <td style={fcell}><Cell edit={edit} value={v('cardboard') || '必要なし'} onChange={x => setField('cardboard', x)} options={CARDBOARD_OPTS} /></td>
-              </tr>
-              <tr>
-                <td style={flab}>タイムツリー</td>
-                <td style={fcell} colSpan={3}>
-                  <div style={{ padding: '6px 8px' }}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={!!v('timetree')} onChange={() => setField('timetree', !v('timetree'))}
-                        style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0E8A7A' }} />
-                    </label>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div style={sectionBar}>基本情報</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid #EEF2F7' }}>
+          <Row label="フリガナ"   edit={edit} value={v('kana')}     onChange={x => setField('kana', x)} />
+          <Row label="顧客名 *"  edit={edit} value={v('name')}     onChange={x => setField('name', x)} placeholder="例：サンプル 太郎" />
+          <Row label="電話番号"   edit={edit} value={v('phone')}    onChange={x => setField('phone', x)} placeholder="090-…" />
+          <Row label="メールアドレス" edit={edit} value={v('email')} onChange={x => setField('email', x)} type="email" />
+          <Row label="流入元"     edit={edit} value={v('srcLabel')} onChange={x => setField('srcLabel', x)} options={SOURCE_LIST} />
+          <Row label="引越し人数" edit={edit} value={v('persons')}  onChange={x => setField('persons', x)} placeholder="例：2人" />
+          <Row label="希望日"     edit={edit} value={v('moveDateText')} onChange={x => setField('moveDateText', x)} placeholder="例：7月中旬 平日" wide />
         </div>
 
-        {/* ── 対応・メモ（リード詳細と同じ形）── */}
-        <div style={sectionBar}>対応・メモ</div>
+        {/* 日程 */}
+        <div style={sectionBar}>日程</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid #EEF2F7' }}>
+          <Row label="引越し日"   edit={edit} value={v('date')}      onChange={x => setField('date', x)} type="date" />
+          <Row label="売上登録日" edit={edit} value={v('salesDate')} onChange={x => setField('salesDate', x)} type="date" />
+          {!edit && <div style={{ fontSize: 10, color: '#94A3B8', padding: '6px 10px', gridColumn: '1 / -1' }}>※ 引越し日＝配車日（配車ボードに反映されます）</div>}
+        </div>
+
+        {/* 住所 */}
+        <div style={sectionBar}>住所・区間</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid #EEF2F7' }}>
+          <Row label="引越し元"   edit={edit} value={v('fromAddress')} onChange={x => setField('fromAddress', x)} placeholder="福岡市…" wide />
+          <Row label="引越し先"   edit={edit} value={v('toAddress')}   onChange={x => setField('toAddress', x)} placeholder="福岡市…" wide />
+          <Row label="訪問見積もり日" edit={edit} value={v('visitEstimateDate')} onChange={x => setField('visitEstimateDate', x)} type="date" wide />
+          <Row label="区間（表示）" edit={edit} value={v('route')} onChange={x => setField('route', x)} placeholder={routeAuto || '例：東区→博多区'} wide />
+        </div>
+
+        {/* 手配状況 */}
+        <div style={sectionBar}>手配状況</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid #EEF2F7' }}>
+          <Row label="エアコン" edit={edit} value={v('aircon') || '必要なし'} onChange={x => setField('aircon', x)} options={AIRCON_OPTS} flagStyle />
+          <Row label="段ボール" edit={edit} value={v('cardboard') || '必要なし'} onChange={x => setField('cardboard', x)} options={CARDBOARD_OPTS} flagStyle />
+          <div style={{ display: 'flex', fontSize: 13, gridColumn: '1 / -1' }}>
+            <div style={{ width: 110, flexShrink: 0, color: '#64748B', fontWeight: 600, background: '#F8FAFC', padding: '8px 10px' }}>タイムツリー</div>
+            <div style={{ padding: '8px 10px' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!v('timetree')} onChange={() => setField('timetree', !v('timetree'))}
+                  style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0E8A7A' }} />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* 対応・金額・メモ */}
+        <div style={sectionBar}>対応・金額・メモ</div>
         <div style={{ borderBottom: '1px solid #EEF2F7' }}>
           <Row label="ステータス" edit={false} value={statusSelectEl} wide />
+          <Row label="見積金額（円）" edit={edit} value={v('amount')} onChange={x => setField('amount', x)} type="number" placeholder="例：68000" wide />
+          <Row label="担当者" edit={edit} value={v('staff')} onChange={x => setField('staff', x)} options={['', ...staffList]} wide />
           <div style={{ display: 'flex', fontSize: 13 }}>
             <div style={{ width: 110, flexShrink: 0, color: '#64748B', fontWeight: 600, background: '#F8FAFC', padding: '8px 10px' }}>メモ</div>
             <div style={{ flex: 1, padding: 8 }}>

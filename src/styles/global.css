@@ -152,7 +152,6 @@ html, body, #root {
 
 .two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-.four-col  { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
 
 .scroll-x { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
 /* スクロール可能なことが分かるよう、細いスクロールバーを常時表示気味に */
@@ -219,55 +218,12 @@ tr:hover td { background: var(--bg); }
   .kpi-3 { grid-template-columns: repeat(2, 1fr); }
   .two-col   { grid-template-columns: 1fr; }
   .three-col { grid-template-columns: 1fr; }
-  .four-col  { grid-template-columns: 1fr 1fr; }
   .setting-input { width: 130px; }
   /* モバイルではテーブルを詰めて表示（横スクロールは .scroll-x が担当） */
   table { font-size: 11px; }
   th { padding: 0 7px 7px; }
   td { padding: 8px 7px; }
   .card-body.scroll-x { padding-left: 10px; padding-right: 10px; }
-  /* ── スマホは横スクロールなしで見せる ──
-     一覧：主要列だけ残す（副次列は m-hide / nth-child で非表示。詳細はタップで確認） */
-  .m-hide { display: none !important; }
-  .tbl-leads, .tbl-con, .tbl-est { min-width: 0; }
-  /* リード一覧：受付日時・名前・電話・ステータスだけ残す */
-  .tbl-leads th:nth-child(2), .tbl-leads td:nth-child(2),
-  .tbl-leads th:nth-child(5), .tbl-leads td:nth-child(5),
-  .tbl-leads th:nth-child(6), .tbl-leads td:nth-child(6),
-  .tbl-leads th:nth-child(7), .tbl-leads td:nth-child(7),
-  .tbl-leads th:nth-child(8), .tbl-leads td:nth-child(8),
-  .tbl-leads th:nth-child(9), .tbl-leads td:nth-child(9),
-  .tbl-leads th:nth-child(10), .tbl-leads td:nth-child(10),
-  .tbl-leads th:nth-child(12), .tbl-leads td:nth-child(12),
-  .tbl-leads th:nth-child(13), .tbl-leads td:nth-child(13) { display: none; }
-  /* 見積一覧：顧客名・引越日・金額・操作だけ残す */
-  .tbl-est th:nth-child(1), .tbl-est td:nth-child(1),
-  .tbl-est th:nth-child(2), .tbl-est td:nth-child(2),
-  .tbl-est th:nth-child(5), .tbl-est td:nth-child(5),
-  .tbl-est th:nth-child(7), .tbl-est td:nth-child(7) { display: none; }
-  .tbl-est .btn-sm { padding: 4px 7px; font-size: 10px; }
-  .tbl-con .btn-sm { padding: 4px 7px; font-size: 10px; }
-
-  /* 帳票型の表（詳細モーダル・見積書フォーム）：ラベル→値の縦積みに組み替えて
-     横スクロールなしで全項目見られるようにする */
-  .paper-stack table { display: block; min-width: 0 !important; width: 100% !important; }
-  .paper-stack thead, .paper-stack tbody { display: block; }
-  .paper-stack tr { display: block; }
-  .paper-stack th, .paper-stack td { display: block; width: auto !important; max-width: none !important; }
-  .paper-stack td:empty { display: none; }
-  /* 例外：表のまま出すもの（荷造資材など）。列を均等に縮めて収める */
-  .paper-stack table.keep-table { display: table; table-layout: fixed; }
-  .paper-stack table.keep-table thead { display: table-header-group; }
-  .paper-stack table.keep-table tbody { display: table-row-group; }
-  .paper-stack table.keep-table tr { display: table-row; }
-  .paper-stack table.keep-table td { display: table-cell; width: auto !important; white-space: normal !important; }
-
-  /* 見積書フォームのグリッド類：縦積み・2列化して画面幅に収める */
-  .est-form .scroll-x { overflow-x: visible; }
-  .est-form .g-top { grid-template-columns: 1fr !important; min-width: 0 !important; }
-  .est-form .g-kazai { grid-template-columns: repeat(2, 1fr) !important; min-width: 0 !important; }
-  .est-form .g-fees { grid-template-columns: 1fr !important; min-width: 0 !important; }
-  .est-form .g-total { flex-wrap: wrap; justify-content: flex-start !important; min-width: 0 !important; }
 }
 @media (max-width: 380px) {
   .kpi-val { font-size: 18px; }

@@ -176,8 +176,6 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const [fMoveYear, setFMoveYear] = useState(''); const [fMoveMonth, setFMoveMonth] = useState('')
   const [fSalesYear, setFSalesYear] = useState(''); const [fSalesMonth, setFSalesMonth] = useState('')
   const [fRecvYear, setFRecvYear] = useState(''); const [fRecvMonth, setFRecvMonth] = useState('')
-  // 年が「既定の当年」かどうか（利用者が自分で選んだら false）。matchYM の判定に使う。
-  const [autoYear, setAutoYear] = useState({ sales: false, recv: false, move: false })
   const [showFilterPanel, setShowFilterPanel] = useState(false)
   const yearInitRef = useRef(false) // 年の既定（当年）を一度だけ適用する
   const filterPanelRef = useRef(null)
@@ -187,7 +185,6 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const [toast, setToast] = useState('')
   const [followLeads, setFollowLeads] = useState([]) // 追客タブ用：ステータス「要追客」のリード（未成約）
   const [leadDetailItem, setLeadDetailItem] = useState(null) // 追客タブ：クリックしたリード行の詳細（リード管理と同じモーダル）
-  const [pendingLeadConvert, setPendingLeadConvert] = useState(null) // 追客タブ：成約登録の確定待ちリード
   const fileRef = useRef(null)
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2600) }
 
@@ -198,7 +195,6 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const clearFilters = () => {
     setFStatus(''); setFSrc(''); setFStaff('')
     setFMoveYear(''); setFMoveMonth(''); setFSalesYear(''); setFSalesMonth(''); setFRecvYear(''); setFRecvMonth('')
-    setAutoYear({ sales: false, recv: false, move: false })
   }
   const activeFilterCount = [fStatus, fSrc, fStaff, fMoveYear, fMoveMonth, fSalesYear, fSalesMonth, fRecvYear, fRecvMonth].filter(Boolean).length
 
@@ -219,8 +215,8 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     setSortKey(null); setSortDir(null)
   }
   const sortArrow = (key) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
-  const sortableTh = (key, label, cls) => (
-    <th className={cls} onClick={() => cycleSort(key)} style={{ cursor: 'pointer', userSelect: 'none' }} title="クリックで並び替え">{label}{sortArrow(key)}</th>
+  const sortableTh = (key, label) => (
+    <th onClick={() => cycleSort(key)} style={{ cursor: 'pointer', userSelect: 'none' }} title="クリックで並び替え">{label}{sortArrow(key)}</th>
   )
 
   useEffect(() => { if (!isDemo) fetchItems() }, [])
@@ -263,7 +259,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
 
   const openAdd  = () => { setModalItem({ ...EMPTY_CONTRACT }); setIsNewModal(true) }
   const openEdit = (item) => { setModalItem(item); setIsNewModal(false) }
-  const closeModal = () => { setModalItem(null); setIsNewModal(false); setPendingLeadConvert(null) }
+  const closeModal = () => { setModalItem(null); setIsNewModal(false) }
 
   // ContractDetailModal からの保存（新規／編集を統一）
   const handleModalSave = async (payload) => {
@@ -275,25 +271,6 @@ export default function Contracts({ user, mode, onFollowDelta }) {
         try { await fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newItem) }); await fetchItems() }
         catch (e) { console.error(e) }
       }
-      // 追客タブのリードから成約にした場合は、リード側も成約済みにして追客一覧から外す
-      if (pendingLeadConvert) {
-        const lead = pendingLeadConvert
-        if (lead.status === '要追客') onFollowDelta?.(-1)
-        setFollowLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: '成約', contracted: true, amount: newItem.amount } : l))
-        if (!isDemo) {
-          try {
-            await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, status: '成約', contracted: true, amount: newItem.amount }) })
-          } catch (e) { console.error(e) }
-        } else {
-          const idx = DEMO_LEADS.findIndex(l => l.id === lead.id)
-          if (idx !== -1) DEMO_LEADS[idx] = { ...DEMO_LEADS[idx], status: '成約', contracted: true }
-        }
-        setPendingLeadConvert(null)
-      }
-      // 新規追加は保存できたらモーダルを閉じる。開いたままだと「追加する」を
-      // 押し直せてしまい、別IDで二重に登録される（サーバの重複防止は同一IDのみ）。
-      closeModal()
     } else {
       const id = modalItem.id
       // メモを変更した回だけメモの最終更新日時を記録する
@@ -321,36 +298,22 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   }
   const handleModalDelete = () => { if (modalItem) { closeModal(); setDeleteConfirm(modalItem.id) } }
 
-  // 一覧のインライン保存の共通処理。保存に失敗したら画面だけ変わった状態を残さず、
-  // 通知したうえでサーバの内容に戻す（リード管理と同じ扱い。無言の保存漏れを防ぐ）。
-  const putOrResync = async (url, body, resync) => {
-    try {
-      const res = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      if (!res.ok) { showToast('保存できませんでした。画面を最新に戻します'); await resync() }
-    } catch (e) {
-      console.error(e); showToast('保存できませんでした。画面を最新に戻します'); await resync()
-    }
-  }
-  // 追客タブのリード一覧をサーバから取り直す
-  const refetchFollowLeads = async () => {
-    try {
-      const d = await fetch('/api/inbound').then(r => r.json())
-      setFollowLeads((d.items || []).filter(l => l.status === '要追客'))
-    } catch (e) { console.error(e) }
-  }
-
   // 一覧から担当者をインライン変更（全項目を保持して保存）
   const updateContractStaff = async (item, staff) => {
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, staff } : i))
     if (isDemo) return
-    await putOrResync('/api/contracts', { ...item, staff }, fetchItems)
+    try {
+      await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...item, staff }) })
+    } catch (e) { console.error(e) }
   }
 
   const updateContractStatus = async (item, status) => {
     onFollowDelta?.((status === '要追客' ? 1 : 0) - (item.status === '要追客' ? 1 : 0))
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, status } : i))
     if (isDemo) return
-    await putOrResync('/api/contracts', { ...item, status }, fetchItems)
+    try {
+      await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...item, status }) })
+    } catch (e) { console.error(e) }
   }
 
   // エアコン/段ボールの手配状況（必要なし／未依頼／依頼済み）。全項目を保持して保存。
@@ -358,7 +321,9 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     const updated = { ...item, [field]: value }
     setItems(prev => prev.map(i => i.id === item.id ? updated : i))
     if (isDemo) return
-    await putOrResync('/api/contracts', updated, fetchItems)
+    try {
+      await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) })
+    } catch (e) { console.error(e) }
   }
   // 手配状況プルダウン（必要なし＝グレー／未依頼・要配達＝オレンジ／依頼済み＝グリーン）。既定は「必要なし」。
   // エアコン・段ボールで選択肢の文字数が異なっても幅が揃うよう固定幅・中央寄せにしてデザインを統一する。
@@ -397,7 +362,9 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const updateLeadStaff = async (row, staff) => {
     setFollowLeads(prev => prev.map(l => l.id === row._lead.id ? { ...l, staff } : l))
     if (isDemo) return
-    await putOrResync('/api/inbound', { key: row._lead.key || row._lead.phone, phone: row._lead.phone, staff }, refetchFollowLeads)
+    try {
+      await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: row._lead.key || row._lead.phone, phone: row._lead.phone, staff }) })
+    } catch (e) { console.error(e) }
   }
   // リード由来行のタイムツリー登録チェックをインライン変更（/api/inbound を更新）
   const updateLeadTimetree = async (row, timetree) => {
@@ -407,7 +374,9 @@ export default function Contracts({ user, mode, onFollowDelta }) {
       if (idx !== -1) DEMO_LEADS[idx] = { ...DEMO_LEADS[idx], timetree }
       return
     }
-    await putOrResync('/api/inbound', { key: row._lead.key || row._lead.phone, phone: row._lead.phone, timetree }, refetchFollowLeads)
+    try {
+      await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: row._lead.key || row._lead.phone, phone: row._lead.phone, timetree }) })
+    } catch (e) { console.error(e) }
   }
   const leadTtCheckbox = (item) => (
     <label onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} title="TimeTreeに登録済みかを記録">
@@ -417,10 +386,6 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   )
   // リード由来行のステータスをインライン変更（成約管理と同じステータス一覧を使用。要追客を選び直すと一覧から外れる）
   const updateLeadStatus = async (row, status) => {
-    // 「成約済み」はリード管理と同じく成約登録の導線に載せる。
-    // ここでリードのステータスだけ書き換えると、成約管理にも売上にも残らないまま
-    // リードが一覧から消えてしまうため、成約の新規登録モーダルを開いて確定させる。
-    if (status === '成約済み') { startConvertLead(row); return }
     onFollowDelta?.((status === '要追客' ? 1 : 0) - (row.status === '要追客' ? 1 : 0))
     setFollowLeads(prev => prev.map(l => l.id === row._lead.id ? { ...l, status } : l))
     if (isDemo) {
@@ -428,35 +393,10 @@ export default function Contracts({ user, mode, onFollowDelta }) {
       if (idx !== -1) DEMO_LEADS[idx] = { ...DEMO_LEADS[idx], status }
       return
     }
-    await putOrResync('/api/inbound', { key: row._lead.key || row._lead.phone, phone: row._lead.phone, status }, refetchFollowLeads)
+    try {
+      await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: row._lead.key || row._lead.phone, phone: row._lead.phone, status }) })
+    } catch (e) { console.error(e) }
   }
-  // 追客タブのリードを成約にする：リード管理の「成約登録」と同じ内容をプリフィルして
-  // 成約の新規登録モーダルを開く。保存確定時に成約を作り、リード側も成約済みにする。
-  const startConvertLead = (row) => {
-    const lead = row._lead
-    const today = new Date().toISOString().slice(0, 10)
-    const SITE_TO_SRC = { 'ズバット': 'ズバッと', 'ズバッと': 'ズバッと', '引越し侍': 'サムライ', '価格.com': '価格.com', 'SUUMO': 'SUUMO' }
-    const from = lead.fromAddress || lead.from || ''
-    const to = lead.toAddress || lead.to || ''
-    setPendingLeadConvert(lead)
-    setModalItem({
-      ...EMPTY_CONTRACT,
-      name: lead.name || '', kana: lead.kana || '', phone: lead.phone || '', email: lead.email || '',
-      srcLabel: SITE_TO_SRC[lead.site] || 'その他',
-      date: lead.moveDate || today, salesDate: today,
-      fromAddress: from, toAddress: to,
-      route: [shortArea(from), shortArea(to)].filter(Boolean).join(' → '),
-      persons: lead.count ? String(lead.count).replace(/[^0-9]/g, '') : '',
-      amount: lead.amount || '', status: '成約済み', staff: lead.staff || '',
-      memo: lead.memo || '',
-      kazai: Array.isArray(lead.kazai) ? lead.kazai : [], boxCount: lead.boxCount || '',
-      timetree: !!lead.timetree,
-      receivedAt: lead.receivedAt || lead.requestedAt || '',
-      leadKey: lead.key || lead.phone,
-    })
-    setIsNewModal(true)
-  }
-
   // リード詳細モーダル（リード管理と同じ）からの保存。メモを変更した回だけメモの最終更新日時を記録する。
   const saveLeadPatch = async (lead, patchIn) => {
     const patch = (patchIn.memo !== undefined && patchIn.memo !== lead.memo)
@@ -469,7 +409,9 @@ export default function Contracts({ user, mode, onFollowDelta }) {
       if (idx !== -1) DEMO_LEADS[idx] = { ...DEMO_LEADS[idx], ...patch }
       return
     }
-    await putOrResync('/api/inbound', { key: lead.key || lead.phone, phone: lead.phone, ...patch }, refetchFollowLeads)
+    try {
+      await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, ...patch }) })
+    } catch (e) { console.error(e) }
   }
 
   // CSVエクスポート（現在の一覧をすべて）
@@ -545,25 +487,19 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const recvYears = yOpts(recvYM), recvMonths = mOpts(recvYM)
 
   // 年の既定＝当年（データに当年があるフィールドのみ）。1回だけ適用。
-  // 既定でセットした年か、利用者が自分で選んだ年かを覚えておく（下の matchYM で扱いを変える）。
   useEffect(() => {
     if (yearInitRef.current || loading) return
     const cy = String(new Date().getFullYear())
-    const auto = { sales: false, recv: false, move: false }
-    if (showSalesFilter && salesYears.includes(cy)) { setFSalesYear(cy); auto.sales = true }
-    if (showRecvFilter && recvYears.includes(cy)) { setFRecvYear(cy); auto.recv = true }
-    if (moveYears.includes(cy)) { setFMoveYear(cy); auto.move = true }
-    setAutoYear(auto)
+    if (showSalesFilter && salesYears.includes(cy)) setFSalesYear(cy)
+    if (showRecvFilter && recvYears.includes(cy)) setFRecvYear(cy)
+    if (moveYears.includes(cy)) setFMoveYear(cy)
     yearInitRef.current = true
   }, [loading, salesYears.join(), recvYears.join(), moveYears.join()])
 
   // 行の日付が「指定した年・月」に合致するか（年・月それぞれ空なら無条件通過）
-  // lenient＝年が「既定の当年」の場合。利用者が絞ったわけではないので、
-  // その日付を持たない行（引越し日が未定の追客リード、受付日時のない手入力の成約など）は
-  // 消さずに残す。＝ 既定表示で行が消えるのを防ぐ。自分で年を選んだ時は従来どおり厳密に絞る。
-  const matchYM = (ms, y, mo, lenient) => {
+  const matchYM = (ms, y, mo) => {
     if (!y && !mo) return true
-    if (!ms || !isFinite(ms)) return lenient && !mo
+    if (!ms || !isFinite(ms)) return false
     const d = new Date(ms)
     return (!y || String(d.getFullYear()) === y) && (!mo || String(d.getMonth() + 1) === mo)
   }
@@ -577,9 +513,9 @@ export default function Contracts({ user, mode, onFollowDelta }) {
            (!fStatus || i.status === fStatus) &&
            (!fSrc || (i.srcLabel || '') === fSrc) &&
            (!fStaff || (fStaff === '__none__' ? !i.staff : i.staff === fStaff)) &&
-           matchYM(moveDateMs(i.date), fMoveYear, fMoveMonth, autoYear.move) &&
-           matchYM(moveDateMs(i.salesDate), fSalesYear, fSalesMonth, autoYear.sales) &&
-           matchYM(receivedAtMs(i), fRecvYear, fRecvMonth, autoYear.recv)
+           matchYM(moveDateMs(i.date), fMoveYear, fMoveMonth) &&
+           matchYM(moveDateMs(i.salesDate), fSalesYear, fSalesMonth) &&
+           matchYM(receivedAtMs(i), fRecvYear, fRecvMonth)
   }).sort((a, b) => {
     if (sortKey === 'receivedAt') { const cmp = receivedAtMs(a) - receivedAtMs(b); return sortDir === 'asc' ? cmp : -cmp }
     if (sortKey) return cmpDate(a, b, sortKey, sortDir)     // 引越し日 / 売上登録日
@@ -642,12 +578,12 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                 {activeFilterCount > 0 && <button onClick={clearFilters} style={{ border: 'none', background: 'none', color: '#1E5FA8', fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0 }}>クリア</button>}
               </div>
               {showRecvFilter && (
-                <DateFilter label="受付日時" years={recvYears} months={recvMonths} year={fRecvYear} month={fRecvMonth} onYear={y => { setFRecvYear(y); setAutoYear(a => ({ ...a, recv: false })) }} onMonth={setFRecvMonth} />
+                <DateFilter label="受付日時" years={recvYears} months={recvMonths} year={fRecvYear} month={fRecvMonth} onYear={setFRecvYear} onMonth={setFRecvMonth} />
               )}
               {showSalesFilter && (
-                <DateFilter label="売上登録日" years={salesYears} months={salesMonths} year={fSalesYear} month={fSalesMonth} onYear={y => { setFSalesYear(y); setAutoYear(a => ({ ...a, sales: false })) }} onMonth={setFSalesMonth} />
+                <DateFilter label="売上登録日" years={salesYears} months={salesMonths} year={fSalesYear} month={fSalesMonth} onYear={setFSalesYear} onMonth={setFSalesMonth} />
               )}
-              <DateFilter label="引越し日" years={moveYears} months={moveMonths} year={fMoveYear} month={fMoveMonth} onYear={y => { setFMoveYear(y); setAutoYear(a => ({ ...a, move: false })) }} onMonth={setFMoveMonth} />
+              <DateFilter label="引越し日" years={moveYears} months={moveMonths} year={fMoveYear} month={fMoveMonth} onYear={setFMoveYear} onMonth={setFMoveMonth} />
               <SelectFilter label="流入元" opts={srcOpts} value={fSrc} onChange={setFSrc} />
               {showStatusFilter && (
                 <SelectFilter label="ステータス" opts={STATUS_LIST} value={fStatus} onChange={setFStatus} />
@@ -664,17 +600,17 @@ export default function Contracts({ user, mode, onFollowDelta }) {
       ) : (
         <div className="card">
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
-            <table className="tbl-con">
+            <table>
               <thead>
                 <tr>
                   {mode === 'follow' && sortableTh('receivedAt', '受付日時')}
-                  {!meta && sortableTh('salesDate', '売上登録日', 'm-hide')}
+                  {!meta && sortableTh('salesDate', '売上登録日')}
                   <th>顧客名</th>
-                  <th className="m-hide">流入元</th>
+                  <th>流入元</th>
                   {sortableTh('date', '引越し日')}
-                  <th className="m-hide">区間</th><th>見積金額</th>
-                  {mode === 'follow' ? <><th className="m-hide">メモ</th><th className="m-hide">メモ最終更新日時</th></> : <><th className="m-hide">エアコン</th><th className="m-hide">段ボール</th></>}
-                  <th className="m-hide">タイムツリー</th><th className="m-hide">ステータス</th><th className="m-hide">担当者</th>{mode !== 'follow' && <th>操作</th>}
+                  <th>区間</th><th>見積金額</th>
+                  {mode === 'follow' ? <><th>メモ</th><th>メモ最終更新日時</th></> : <><th>エアコン</th><th>段ボール</th></>}
+                  <th>タイムツリー</th><th>ステータス</th><th>担当者</th>{mode !== 'follow' && <th>操作</th>}
                 </tr>
               </thead>
               <tbody>
@@ -685,29 +621,29 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                     onClick={() => item._isLead && setLeadDetailItem(item._lead)}
                     style={item._isLead ? { cursor: 'pointer' } : undefined}>
                     {mode === 'follow' && <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: '#64748B' }}>{fmtReceivedDate(item.receivedAt)}</td>}
-                    {!meta && <td className="m-hide">{item.salesDate || ''}</td>}
+                    {!meta && <td>{item.salesDate || ''}</td>}
                     <td><b>{item.name}</b></td>
-                    <td className="m-hide"><SourceTag label={item.srcLabel} /></td>
+                    <td><SourceTag label={item.srcLabel} /></td>
                     <td>{item.date}</td>
-                    <td className="m-hide" title={contractRoute(item).full}>
+                    <td title={contractRoute(item).full}>
                       <div style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contractRoute(item).short}</div>
                     </td>
                     <td>{item.amount ? `¥${item.amount.toLocaleString()}` : '—'}</td>
                     {mode === 'follow' ? (
                       <>
-                        <td className="m-hide" title={item.memo || ''}>
+                        <td title={item.memo || ''}>
                           <div style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748B' }}>{item.memo || ''}</div>
                         </td>
-                        <td className="m-hide" style={{ whiteSpace: 'nowrap', color: '#94A3B8', fontSize: 12 }}>{fmtMemoTime(item.memoUpdatedAt)}</td>
+                        <td style={{ whiteSpace: 'nowrap', color: '#94A3B8', fontSize: 12 }}>{fmtMemoTime(item.memoUpdatedAt)}</td>
                       </>
                     ) : (
                       <>
-                        <td className="m-hide">{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'aircon', AIRCON_OPTS)}</td>
-                        <td className="m-hide">{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'cardboard', CARDBOARD_OPTS)}</td>
+                        <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'aircon', AIRCON_OPTS)}</td>
+                        <td>{item._isLead ? <span style={{ color: '#CBD5E1' }}>—</span> : flagSelect(item, 'cardboard', CARDBOARD_OPTS)}</td>
                       </>
                     )}
-                    <td className="m-hide">{item._isLead ? leadTtCheckbox(item) : ttCheckbox(item)}</td>
-                    <td className="m-hide">
+                    <td>{item._isLead ? leadTtCheckbox(item) : ttCheckbox(item)}</td>
+                    <td>
                       {item._isLead ? (
                         <select value={item.status || ''} onClick={e => e.stopPropagation()} onChange={e => updateLeadStatus(item, e.target.value)}
                           className={`badge ${STATUS_BADGE[item.status] || 'bk'}`}
@@ -724,7 +660,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                         </select>
                       )}
                     </td>
-                    <td className="m-hide">
+                    <td>
                       <select
                         value={item.staff || ''}
                         onClick={e => e.stopPropagation()}
