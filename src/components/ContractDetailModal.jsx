@@ -67,7 +67,7 @@ function Row({ label, value, edit, onChange, type = 'text', options, placeholder
   )
 }
 
-export default function ContractDetailModal({ item, isNew, onClose, onSave, onDelete }) {
+export default function ContractDetailModal({ item, isNew, onClose, onSave, onDelete, onCopy, onCopyToLead }) {
   const [edit, setEdit] = useState(!!isNew)
   const [draft, setDraft] = useState({})
   const [dirty, setDirty] = useState(false)
@@ -116,7 +116,10 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
         {/* ヘッダー */}
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800 }}>{isNew ? '新規成約' : (v('name') || '（名前なし）')} {!isNew && <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>様</span>}</div>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>
+              {isNew ? '新規成約' : (v('name') || '（名前なし）')} {!isNew && <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>様</span>}
+              {item.isCopy && <span className="badge by" style={{ marginLeft: 8, fontSize: 10 }}>コピー</span>}
+            </div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{v('srcLabel') || ''}{v('date') ? ` ／ 引越し日 ${v('date')}` : ''}</div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -124,6 +127,16 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
               <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`} onClick={() => setEdit(e2 => !e2)}>
                 {edit ? '閲覧に戻す' : '✏ 編集'}
               </button>
+            )}
+            {/* コピー：同じ内容を成約管理内に複製（流入元は「その他」） */}
+            {onCopy && (
+              <button className="btn btn-sm" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontWeight: 700 }}
+                onClick={() => onCopy(item)}>⧉ コピー</button>
+            )}
+            {/* コピー：リード管理へ複製（元の成約はそのまま残る） */}
+            {onCopyToLead && (
+              <button className="btn btn-sm" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontWeight: 700 }}
+                onClick={() => onCopyToLead(item)}>⧉ リードへコピー</button>
             )}
             {onDelete && !isNew && (
               <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={onDelete}>削除</button>

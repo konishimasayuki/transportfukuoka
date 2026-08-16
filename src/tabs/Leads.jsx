@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import LeadDetailModal, { ConvertToContractModal } from '../components/LeadDetailModal'
+import LeadDetailModal, { ConvertToContractModal, EMPTY_LEAD } from '../components/LeadDetailModal'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { receivedAtMs } from '../lib/sortLeads'
@@ -138,6 +138,12 @@ const modalBox     = { background: '#fff', borderRadius: 14, width: '100%', maxW
 
 const norm = (l) => ({ ...l, status: l.status || '未架電' })
 
+// 手入力の登録・コピーで使う受付日時（既存データと同じ MM/DD HH:MM 表記）
+function fmtNowReceived() {
+  const d = new Date(), p2 = (n) => String(n).padStart(2, '0')
+  return `${p2(d.getMonth() + 1)}/${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`
+}
+
 // mode='quotes' のとき「見積り管理」ビューとして動作し、ステータスが「見積り」の
 // リードだけを表示する（他は通常のリード管理）。表示・操作は共通のまま流用する。
 export default function Leads({ user, switchTab, onFollowDelta, mode }) {
@@ -156,6 +162,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   const [page, setPage] = useState(0) // リード一覧のページ（1ページ50件）
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [detailItem, setDetailItem] = useState(null)
+  const [newLead, setNewLead] = useState(null) // 手入力の新規リード登録モーダル
   const [convertLead, setConvertLead] = useState(null) // ステータス「成約」変更時の登録モーダル
   const [importing, setImporting] = useState(false)
   const [toast, setToast] = useState('')
@@ -284,9 +291,11 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   // 詳細モーダルからの編集（メモ・家財）を保存
   // メモを変更した回だけメモの最終更新日時を記録する（他フィールドの編集では更新しない）
   const savePatch = async (item, patchIn) => {
-    const patch = (patchIn.memo !== undefined && patchIn.memo !== item.memo)
+    let patch = (patchIn.memo !== undefined && patchIn.memo !== item.memo)
       ? { ...patchIn, memoUpdatedAt: new Date().toISOString() }
       : patchIn
+    // コピーしたリードは、内容を編集して保存した時点で「コピー」印を外す（背景も通常色に戻る）
+    if (item.isCopy) patch = { ...patch, isCopy: false }
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...patch } : i)) // 楽観更新
     setDetailItem(d => (d ? { ...d, ...patch } : d))
     if (isDemo) {
@@ -311,6 +320,76 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
         })
       }
     } catch (e) { console.error(e) }
+  }
+
+  // 手入力の新規リードを登録する。
+  // key を明示するのが肝：省略すると電話番号でキーが決まり、同じ番号の既存リードに
+  // 統合されてしまう（＝登録したのに増えない）。手入力は常に別リードとして扱う。
+  const createLead = async (_item, patch) => {
+    const id = `manual_${Date.now()}`
+    const body = {
+      ...EMPTY_LEAD, ...patch,
+      id, key: id, site: 'その他', status: patch.status || '未架電',
+      receivedAt: fmtNowReceived(), savedAt: new Date().toISOString(),
+      _manual: true,
+    }
+    setNewLead(null)
+    if (isDemo) { setItems(prev => [norm(body), ...prev]); showToast('リードを登録しました（デモ：保存なし）'); return }
+    try {
+      const res = await fetch('/api/inbound', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!res.ok) { showToast('登録できませんでした'); return }
+      await fetchItems(); showToast('リードを登録しました')
+    } catch (e) { console.error(e); showToast('登録できませんでした') }
+  }
+
+  // リードをリード管理内に複製する（コピー）。
+  // 元と同じ電話番号のため、key を新しく振らないと元リードに統合されて消える。
+  // isCopy: true を付けて一覧の背景を薄い黄色にし、編集して保存すると通常色に戻る。
+  const copyLead = async (item) => {
+    const id = `copy_${Date.now()}`
+    const src = { ...item }
+    delete src.memoUpdatedAt
+    const body = {
+      ...src,
+      id, key: id, site: 'その他', isCopy: true, contracted: false,
+      status: item.status === '成約' ? '未架電' : (item.status || '未架電'),
+      receivedAt: fmtNowReceived(), savedAt: new Date().toISOString(),
+      _manual: true,
+    }
+    setDetailItem(null)
+    if (isDemo) { setItems(prev => [norm(body), ...prev]); showToast('コピーしました（デモ：保存なし）'); return }
+    try {
+      const res = await fetch('/api/inbound', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!res.ok) { showToast('コピーできませんでした'); return }
+      await fetchItems(); showToast('リードをコピーしました')
+    } catch (e) { console.error(e); showToast('コピーできませんでした') }
+  }
+
+  // リードを成約管理へ複製する（元のリードはそのまま残る。成約登録とは別物）
+  const copyLeadToContract = async (item) => {
+    const today = new Date().toISOString().slice(0, 10)
+    const fromA = item.fromAddress || item.from || ''
+    const toA   = item.toAddress || item.to || ''
+    const contract = {
+      id: `copy_${Date.now()}`,
+      name: item.name || '', kana: item.kana || '', phone: item.phone || '', email: item.email || '',
+      srcLabel: 'その他',
+      date: item.moveDate || '', salesDate: today,
+      fromAddress: fromA, toAddress: toA,
+      route: [shortArea(fromA), shortArea(toA)].filter(Boolean).join(' → '),
+      persons: item.count ? String(item.count).replace(/[^0-9]/g, '') : '',
+      amount: Number(item.amount) || 0,
+      status: '交渉中', staff: item.staff || '', memo: item.memo || '',
+      kazai: Array.isArray(item.kazai) ? item.kazai : [], boxCount: item.boxCount || '',
+      isCopy: true,
+    }
+    setDetailItem(null)
+    if (isDemo) { showToast('成約管理へコピーしました（デモ：保存なし）'); return }
+    try {
+      const res = await fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contract) })
+      if (!res.ok) { showToast('コピーできませんでした'); return }
+      showToast('成約管理へコピーしました')
+    } catch (e) { console.error(e); showToast('コピーできませんでした') }
   }
 
   // 詳細から「成約登録」→ 成約管理タブの新規追加に自動プリフィル
@@ -564,6 +643,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
                 </div>
               )}
             </div>
+            <button className="btn btn-primary btn-sm" onClick={() => setNewLead({ ...EMPTY_LEAD, id: 'new' })}>＋ 新規リード</button>
             <button className="btn btn-outline btn-sm" onClick={handleExport}>⬇ CSV出力</button>
             <button className="btn btn-outline btn-sm" onClick={() => fileRef.current && fileRef.current.click()} disabled={importing}>
               {importing ? '取込中…' : '⬆ CSV取込'}
@@ -587,7 +667,8 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
                   <tr><td colSpan={13} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
                 ) : paged.map(item => {
                   return (
-                  <tr key={item.id} onClick={() => setDetailItem(item)} style={{ cursor: 'pointer' }}>
+                  <tr key={item.id} onClick={() => setDetailItem(item)}
+                    style={{ cursor: 'pointer', ...(item.isCopy ? { background: '#FEFCE8' } : null) }}>
                     <td style={{ whiteSpace: 'nowrap' }}>{fmtReceived(item.receivedAt || item.requestedAt || '')}</td>
                     <td style={{ whiteSpace: 'nowrap' }}><SourceTag site={item.site} /></td>
                     <td><b>{item.name || '（名前なし）'}</b></td>
@@ -666,6 +747,15 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
         </div>
       )}
 
+      {newLead && (
+        <LeadDetailModal
+          item={newLead}
+          isNew
+          onClose={() => setNewLead(null)}
+          onSave={createLead}
+        />
+      )}
+
       <LeadDetailModal
         item={detailItem}
         onClose={() => setDetailItem(null)}
@@ -678,6 +768,8 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
           setDetailItem(d => ({ ...d, status }))
         }}
         onSave={savePatch}
+        onCopyLead={copyLead}
+        onCopyToContract={copyLeadToContract}
         onCreateEstimate={createEstimateFromLead}
         onCreateContract={(it) => setConvertLead(it)}
       />

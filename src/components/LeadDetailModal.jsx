@@ -6,6 +6,15 @@ import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
+// 手入力で新規登録するときの初期値（査定サイト由来ではないので流入元は「その他」）
+export const EMPTY_LEAD = {
+  name: '', kana: '', phone: '', email: '', count: '', ageGender: '', job: '',
+  moveDateDetail: '', preferredTime: '', requestedAt: '',
+  fromZip: '', fromAddress: '', fromType: '', fromFloor: '', fromElevator: '', fromLayout: '',
+  toZip: '', toAddress: '', toType: '', toFloor: '', toElevator: '', toLayout: '', visitEstimateDate: '',
+  request: '', option: '', referenceFee: '', memo: '', works: {},
+  site: 'その他', status: '未架電', kazai: [], boxCount: '',
+}
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '見積り': 'bc', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
 const YN = ['', 'あり', 'なし']
 
@@ -77,8 +86,8 @@ function Row({ label, value, edit, onChange, type = 'text', options, placeholder
   )
 }
 
-export default function LeadDetailModal({ item, onClose, onStatusChange, onSave, onCreateEstimate, onCreateContract }) {
-  const [edit, setEdit] = useState(false)
+export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, onSave, onCreateEstimate, onCreateContract, onCopyLead, onCopyToContract }) {
+  const [edit, setEdit] = useState(!!isNew)
   const [draft, setDraft] = useState({})
   const [kazai, setKazai] = useState([])
   const [boxCount, setBoxCount] = useState('')
@@ -100,8 +109,8 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
     setBoxCount(item.boxCount || '')
     setAddName(''); setAddQty(1); setCustomKazai(false)
     setDirty(false)
-    setEdit(false)
-  }, [item && item.id, item && item.phone])
+    setEdit(!!isNew)
+  }, [item && item.id, item && item.phone, isNew])
 
   if (!item) return null
 
@@ -176,24 +185,38 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
         {/* ヘッダー */}
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800 }}>{v('name') || item.name || '（名前なし）'} <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>様</span></div>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>
+              {isNew ? '新規リード' : (v('name') || item.name || '（名前なし）')}
+              {!isNew && <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}> 様</span>}
+              {item.isCopy && <span className="badge by" style={{ marginLeft: 8, fontSize: 10 }}>コピー</span>}
+            </div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{item.site || ''}{item.orderId ? ` ／ 依頼番号 ${item.orderId}` : ''}</div>
           </div>
           <div className="no-print" style={{ display: 'flex', gap: 6 }}>
-            <button className="btn btn-sm btn-outline" onClick={doPrint}>🖨 印刷/PDF</button>
-            {onSave && (
+            {!isNew && <button className="btn btn-sm btn-outline" onClick={doPrint}>🖨 印刷/PDF</button>}
+            {!isNew && onSave && (
               <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`}
                 onClick={() => setEdit(e => !e)}>
                 {edit ? '閲覧に戻す' : '✏ 編集'}
               </button>
             )}
-            {onCreateContract && (
+            {/* コピー：同じ内容をリード管理内に複製（流入元は「その他」） */}
+            {!isNew && onCopyLead && (
+              <button className="btn btn-sm" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontWeight: 700 }}
+                onClick={() => onCopyLead(item)}>⧉ コピー</button>
+            )}
+            {/* コピー：成約管理へ複製（元のリードはそのまま残る） */}
+            {!isNew && onCopyToContract && (
+              <button className="btn btn-sm" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontWeight: 700 }}
+                onClick={() => onCopyToContract(item)}>⧉ 成約へコピー</button>
+            )}
+            {!isNew && onCreateContract && (
               (item.status === '成約' || item.contracted)
                 ? <button className="btn btn-sm" disabled title="このリードは成約登録済みです。編集は成約管理で行えます。"
                     style={{ background: '#E2E8F0', color: '#64748B', fontWeight: 700, cursor: 'default' }}>✅ 成約済み</button>
                 : <button className="btn btn-sm" style={{ background: '#16A34A', color: '#fff', fontWeight: 700 }} onClick={() => onCreateContract(item)}>✅ 成約登録</button>
             )}
-            {onCreateEstimate && (
+            {!isNew && onCreateEstimate && (
               <button className="btn btn-primary btn-sm" onClick={() => onCreateEstimate(item)}>📝 見積書を作成</button>
             )}
             <button className="btn btn-sm btn-outline" onClick={onClose}>閉じる</button>
@@ -351,8 +374,8 @@ export default function LeadDetailModal({ item, onClose, onStatusChange, onSave,
           <div className="no-print" style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '1px solid #EEF2F7', padding: '10px 14px', display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
             {dirty && <span style={{ fontSize: 11, color: '#C2410C', marginRight: 'auto' }}>未保存の変更があります</span>}
             <button className="btn btn-outline btn-sm" onClick={onClose}>閉じる</button>
-            <button className="btn btn-primary btn-sm" onClick={saveChanges} disabled={!dirty || saving} style={{ opacity: (!dirty || saving) ? .55 : 1 }}>
-              {saving ? '保存中…' : '変更を保存'}
+            <button className="btn btn-primary btn-sm" onClick={saveChanges} disabled={(!dirty && !isNew) || saving || (isNew && !v('name'))} style={{ opacity: ((!dirty && !isNew) || (isNew && !v('name'))) ? .55 : 1 }}>
+              {saving ? '保存中…' : isNew ? '登録する' : '変更を保存'}
             </button>
           </div>
         )}

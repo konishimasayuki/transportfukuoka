@@ -62,6 +62,12 @@ function contractRoute(item) {
   return { short, full }
 }
 
+// コピーでリード管理へ渡すときの受付日時（リード側と同じ MM/DD HH:MM 表記）
+function fmtNowReceivedC() {
+  const d = new Date(), p2 = (n) => String(n).padStart(2, '0')
+  return `${p2(d.getMonth() + 1)}/${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`
+}
+
 // メモ最終更新日時の短縮表示（追客タブ）：MM/DD HH:MM
 function fmtMemoTime(iso) {
   if (!iso) return ''
@@ -297,9 +303,11 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     } else {
       const id = modalItem.id
       // メモを変更した回だけメモの最終更新日時を記録する
-      const finalPayload = (payload.memo !== undefined && payload.memo !== modalItem.memo)
+      let finalPayload = (payload.memo !== undefined && payload.memo !== modalItem.memo)
         ? { ...payload, memoUpdatedAt: new Date().toISOString() }
         : payload
+      // コピーした成約は、内容を編集して保存した時点で「コピー」印を外す（背景も通常色に戻る）
+      if (modalItem.isCopy) finalPayload = { ...finalPayload, isCopy: false }
       onFollowDelta?.((finalPayload.status === '要追客' ? 1 : 0) - (modalItem.status === '要追客' ? 1 : 0))
       setItems(prev => prev.map(i => i.id === id ? { ...finalPayload, id } : i))
       if (!isDemo) {
@@ -320,6 +328,52 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     setDeleteConfirm(null)
   }
   const handleModalDelete = () => { if (modalItem) { closeModal(); setDeleteConfirm(modalItem.id) } }
+
+  // 成約を成約管理内に複製する（コピー）。流入元は「その他」。
+  // isCopy: true で一覧の背景を薄い黄色にし、編集して保存すると通常色に戻る。
+  const copyContract = async (item) => {
+    const src = { ...item }
+    delete src.memoUpdatedAt; delete src.createdAt; delete src.leadKey
+    const body = {
+      ...src,
+      id: `copy_${Date.now()}`,
+      srcLabel: 'その他',
+      salesDate: new Date().toISOString().slice(0, 10),
+      isCopy: true,
+    }
+    closeModal()
+    setItems(prev => [body, ...prev])
+    if (isDemo) { showToast('コピーしました（デモ：保存なし）'); return }
+    try {
+      const res = await fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!res.ok) { showToast('コピーできませんでした'); await fetchItems(); return }
+      await fetchItems(); showToast('成約をコピーしました')
+    } catch (e) { console.error(e); showToast('コピーできませんでした'); await fetchItems() }
+  }
+
+  // 成約をリード管理へ複製する（元の成約はそのまま残る）。
+  // key を新しく振らないと、同じ電話番号の既存リードに統合されて増えない。
+  const copyContractToLead = async (item) => {
+    const id = `copy_${Date.now()}`
+    const [rf, rt] = splitRoute(item.route)
+    const lead = {
+      id, key: id, site: 'その他', status: '未架電', isCopy: true, _manual: true,
+      name: item.name || '', kana: item.kana || '', phone: item.phone || '', email: item.email || '',
+      fromAddress: item.fromAddress || rf || '', toAddress: item.toAddress || rt || '',
+      count: item.persons ? `${item.persons}人` : '',
+      moveDate: item.date || '', memo: item.memo || '', staff: item.staff || '',
+      amount: Number(item.amount) || 0,
+      kazai: Array.isArray(item.kazai) ? item.kazai : [], boxCount: item.boxCount || '',
+      receivedAt: fmtNowReceivedC(), savedAt: new Date().toISOString(),
+    }
+    closeModal()
+    if (isDemo) { showToast('リード管理へコピーしました（デモ：保存なし）'); return }
+    try {
+      const res = await fetch('/api/inbound', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lead) })
+      if (!res.ok) { showToast('コピーできませんでした'); return }
+      showToast('リード管理へコピーしました')
+    } catch (e) { console.error(e); showToast('コピーできませんでした') }
+  }
 
   // 一覧のインライン保存の共通処理。保存に失敗したら画面だけ変わった状態を残さず、
   // 通知したうえでサーバの内容に戻す（リード管理と同じ扱い。無言の保存漏れを防ぐ）。
@@ -683,7 +737,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                 ) : filtered.map(item => (
                   <tr key={item.id}
                     onClick={() => item._isLead && setLeadDetailItem(item._lead)}
-                    style={item._isLead ? { cursor: 'pointer' } : undefined}>
+                    style={{ ...(item._isLead ? { cursor: 'pointer' } : null), ...(item.isCopy ? { background: '#FEFCE8' } : null) }}>
                     {mode === 'follow' && <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: '#64748B' }}>{fmtReceivedDate(item.receivedAt)}</td>}
                     {!meta && <td>{item.salesDate || ''}</td>}
                     <td><b>{item.name}</b></td>
@@ -760,6 +814,8 @@ export default function Contracts({ user, mode, onFollowDelta }) {
           onClose={closeModal}
           onSave={handleModalSave}
           onDelete={!isNewModal ? handleModalDelete : undefined}
+          onCopy={!isNewModal ? copyContract : undefined}
+          onCopyToLead={!isNewModal ? copyContractToLead : undefined}
         />
       )}
 
