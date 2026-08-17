@@ -117,7 +117,8 @@ export default function LeadNotifier({ user, switchTab }) {
       try {
         const res = await fetch('/api/inbound?recent=5')
         const data = await res.json()
-        const items = (data.items || []).filter(i => i && i.savedAt)
+        // コピーは担当者が画面上で複製したものなので新着として鳴らさない
+        const items = (data.items || []).filter(i => i && i.savedAt && !i.isCopy)
         if (!items.length) return
         items.sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)))
         const newestAt = items[0].savedAt

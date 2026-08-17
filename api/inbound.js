@@ -204,6 +204,9 @@ export default async function handler(req, res) {
       // 書き込み確定後にのみ副作用を実行（再試行で重複発火しない）。
       if (result && result.duplicate === false && result.newItem) {
         const newItem = result.newItem
+        // コピーは担当者が画面上で複製したもので、新しく届いたリードではない。
+        // 新着プッシュ通知と自動架電は行わない（お客様への二重架電を防ぐ）。
+        if (newItem.isCopy) return res.json({ ok: true, duplicate: false, copied: true })
         await maybeAutoCall(newItem)
         // 新着プッシュ通知（拡張なしのブラウザにも即時通知。失敗しても保存は止めない）
         try {
