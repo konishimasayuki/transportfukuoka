@@ -348,7 +348,11 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   const copyLead = async (item) => {
     const id = `copy_${Date.now()}`
     const src = { ...item }
-    delete src.memoUpdatedAt
+    // 査定サイト由来の識別情報は引き継がない。
+    // orderId を残すとサーバ側の「サイト＋受付番号」照合に引っかかり、
+    // 同じリードを2回コピーしたときに2件目が1件目へ統合されて増えない。
+    delete src.orderId; delete src.detail; delete src.detectedAt; delete src.timing
+    delete src.memoUpdatedAt; delete src.updatedAt; delete src.contracted
     const body = {
       ...src,
       id, key: id, site: 'その他', isCopy: true, contracted: false,

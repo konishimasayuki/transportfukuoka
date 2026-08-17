@@ -333,7 +333,10 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   // isCopy: true で一覧の背景を薄い黄色にし、編集して保存すると通常色に戻る。
   const copyContract = async (item) => {
     const src = { ...item }
+    // 元レコード固有の情報は引き継がない（leadKey を残すとリード側の金額同期が
+    // コピーにも波及する。orderId は重複判定に使われるため必ず落とす）
     delete src.memoUpdatedAt; delete src.createdAt; delete src.leadKey
+    delete src.orderId; delete src.updatedAt
     const body = {
       ...src,
       id: `copy_${Date.now()}`,
@@ -357,7 +360,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     const id = `copy_${Date.now()}`
     const [rf, rt] = splitRoute(item.route)
     const lead = {
-      id, key: id, site: 'その他', status: '未架電', isCopy: true, _manual: true,
+      id, key: id, site: 'その他', status: '未架電', isCopy: true, _manual: true, orderId: '',
       name: item.name || '', kana: item.kana || '', phone: item.phone || '', email: item.email || '',
       fromAddress: item.fromAddress || rf || '', toAddress: item.toAddress || rt || '',
       count: item.persons ? `${item.persons}人` : '',
