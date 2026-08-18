@@ -364,7 +364,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
       name: item.name || '', kana: item.kana || '', phone: item.phone || '', email: item.email || '',
       fromAddress: item.fromAddress || rf || '', toAddress: item.toAddress || rt || '',
       count: item.persons ? `${item.persons}人` : '',
-      moveDate: item.date || '', memo: item.memo || '', staff: item.staff || '',
+      moveDate: item.moveDateText || item.date || '', memo: item.memo || '', staff: item.staff || '',
       amount: Number(item.amount) || 0,
       kazai: Array.isArray(item.kazai) ? item.kazai : [], boxCount: item.boxCount || '',
       receivedAt: fmtNowReceivedC(), savedAt: new Date().toISOString(),

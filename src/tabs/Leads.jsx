@@ -378,7 +378,12 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       id: `copy_${Date.now()}`,
       name: item.name || '', kana: item.kana || '', phone: item.phone || '', email: item.email || '',
       srcLabel: 'その他',
-      date: item.moveDate || '', salesDate: today,
+      // 引越し日は YYYY-MM-DD に直して渡す。リードの moveDate は
+      // 「07月10日 いつでも」のような自由文字列で、そのまま入れると
+      // 月カレンダー・配車ボード（c.date === 'YYYY-MM-DD' で照合）に出てこない。
+      date: parseLeadMoveDate(item.moveDateDetail || item.moveDate).date || '',
+      moveDateText: item.moveDateDetail || item.moveDate || '',
+      salesDate: today,
       fromAddress: fromA, toAddress: toA,
       route: [shortArea(fromA), shortArea(toA)].filter(Boolean).join(' → '),
       persons: item.count ? String(item.count).replace(/[^0-9]/g, '') : '',
