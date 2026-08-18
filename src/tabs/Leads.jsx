@@ -326,7 +326,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   // key を明示するのが肝：省略すると電話番号でキーが決まり、同じ番号の既存リードに
   // 統合されてしまう（＝登録したのに増えない）。手入力は常に別リードとして扱う。
   const createLead = async (_item, patch) => {
-    const id = `manual_${Date.now()}`
+    const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
     const body = {
       ...EMPTY_LEAD, ...patch,
       id, key: id, site: 'その他', status: patch.status || '未架電',
@@ -346,7 +346,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   // 元と同じ電話番号のため、key を新しく振らないと元リードに統合されて消える。
   // isCopy: true を付けて一覧の背景を薄い黄色にし、編集して保存すると通常色に戻る。
   const copyLead = async (item) => {
-    const id = `copy_${Date.now()}`
+    const id = `copy_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
     const src = { ...item }
     // 査定サイト由来の識別情報は引き継がない。
     // orderId を残すとサーバ側の「サイト＋受付番号」照合に引っかかり、
@@ -375,7 +375,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     const fromA = item.fromAddress || item.from || ''
     const toA   = item.toAddress || item.to || ''
     const contract = {
-      id: `copy_${Date.now()}`,
+      id: `copy_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       name: item.name || '', kana: item.kana || '', phone: item.phone || '', email: item.email || '',
       srcLabel: 'その他',
       // 引越し日は YYYY-MM-DD に直して渡す。リードの moveDate は

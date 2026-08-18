@@ -117,17 +117,18 @@ export default function LeadNotifier({ user, switchTab }) {
       try {
         const res = await fetch('/api/inbound?recent=5')
         const data = await res.json()
-        // コピーは担当者が画面上で複製したものなので新着として鳴らさない
-        const items = (data.items || []).filter(i => i && i.savedAt && !i.isCopy)
+        // 基準（seenAt）はコピーも含めた全件で進める。
+        // コピーを除いてから基準を出すと、直近がすべてコピーのときに
+        // 基準が立たず、そのあとに届いた本物の新着まで鳴らなくなる。
+        const items = (data.items || []).filter(i => i && i.savedAt)
         if (!items.length) return
         items.sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)))
         const newestAt = items[0].savedAt
         if (seenAtRef.current == null) { seenAtRef.current = newestAt; return } // 初回は基準化のみ（既存は鳴らさない）
-        const fresh = items.filter(i => String(i.savedAt) > String(seenAtRef.current)).reverse() // 古い順に通知
-        if (fresh.length) {
-          fresh.forEach(notify)
-          seenAtRef.current = newestAt
-        }
+        // 鳴らすのはコピー以外（コピーは担当者が画面上で複製したもの）
+        const fresh = items.filter(i => String(i.savedAt) > String(seenAtRef.current) && !i.isCopy).reverse()
+        seenAtRef.current = newestAt // 通知の有無にかかわらず基準は進める
+        if (fresh.length) fresh.forEach(notify)
       } catch {}
     }
     poll()

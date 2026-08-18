@@ -339,7 +339,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     delete src.orderId; delete src.updatedAt
     const body = {
       ...src,
-      id: `copy_${Date.now()}`,
+      id: `copy_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       srcLabel: 'その他',
       salesDate: new Date().toISOString().slice(0, 10),
       isCopy: true,
@@ -357,7 +357,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   // 成約をリード管理へ複製する（元の成約はそのまま残る）。
   // key を新しく振らないと、同じ電話番号の既存リードに統合されて増えない。
   const copyContractToLead = async (item) => {
-    const id = `copy_${Date.now()}`
+    const id = `copy_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
     const [rf, rt] = splitRoute(item.route)
     const lead = {
       id, key: id, site: 'その他', status: '未架電', isCopy: true, _manual: true, orderId: '',
