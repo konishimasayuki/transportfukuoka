@@ -166,9 +166,18 @@ export default function Call({ user, switchTab }) {
         if (alive) setStatuses(sdata.statuses || (sdata.status ? { zba: sdata.status } : {}))
       } catch (e) { /* status取得失敗は無視 */ }
     }
-    load()
-    const t = setInterval(load, 15000)
-    return () => { alive = false; clearInterval(t) }
+    // 画面を見ている間だけ更新する。
+    // 以前は常時15秒ごとに叩いていたため、別タブに切り替えていても、
+    // PCを開きっぱなしの夜間でも通信し続け、通信量（Upstashの帯域課金）が膨らんでいた。
+    let t = null
+    const start = () => { if (!t) t = setInterval(load, 15000) }
+    const stop  = () => { if (t) { clearInterval(t); t = null } }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') { load(); start() } else { stop() }
+    }
+    onVisible()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { alive = false; stop(); document.removeEventListener('visibilitychange', onVisible) }
   }, [isDemo])
 
   // 受付日時の新しい順（最新が一番上）に並べ替え（サイト別の表記差を吸収して時系列ソート）

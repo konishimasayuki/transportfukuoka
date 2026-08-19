@@ -1,6 +1,6 @@
 import { placeCall, twilioReady } from './_twilio.js'
 import { sendPushToAll } from './_push.js'
-import { readItems, mutate } from './_kvstore.js'
+import { readItems, mutate, redisCmd } from './_kvstore.js'
 
 const KEY     = 'transportfukuoka:leads'
 const VER_KEY = 'transportfukuoka:leads:ver'
@@ -17,6 +17,44 @@ async function maybeAutoCall(lead) {
 
 // お知らせメッセージ（/api/broadcast で保存）。?recent 応答に混ぜて子拡張へ届ける。
 const BROADCAST_KEY = 'transportfukuoka:broadcasts'
+
+// 新着チェック専用の軽量サマリ。
+// ねらい：?recent=N（12秒ごとのポーリング）でリードを毎回全件読み出すと、
+// 1回あたり数MBが Upstash→Vercel に流れ、帯域課金が跳ね上がる。
+// 直近数件の「通知に必要な項目だけ」を別キー（1KB未満）に持ち、そこだけ読む。
+const META_KEY = 'transportfukuoka:leads:meta'
+const META_MAX = 10 // 保持する直近件数（?recent=N が これを超えたら全件から作り直す）
+
+// 通知に必要な項目だけを抜き出す（本体をそのまま入れると軽量化にならない）
+function slimLead(l) {
+  return {
+    key: l.key, id: l.id, site: l.site, name: l.name, phone: l.phone,
+    from: l.from, to: l.to, savedAt: l.savedAt,
+    ...(l.isCopy ? { isCopy: true } : null),
+  }
+}
+// 全リードから軽量サマリを作る
+function buildMeta(items) {
+  const recentLeads = [...items]
+    .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
+    .slice(0, META_MAX)
+    .map(slimLead)
+  return { count: items.length, items: recentLeads, at: new Date().toISOString() }
+}
+// サマリを保存（失敗しても本体には影響させない。次の機会に作り直される）
+async function writeMeta(items) {
+  try { await redisCmd(['SET', META_KEY, JSON.stringify(buildMeta(items))]) }
+  catch (e) { console.error('meta write failed:', e.message) }
+}
+// サマリを読む（無い・壊れている場合は null を返して呼び出し側で全件フォールバック）
+async function readMeta() {
+  try {
+    const raw = await redisCmd(['GET', META_KEY])
+    if (!raw) return null
+    const m = JSON.parse(raw)
+    return (m && Array.isArray(m.items) && typeof m.count === 'number') ? m : null
+  } catch { return null }
+}
 
 // 担当者がCRM上で入力・管理する項目（＝巡回では絶対に上書きしてはならない）。
 // 巡回(取得)POSTのマージ時、これらのキーは新値が来ても既存値を保持する。
@@ -114,11 +152,28 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const items = await readItems(KEY)
       // 軽量モード：?recent=N で直近N件（savedAt降順）＋総数だけ返す（新着通知ポーリング用）
       // お知らせメッセージ（broadcast）も擬似リードとして混ぜ、子拡張(無改修)に通知させる。
       const recent = parseInt((req.query && req.query.recent) || '', 10)
+      // ★帯域対策：直近N件で足りるうちは軽量サマリだけ読む（リード全件を転送しない）。
+      //   サマリが無い・壊れている・N が保持件数を超える場合だけ全件から作り直す。
+      if (recent > 0 && recent <= META_MAX) {
+        const meta = await readMeta()
+        if (meta) {
+          let bc = []
+          try { bc = (await readItems(BROADCAST_KEY)).map(b => ({
+            key: 'bc_' + b.id, site: b.title || 'お知らせ', name: '📢 ' + (b.body || ''),
+            savedAt: b.savedAt, broadcast: true,
+          })) } catch (e) { /* broadcast取得失敗は無視 */ }
+          const merged = [...meta.items.slice(0, recent), ...bc]
+            .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
+          return res.json({ count: meta.count, items: merged })
+        }
+      }
+      const items = await readItems(KEY)
       if (recent > 0) {
+        // サマリが無かった（初回・破損時）のでここで作り直しておく
+        writeMeta(items)
         let bcItems = []
         try {
           const bc = await readItems(BROADCAST_KEY)
@@ -188,7 +243,7 @@ export default async function handler(req, res) {
           next.updatedAt = new Date().toISOString()
           const copy = items.slice()
           copy[idx] = next
-          return { items: copy, result: { ok: true, duplicate: true, merged: true } }
+          return { items: copy, result: { ok: true, duplicate: true, merged: true, items: copy } }
         }
 
         // key が null のときは一意キーを発行し、以後この行が他リードへ統合されないようにする。
@@ -198,9 +253,12 @@ export default async function handler(req, res) {
           id: body.id || Date.now().toString(),
           savedAt: new Date().toISOString(),
         }
-        return { items: [newItem, ...items], result: { ok: true, duplicate: false, newItem } }
+        const nextItems = [newItem, ...items]
+        return { items: nextItems, result: { ok: true, duplicate: false, newItem, items: nextItems } }
       })
 
+      // サマリ（新着チェック用の軽量キー）を更新。本体の書き込みが終わってから行う。
+      if (result && result.items) await writeMeta(result.items)
       // 書き込み確定後にのみ副作用を実行（再試行で重複発火しない）。
       if (result && result.duplicate === false && result.newItem) {
         const newItem = result.newItem
@@ -234,10 +292,12 @@ export default async function handler(req, res) {
         if (idx === -1) return { skipWrite: true, result: false }
         const copy = items.slice()
         copy[idx] = { ...copy[idx], ...body, updatedAt: new Date().toISOString() }
-        return { items: copy, result: true }
+        return { items: copy, result: { ok: true, items: copy } }
       })
       // 対象が見つからない更新は成功扱いにしない（画面側の保存が黙って消えるのを防ぐ）
       if (!updated) return res.status(404).json({ error: 'lead not found', ok: false })
+      // 直近リードの氏名やコピー印が変わることがあるのでサマリも更新する
+      if (updated && updated.items) await writeMeta(updated.items)
       return res.json({ ok: true })
     }
 
@@ -256,8 +316,10 @@ export default async function handler(req, res) {
           if (idx === -1) return { skipWrite: true, result: { removed: 0 } }
           filtered = items.filter((_, i) => i !== idx)
         }
-        return { items: filtered, result: { removed: items.length - filtered.length } }
+        return { items: filtered, result: { removed: items.length - filtered.length, items: filtered } }
       })
+      // 削除で件数が変わるのでサマリも更新する
+      if (out && out.items) await writeMeta(out.items)
       return res.json({ ok: true, removed: out.removed })
     }
 
