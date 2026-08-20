@@ -16,7 +16,8 @@ export function loadGmaps(key = GMAPS_KEY) {
     window.__tfGmapsCb = () => finish(resolve)
     window.gm_authFailure = () => finish(reject, new Error('auth'))
     const s = document.createElement('script')
-    s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&v=weekly&callback=__tfGmapsCb'
+    // loading=async はURLに付ける必要がある（script の async 属性だけでは Google 側の警告が消えない）
+    s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&v=weekly&loading=async&callback=__tfGmapsCb'
     s.async = true; s.defer = true
     s.onerror = () => finish(reject, new Error('load'))
     setTimeout(() => finish(reject, new Error('timeout')), 12000)

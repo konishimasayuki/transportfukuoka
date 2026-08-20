@@ -29,6 +29,8 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
 
-// PWAインストール要件を満たす最小のfetchハンドラ（ネットワーク優先のパススルー）。
-// 常に最新を表示するためキャッシュはせず、ハンドラの存在のみでインストール可能にする。
-self.addEventListener('fetch', () => { /* パススルー：ブラウザ既定のfetchに委ねる */ })
+// fetch ハンドラは置かない。
+// 以前は「PWAとしてインストールできるようにするため」に何もしないハンドラを置いていたが、
+// 現在のChromeではインストール要件から外れており（manifest と HTTPS があれば足りる）、
+// 中身が空のハンドラは「no-op fetch handler」と警告され、画面遷移のたびに余計な処理が挟まる。
+// キャッシュはしない方針なので、ブラウザ既定の通信にそのまま任せる。
