@@ -148,6 +148,27 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const showNow = nowH >= START && nowH <= END
 
   // KPI（絞り込みに関わらず全データで集計）
+  // 表示中の日を起点にした1週間の成約件数（例：8月8日(金) 5件）。
+  // 失注・キャンセルは除く（ボードの対象と同じ条件）。
+  const weekCounts = useMemo(() => {
+    const base = new Date(boardDate)
+    base.setHours(0, 0, 0, 0)
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(base)
+      d.setDate(base.getDate() + i)
+      const key = ymd(d)
+      return {
+        key,
+        month: d.getMonth() + 1,
+        day: d.getDate(),
+        wd: ['日', '月', '火', '水', '木', '金', '土'][d.getDay()],
+        dow: d.getDay(),
+        count: (contracts || []).filter(c => isActiveContract(c) && c.date === key).length,
+        isToday: key === boardKey,
+      }
+    })
+  }, [contracts, boardDate, boardKey])
+
   const k = useMemo(() => {
     const conf = jobs.filter(j => j.st === 'confirmed').length
     const tent = jobs.filter(j => j.st === 'tentative').length
@@ -279,6 +300,16 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
 
   return (
     <div>
+      {/* ===== 1週間の成約件数（表示日を起点に7日分） ===== */}
+      <div className="db-week">
+        {weekCounts.map(w => (
+          <div key={w.key} className={`db-week-cell${w.isToday ? ' on' : ''}${w.dow === 0 ? ' sun' : ''}${w.dow === 6 ? ' sat' : ''}`}>
+            <div className="dw-date">{w.month}月{w.day}日（{w.wd}）</div>
+            <div className="dw-count"><b>{w.count}</b>件</div>
+          </div>
+        ))}
+      </div>
+
       {/* ===== KPI ===== */}
       <div className="db-kpis">
         <div className="db-kpi util">

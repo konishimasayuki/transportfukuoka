@@ -262,6 +262,27 @@ tr:hover td { background: var(--bg); }
   .sidebar.open { transform: translateX(0); }
 }
 
+/* ===== 配車ボード：1週間の成約件数（稼働率の上） ===== */
+.db-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 10px; }
+.db-week-cell {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 7px 8px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.04);
+}
+.db-week-cell.on { border-color: var(--blueL); background: #EFF6FF; }
+.db-week-cell .dw-date { font-size: 10px; color: var(--sub); font-weight: 700; white-space: nowrap; }
+.db-week-cell.sun .dw-date { color: var(--red); }
+.db-week-cell.sat .dw-date { color: var(--blue); }
+.db-week-cell .dw-count { font-size: 11px; color: var(--sub); margin-top: 2px; }
+.db-week-cell .dw-count b { font-size: 17px; font-weight: 900; color: var(--text); margin-right: 1px; }
+.db-week-cell.on .dw-count b { color: var(--blue); }
+@media (max-width: 900px) {
+  .db-week { grid-template-columns: repeat(4, 1fr); }
+  .db-week-cell .dw-date { font-size: 9px; }
+}
+@media (max-width: 560px) {
+  .db-week { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+}
+
 /* ===== 表示トグル（月カレンダー ⇄ 配車ボード）===== */
 .db-seg { display: inline-flex; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
 .db-seg button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 7px; font-weight: 700; font-size: 12px; color: var(--sub); border: none; background: none; cursor: pointer; font-family: inherit; transition: all .14s; white-space: nowrap; }

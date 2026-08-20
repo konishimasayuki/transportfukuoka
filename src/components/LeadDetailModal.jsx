@@ -96,6 +96,10 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
   const [customKazai, setCustomKazai] = useState(false) // 家財追加：自由入力モード（選択の度に1回だけ）
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
+  // 担当者の選択肢（設定タブで管理しているリスト）
+  // ※フックは早期 return より前に置く（開閉のたびにフック数が変わると画面が真っ白になる）
+  const [staffList, setStaffList] = useState(DEFAULT_STAFF)
+  useEffect(() => { fetchStaffList().then(setStaffList).catch(() => {}) }, [])
 
   useEffect(() => {
     if (!item) return
@@ -338,6 +342,23 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
         <div style={sectionBar}>対応・メモ</div>
         <div style={{ borderBottom: '1px solid #EEF2F7' }}>
           <Row label="ステータス" edit={false} value={statusSelect} wide />
+          {/* 担当者：ステータスのすぐ下でその場で割り当てられるようにする */}
+          <div style={{ display: 'flex', fontSize: 13, borderBottom: '1px solid #F1F5F9' }}>
+            <div style={{ width: 110, flexShrink: 0, color: '#64748B', fontWeight: 600, background: '#F8FAFC', padding: '8px 10px' }}>担当者</div>
+            <div style={{ padding: '6px 10px', flex: 1 }}>
+              {onSave ? (
+                <select value={item.staff || ''} onChange={e => onSave(item, { staff: e.target.value })}
+                  style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '4px 8px', fontFamily: 'inherit', fontSize: 12,
+                    cursor: 'pointer', background: '#fff', color: item.staff ? '#1E293B' : '#94A3B8', minWidth: 140 }}>
+                  <option value="">未割当</option>
+                  {staffList.map(st => <option key={st} value={st}>{st}</option>)}
+                  {item.staff && !staffList.includes(item.staff) && <option value={item.staff}>{item.staff}</option>}
+                </select>
+              ) : (
+                <div style={{ color: '#1E293B', fontWeight: 600, padding: '2px 0' }}>{item.staff || '未割当'}</div>
+              )}
+            </div>
+          </div>
           {onSave && (
             <div style={{ display: 'flex', fontSize: 13, borderBottom: '1px solid #F1F5F9' }}>
               <div style={{ width: 110, flexShrink: 0, color: '#64748B', fontWeight: 600, background: '#F8FAFC', padding: '8px 10px' }}>タイムツリー</div>
