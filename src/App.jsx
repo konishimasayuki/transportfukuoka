@@ -34,6 +34,9 @@ const TABS = {
   debugreq: DebugRequest,
 }
 
+// 現在使わないタブ（サイドバーからも非表示）。ここから外せば元に戻る。
+const OFF_TABS = ['call', 'schedule']
+
 const USERS = {
   a: { id: 'a', name: 'デモユーザー', mode: 'demo' },
   b: { id: 'b', name: 'トランスポーター', mode: 'live' },
@@ -114,7 +117,11 @@ export default function App() {
 
   // 開発者(デバッグ)非表示ユーザー（デモ含む）は debug / debugreq に入れない（ガード）
   const isDevTab = activeTab === 'debug' || activeTab === 'debugreq'
-  const safeTab = ((user.hideDev || user.mode === 'demo') && isDevTab) ? 'dashboard' : activeTab
+  // 非表示にしたタブ（架電機能・月カレンダー）は開かせない。
+  // 画面を出さないことで、そのタブが行っていた定期通信も発生しなくなる。
+  const isOffTab = OFF_TABS.includes(activeTab)
+  const safeTab = isOffTab ? 'dashboard'
+    : ((user.hideDev || user.mode === 'demo') && isDevTab) ? 'dashboard' : activeTab
   const ActiveTab = TABS[safeTab] || Dashboard
 
   return (

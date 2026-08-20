@@ -54,6 +54,25 @@ const contractToCard = (c) => {
   return { contractId: c.id, cat: 'move', name: (c.name || '') + ' 様', crew: (String(c.persons || '').replace(/[^\d]/g, '') || '2') + '名', need: '2t', from, to, whn: c.moveDateText || c.date || '', src: String(c.srcLabel || 'hp'), amt: Number(c.amount) || 0 }
 }
 
+// 地図の表示範囲を合わせる。
+// fitBounds は「範囲」に合わせるため、地点が1つしかない（または2点が極端に近い）と
+// 範囲がほぼ0になり、建物が見えるほどの最大倍率まで勝手に寄ってしまう。
+// そのため寄りすぎに上限を設け、1地点のときは中心＋固定倍率で表示する。
+const MAP_MAX_ZOOM = 15    // 複数地点：これ以上は寄せない（街区が見える程度）
+const MAP_POINT_ZOOM = 14  // 単一地点：周辺が分かる程度
+function fitNicely(g, map, bounds) {
+  try {
+    if (!bounds || bounds.isEmpty()) return
+    const ne = bounds.getNorthEast(), sw = bounds.getSouthWest()
+    const tiny = Math.abs(ne.lat() - sw.lat()) < 0.002 && Math.abs(ne.lng() - sw.lng()) < 0.002
+    if (tiny) { map.setCenter(bounds.getCenter()); map.setZoom(MAP_POINT_ZOOM); return }
+    map.fitBounds(bounds)
+    g.maps.event.addListenerOnce(map, 'idle', () => {
+      if (map.getZoom() > MAP_MAX_ZOOM) map.setZoom(MAP_MAX_ZOOM)
+    })
+  } catch {}
+}
+
 export default function DispatchBoard({ filter, onToast, contracts = [], onUpdateContract, boardDate = new Date(), isDemo = false }) {
   const [vehicles, setVehicles] = useState(INIT_VEHICLES)
   const [jobs, setJobs] = useState([])          // その日の割当（/api/dispatch で日付別に保存）
@@ -849,7 +868,7 @@ function GoogleRouteMap({ routes }) {
           pin(leg.end_location, r.color, 7, roleAt(i + 1), info)
         })
         route0.overview_path.forEach(p => bounds.extend(p))
-        try { map.fitBounds(bounds) } catch {}
+        fitNicely(g, map, bounds)
         resolve()
       }
       // 経路オプション（高速/有料の回避）ごとにキャッシュを分ける
@@ -857,7 +876,7 @@ function GoogleRouteMap({ routes }) {
       if (dirCache.has(cacheKey)) { place(dirCache.get(cacheKey)); return }
       if (names.length < 2) { // 単一地点：ジオコーディングして1ピン
         new g.maps.Geocoder().geocode({ address: names[0] + ' 福岡' }, (res, st) => {
-          if (st === 'OK' && res[0]) { pin(res[0].geometry.location, r.color, 8); try { map.fitBounds(bounds) } catch {} }
+          if (st === 'OK' && res[0]) { pin(res[0].geometry.location, r.color, 8); fitNicely(g, map, bounds) }
           resolve()
         })
         return

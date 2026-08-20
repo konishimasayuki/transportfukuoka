@@ -548,7 +548,7 @@ export function ConvertToContractModal({ lead, onClose, onConfirm, onGoCalendar 
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {onGoCalendar && (
-              <button className="btn btn-primary" onClick={() => onGoCalendar(date)} style={{ fontWeight: 700 }}>📅 カレンダーで配車を確認 →</button>
+              <button className="btn btn-primary" onClick={() => onGoCalendar(date)} style={{ fontWeight: 700 }}>🚚 配車ボードで確認 →</button>
             )}
             <button className="btn btn-outline" onClick={onClose}>閉じて次のリードへ</button>
           </div>

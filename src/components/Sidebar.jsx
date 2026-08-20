@@ -8,9 +8,13 @@ const NAV_ITEMS = [
   { tab: 'quotes',    icon: '🧾', label: '見積り管理' },
   { tab: 'aircon',    icon: '❄️', label: 'エアコン依頼' },
   { tab: 'cardboard', icon: '📦', label: '段ボール配達' },
-  { tab: 'call',      icon: '📞', label: '架電機能', mark: '未' },
+  // 架電機能・月カレンダーは現在使わないため非表示（hidden）。
+  // メニューから消すとタブが開かれず、裏で動いていた定期通信も走らなくなる
+  // （架電：15秒ごとの /api/inbound と /api/status、月カレンダー：/api/schedule）。
+  // 使うときは hidden を外すだけで元に戻る。
+  { tab: 'call',      icon: '📞', label: '架電機能', mark: '未', hidden: true },
   { tab: 'estimate',  icon: '📝', label: '見積書', mark: '未' },
-  { tab: 'schedule',  icon: '📅', label: '月カレンダー', mark: '未' },
+  { tab: 'schedule',  icon: '📅', label: '月カレンダー', mark: '未', hidden: true },
   { tab: 'board',     icon: '🚚', label: '配車ボード', mark: '未' },
   { tab: 'settings',  icon: '⚙️', label: '設定' },
   { tab: 'debug',     icon: '🧪', label: 'デバッグ', dev: true },
@@ -21,7 +25,7 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout
   // 会社名ブランディング（未指定はトランスポーター）／開発者向けタブ(dev)はデモ・hideDevで非表示
   const companyName = user?.company || 'トランスポーター'
   const hideDev = user?.hideDev || user?.mode === 'demo'
-  const navItems = NAV_ITEMS.filter(item => !(hideDev && item.dev))
+  const navItems = NAV_ITEMS.filter(item => !item.hidden && !(hideDev && item.dev))
 
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>

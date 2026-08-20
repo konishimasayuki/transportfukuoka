@@ -789,9 +789,11 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
           onClose={() => setConvertLead(null)}
           onConfirm={confirmConvertToContract}
           onGoCalendar={(moveDate) => {
+            // 月カレンダーは非表示にしたため配車ボードへ移動する。
+            // 引越し日は同じ仕組み（tf_schedule_focus）でボードの対象日に反映される。
             try { if (moveDate) sessionStorage.setItem('tf_schedule_focus', moveDate) } catch {}
             setConvertLead(null); setDetailItem(null)
-            if (typeof switchTab === 'function') switchTab('schedule')
+            if (typeof switchTab === 'function') switchTab('board')
           }}
         />
       )}
