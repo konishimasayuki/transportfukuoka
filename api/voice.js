@@ -8,9 +8,9 @@ import { toE164 } from './_twilio.js'
 const OFFICE    = process.env.OFFICE_PHONE
 const CALLER_ID = process.env.CALLER_ID || process.env.TWILIO_FROM // 発信者番号（事務所番号 or FROM）
 const DEFAULT_MSG = process.env.CALL_MESSAGE ||
-  'お電話ありがとうございます。トランスポート福岡です。担当者におつなぎしますので、少々お待ちください。'
+  'お電話ありがとうございます。トランスポーターです。担当者におつなぎしますので、少々お待ちください。'
 const DEFAULT_VM = process.env.CALL_VOICEMAIL_MESSAGE ||
-  'トランスポート福岡です。引越しのお見積りを拝見しました。他社より安くご案内いたします。恐れ入りますが、折り返しご連絡いただけますようお願いいたします。'
+  'トランスポーターです。引越しのお見積りを拝見しました。他社より安くご案内いたします。恐れ入りますが、折り返しご連絡いただけますようお願いいたします。'
 
 function escapeXml(s) {
   return String(s).replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]))

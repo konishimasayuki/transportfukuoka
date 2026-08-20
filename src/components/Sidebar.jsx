@@ -18,8 +18,8 @@ const NAV_ITEMS = [
 ]
 
 export default function Sidebar({ activeTab, onTabChange, isOpen, user, onLogout, followCount = 0 }) {
-  // 会社名ブランディング（未指定はトランスポート福岡）／開発者向けタブ(dev)はデモ・hideDevで非表示
-  const companyName = user?.company || 'トランスポート福岡'
+  // 会社名ブランディング（未指定はトランスポーター）／開発者向けタブ(dev)はデモ・hideDevで非表示
+  const companyName = user?.company || 'トランスポーター'
   const hideDev = user?.hideDev || user?.mode === 'demo'
   const navItems = NAV_ITEMS.filter(item => !(hideDev && item.dev))
 

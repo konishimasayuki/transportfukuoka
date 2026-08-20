@@ -36,7 +36,7 @@ export default function Login({ users, onLogin }) {
         {/* ロゴ */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>🚛</div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', letterSpacing: '.02em' }}>トランスポート福岡</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', letterSpacing: '.02em' }}>トランスポーター</div>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,.45)', marginTop: 4 }}>業務効率化システム</div>
         </div>
 

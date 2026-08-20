@@ -7,8 +7,8 @@ const STATUS_LIST = ['未架電', '架電済', '留守', 'テスト完了']
 const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', 'テスト完了': 'bg' }
 
 const EMPTY = { name: 'テスト太郎', phone: '', from: '福岡市中央区', to: '福岡市博多区', persons: '2人', moveDate: '来月上旬', memo: 'デバッグ申込' }
-const DEFAULT_MSG = 'お電話ありがとうございます。トランスポート福岡です。担当者におつなぎしますので、少々お待ちください。'
-const DEFAULT_VM = 'トランスポート福岡です。引越しのお見積りを拝見しました。他社より安くご案内いたします。恐れ入りますが、折り返しご連絡いただけますようお願いいたします。'
+const DEFAULT_MSG = 'お電話ありがとうございます。トランスポーターです。担当者におつなぎしますので、少々お待ちください。'
+const DEFAULT_VM = 'トランスポーターです。引越しのお見積りを拝見しました。他社より安くご案内いたします。恐れ入りますが、折り返しご連絡いただけますようお願いいたします。'
 // Twilioの通話ステータス → 日本語
 const CALL_STATUS_JA = { queued: '発信待ち', initiated: '発信中', ringing: '呼出中', 'in-progress': '通話中', completed: '完了', busy: '話中', 'no-answer': '不在', failed: '失敗', canceled: '取消' }
 

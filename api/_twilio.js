@@ -17,9 +17,9 @@ const FROM      = process.env.TWILIO_FROM
 const OFFICE    = process.env.OFFICE_PHONE
 const CALLER_ID = process.env.CALLER_ID || FROM // お客様に見せる発信者番号（既定=FROM）
 const MESSAGE = process.env.CALL_MESSAGE ||
-  'お電話ありがとうございます。トランスポート福岡です。担当者におつなぎしますので、少々お待ちください。'
+  'お電話ありがとうございます。トランスポーターです。担当者におつなぎしますので、少々お待ちください。'
 const VOICEMAIL = process.env.CALL_VOICEMAIL_MESSAGE ||
-  'トランスポート福岡です。引越しのお見積りを拝見しました。他社より安くご案内いたします。恐れ入りますが、折り返しご連絡いただけますようお願いいたします。'
+  'トランスポーターです。引越しのお見積りを拝見しました。他社より安くご案内いたします。恐れ入りますが、折り返しご連絡いただけますようお願いいたします。'
 const BASE_URL = process.env.PUBLIC_BASE_URL || 'https://transportfukuoka.vercel.app'
 
 export function twilioReady() {

@@ -512,7 +512,7 @@ export default function Settings({ user }) {
           <div className="card">
             <div className="card-head"><h3>🏢 会社情報</h3></div>
             <div className="card-body">
-              <SettingRow label="会社名"><input className="setting-input" defaultValue="トランスポート福岡" /></SettingRow>
+              <SettingRow label="会社名"><input className="setting-input" defaultValue="トランスポーター" /></SettingRow>
               <SettingRow label="代表電話番号"><input className="setting-input" defaultValue="092-XXX-XXXX" /></SettingRow>
               <SettingRow label="メール通知先"><input className="setting-input" defaultValue="info@transport.jp" /></SettingRow>
               <div style={{ marginTop:14, textAlign:'right' }}><button className="btn btn-primary">保存する</button></div>

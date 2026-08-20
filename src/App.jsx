@@ -36,7 +36,7 @@ const TABS = {
 
 const USERS = {
   a: { id: 'a', name: 'デモユーザー', mode: 'demo' },
-  b: { id: 'b', name: 'トランスポート福岡', mode: 'live' },
+  b: { id: 'b', name: 'トランスポーター', mode: 'live' },
   // 紹介デモ：DB非依存(mode:'demo')・開発者(デバッグ)非表示・ブランディング表示。
   // 表示名・データはすべて架空（実在の企業・人物ではありません）。
   z: { id: 'z', name: '引っ越し業者サポートシステム', mode: 'demo', company: '引っ越し業者サポートシステム', hideDev: true },

@@ -8,7 +8,7 @@
 //   KONICHAT_INGEST_SECRET … Edge Function の DEBUG_INBOX_SECRET と同じ値
 const INGEST_URL = process.env.KONICHAT_INGEST_URL
 const INGEST_SECRET = process.env.KONICHAT_INGEST_SECRET || ''
-const SOURCE = 'トランスポート福岡'
+const SOURCE = 'トランスポーター'
 
 // payload: { kind:'thread'|'reply', title?, threadTitle?, body, authorName }
 export async function notifyKonichat(payload) {
