@@ -50,6 +50,7 @@ const KAZAI_GROUPS = [
       { key: 'shokki_C',    name: '食器棚',         size: 'C', pt: 27 },
       { key: 'hondana_A',   name: '本棚',           size: 'A', pt: 34 },
       { key: 'hondana_B',   name: '本棚',           size: 'B', pt: 27 },
+      { key: 'hondana_U',   name: '本棚',           size: 'U', pt: 65 },
       { key: 'metalrack',   name: 'メタルラック',   size: '',  pt: 20 },
       { key: 'livingboard', name: 'リビングボード', size: '',  pt: 50 },
       { key: 'sideboard',   name: 'サイドボード',   size: '',  pt: 22 },
@@ -85,8 +86,6 @@ const KAZAI_GROUPS = [
   },
   {
     title: '家電・キッチン類',
-    // 実物の用紙は「乾燥機」の次に1行空欄があり、そこから TVプラ が始まる
-    previewGapAfter: 10,
     items: [
       { key: 'table',        name: '和・洋テーブル', size: '',      pt: 9 },
       { key: 'fridge_6A',    name: '冷蔵庫',         size: '6ドアA', pt: 31 },
@@ -96,6 +95,7 @@ const KAZAI_GROUPS = [
       { key: 'fridge_miniE', name: '冷蔵庫',         size: 'ミニE',  pt: 6 },
       { key: 'minicompo',    name: 'ミニコンポ',     size: '',      pt: 2 },
       { key: 'aircon_S',     name: 'エアコン',       size: 'S',     pt: 6 },
+      { key: 'aircon_W',     name: 'エアコン',       size: 'W',     pt: 2 },
       { key: 'washer_drum',  name: '洗濯機ドラム',   size: '',      pt: 15 },
       { key: 'washer_full',  name: '洗濯機全自動',   size: '',      pt: 13 },
       { key: 'dryer',        name: '乾燥機',         size: '',      pt: 8 },
@@ -125,6 +125,7 @@ const KAZAI_GROUPS = [
       { key: 'ishou',      name: '衣裳ケース',       size: '',        pt: 3 },
       { key: 'juutan',     name: 'ジュータン',       size: '',        pt: 8 },
       { key: 'ningyou',    name: '人形ケース',       size: '',        pt: 5 },
+      { key: 'gogatsu',    name: '五月人形',         size: '',        pt: 10 },
       { key: 'minibike',   name: 'ミニバイク',       size: '',        pt: 38 },
       { key: 'jitensha',   name: '自転車',           size: '',        pt: 28 },
       { key: 'sanrinsha',  name: '三輪車',           size: '',        pt: 3 },
@@ -167,11 +168,11 @@ const KAZAI_BUCKET = (() => {
   const b = {}
   const put = (bucket, keys) => keys.forEach(k => { b[k] = bucket })
   put('家電', ['fridge_6A', 'fridge_4B', 'fridge_3C', 'fridge_2D', 'fridge_miniE', 'minicompo',
-    'aircon_S', 'washer_drum', 'washer_full', 'dryer', 'tv_brown', 'tv_thin', 'video',
+    'aircon_S', 'aircon_W', 'washer_drum', 'washer_full', 'dryer', 'tv_brown', 'tv_thin', 'video',
     'pc', 'range', 'gascon', 'onpuuki', 'souji', 'senpuuki', 'mishin', 'shoumei'])
   put('その他', ['futonbukuro', 'zabuton', 'kanyou', 'monooki_A', 'monooki_B', 'monohoshi',
     'pipehanger', 'fancycase', 'hangerbox', 'dan_small', 'dan_mid', 'dan_wa',
-    'ningyou', 'gaku'])
+    'ningyou', 'gogatsu', 'gaku'])
   put('重量物', ['piano_U', 'piano_G', 'electone_A', 'electone_B', 'kinko',
     'minibike', 'jitensha', 'sanrinsha', 'butsudan_A', 'butsudan_B', 'butsudan_C'])
   return b
@@ -1319,15 +1320,6 @@ function PreviewModal({ form, totals, onClose }) {
       border: on ? '1.6px solid #C2410C' : '1.6px solid transparent', fontWeight: on ? 800 : 400 }}>{children}</span>
   )
   const Chk = ({ on }) => <span style={{ fontWeight: 800 }}>{on ? '☑' : '☐'}</span>
-  // 家財表の空行（列の途中の空欄・列末の埋め合わせの両方で使う）
-  const blankRow = (k) => (
-    <div key={k} style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #999' }}>
-      <div style={{ flex: 1, fontSize: 8, padding: '1px 3px' }}>&nbsp;</div>
-      <div style={{ width: 20 }}></div>
-      <div style={{ width: 20, borderLeft: '1px solid #999' }}></div>
-      <div style={{ width: 13, borderLeft: '1px solid #999' }}></div>
-    </div>
-  )
   const gpts = (g) => g.items.reduce((sum, it) => sum + (it.pt ? num(form.items[it.key]) * it.pt : 0), 0)
 
   return (
@@ -1543,16 +1535,14 @@ function PreviewModal({ form, totals, onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) 1.35fr', border: bd, marginTop: 3 }}>
             {KAZAI_GROUPS.map((g) => {
               // 紙と同じく、品目が少ない列は空行で埋めて小計を最下段に揃える
-              // 用紙どおりの行数。previewGapAfter がある列は、その位置に空行が1行入る
-              const rowsOf = (x) => x.items.length + (x.previewGapAfter == null ? 0 : 1)
-              const maxRows = Math.max(...KAZAI_GROUPS.map(rowsOf))
+              const maxRows = Math.max(...KAZAI_GROUPS.map(x => x.items.length))
               return (
                 <div key={g.title} style={{ borderRight: bd, display: 'flex', flexDirection: 'column' }}>
                   {g.items.map((it, i) => {
                     const q = num(form.items[it.key])
                     // 紙と同じく、同名が続く行は「〃」で表す
                     const dispName = i > 0 && g.items[i - 1].name === it.name ? '〃' : it.name
-                    const row = (
+                    return (
                       <div key={it.key} style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #999' }}>
                         <div style={{ flex: 1, fontSize: 8, padding: '1px 3px', whiteSpace: 'nowrap', overflow: 'hidden' }}>{dispName === '〃' ? <span style={{ paddingLeft: 12 }}>〃</span> : dispName}{it.size ? ` ${it.size}` : ''}</div>
                         <div style={{ width: 20, fontSize: 7.5, color: '#555', textAlign: 'right', paddingRight: 2 }}>{it.pt == null ? '/' : it.pt}</div>
@@ -1560,10 +1550,15 @@ function PreviewModal({ form, totals, onClose }) {
                         <div style={{ width: 13, borderLeft: '1px solid #999' }}></div>
                       </div>
                     )
-                    // 用紙にある途中の空行（家電・キッチン類の「乾燥機」の次）
-                    return g.previewGapAfter === i ? [row, blankRow(`gap-${i}`)] : row
                   })}
-                  {Array.from({ length: maxRows - rowsOf(g) }, (_, i) => blankRow(`fill-${i}`))}
+                  {Array.from({ length: maxRows - g.items.length }, (_, i) => (
+                    <div key={`fill-${i}`} style={{ display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #999' }}>
+                      <div style={{ flex: 1, fontSize: 8, padding: '1px 3px' }}>&nbsp;</div>
+                      <div style={{ width: 20 }}></div>
+                      <div style={{ width: 20, borderLeft: '1px solid #999' }}></div>
+                      <div style={{ width: 13, borderLeft: '1px solid #999' }}></div>
+                    </div>
+                  ))}
                   <div style={{ flex: 1 }} />
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8.5, fontWeight: 800, padding: '1px 4px', background: '#F2F2F2' }}>
                     <span>小 計</span><span>{gpts(g).toLocaleString('ja-JP')}</span>
