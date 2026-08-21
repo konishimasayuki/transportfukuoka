@@ -249,7 +249,7 @@ const FEE_B = [
   { key: 'disposal',  label: '不用品引取料' },
   { key: 'mixed',     label: '混載料' },
   { key: 'lift',      label: '吊り上下料' },
-  { key: 'twoPlace',  label: '二ヶ所積料' },
+  { key: 'twoPlace',  label: '二ヶ所積降料' },
 ]
 const FEE_C = [
   { key: 'mtSmall',  label: '小', unit: '枚' },
@@ -321,7 +321,7 @@ function emptyForm() {
     memo: '', requestTo: '', payment: '',
     status: '作成中',
     // 紙の御見積書（会社控）にある項目
-    spaceSize: '', workLoad: '', packOpenCar: '', helperCar: '',   // スペース／作業量／梱包・開梱／補助車輌
+    spaceSize: '', workLoad: '', packOpenCar: '', helperCar: '',   // スペース／作業量／梱包・開包／補助車輌
     moveFF: '', pianoFF: '',                                        // 引越 F→F ／ ピアノ・エレクトーン F→F
     billCompany: '', billAddress: '', billTel: '', billStaff: '',   // 請求先
     receiptName: '', storageUntil: '',                              // 領収書宛先名／保管（〜迄）
@@ -764,7 +764,7 @@ export default function Estimate({ user, switchTab }) {
                 <tbody>
                   <tr><td style={flab}>スペース</td><td style={fcell}><input style={fin} value={form.spaceSize} onChange={e => set('spaceSize', e.target.value)} /></td></tr>
                   <tr><td style={flab}>作業量</td><td style={fcell}><input style={fin} value={form.workLoad} onChange={e => set('workLoad', e.target.value)} /></td></tr>
-                  <tr><td style={flab}>梱包・開梱</td><td style={fcell}><input style={fin} value={form.packOpenCar} onChange={e => set('packOpenCar', e.target.value)} /></td></tr>
+                  <tr><td style={flab}>梱包・開包</td><td style={fcell}><input style={fin} value={form.packOpenCar} onChange={e => set('packOpenCar', e.target.value)} /></td></tr>
                   <tr><td style={flab}>補助車輌</td><td style={fcell}><input style={fin} value={form.helperCar} onChange={e => set('helperCar', e.target.value)} placeholder="現・行" /></td></tr>
                   <tr>
                     <td style={flab}>距離</td>
@@ -1320,6 +1320,10 @@ function PreviewModal({ form, totals, onClose }) {
       border: on ? '1.6px solid #C2410C' : '1.6px solid transparent', fontWeight: on ? 800 : 400 }}>{children}</span>
   )
   const Chk = ({ on }) => <span style={{ fontWeight: 800 }}>{on ? '☑' : '☐'}</span>
+  // 紙の小さな2段表記（ピアノの U/G、セパレート・ウィンドの S/M）
+  const St2 = ({ a, b }) => (
+    <span style={{ display: 'inline-block', fontSize: 5, lineHeight: 1.05, verticalAlign: 'middle', textAlign: 'center' }}>{a}<br />{b}</span>
+  )
   const gpts = (g) => g.items.reduce((sum, it) => sum + (it.pt ? num(form.items[it.key]) * it.pt : 0), 0)
 
   return (
@@ -1368,24 +1372,29 @@ function PreviewModal({ form, totals, onClose }) {
             <table style={tbl}><tbody>
               <tr><td style={{ ...pl, width: 52, fontSize: 8 }}>スペース</td><td style={{ ...pc, fontSize: 8.5 }}>{form.spaceSize}</td></tr>
               <tr><td style={{ ...pl, fontSize: 8 }}>作業量</td><td style={{ ...pc, fontSize: 8.5 }}>{form.workLoad || <span style={gy}>〜</span>}</td></tr>
-              <tr><td style={{ ...pl, fontSize: 8 }}>梱包・開梱</td><td style={{ ...pc, fontSize: 8.5 }}>{form.packOpenCar || <span style={gy}>／</span>}</td></tr>
+              <tr><td style={{ ...pl, fontSize: 8 }}>梱包・開包</td><td style={{ ...pc, fontSize: 8.5 }}>{form.packOpenCar || <span style={gy}>／</span>}</td></tr>
               <tr><td style={{ ...pl, fontSize: 8 }}>補助車輌</td><td style={{ ...pc, fontSize: 8.5 }}>{['現', '行'].includes(form.helperCar) ? <><Opt on={form.helperCar === '現'}>現</Opt>・<Opt on={form.helperCar === '行'}>行</Opt></> : (form.helperCar || <span style={gy}>現 ・ 行</span>)}</td></tr>
             </tbody></table>
             <table style={tbl}><tbody>
               <tr><td style={{ ...pl, width: 52, fontSize: 8 }}>引 越</td><td style={{ ...pc, fontSize: 8.5 }}>{form.moveFF || <span style={gy}>F　F</span>}</td></tr>
-              <tr><td style={{ ...pl, fontSize: 6.5, padding: '2px 2px' }}>ピアノ/U・G</td><td style={{ ...pc, fontSize: 8.5 }}>{form.pianoFF || <span style={gy}>F　F</span>}</td></tr>
-              <tr><td style={{ ...pl, fontSize: 8 }}>距 離</td><td style={{ ...pc, fontSize: 8.5 }}>{form.distanceKm ? `${form.distanceKm} km` : <span style={gy}>km</span>}</td></tr>
+              <tr><td style={{ ...pl, fontSize: 8, padding: '2px 2px' }}>ピアノ<St2 a="U" b="G" /></td><td style={{ ...pc, fontSize: 8.5 }}>{form.pianoFF || <span style={gy}>F　F</span>}</td></tr>
+              {/* 紙は距離の前に空欄が1行ある */}
+              <tr><td style={{ ...pl }}>&nbsp;</td><td style={pc}></td></tr>
+              <tr><td style={{ ...pl, fontSize: 8 }}>距 離</td><td style={{ ...pc, fontSize: 8.5, textAlign: 'right' }}>{form.distanceKm ? `${form.distanceKm} km` : <span style={gy}>km</span>}</td></tr>
             </tbody></table>
             <table style={tbl}><tbody>
-              <tr><td style={{ ...pl, textAlign: 'center' }}>発 送 内 容</td></tr>
+              <tr><td style={{ ...pl, textAlign: 'center' }} colSpan={2}>発 送 内 容</td></tr>
               <tr>
-                <td style={{ ...pc, fontSize: 7.5, padding: '0 2px', textAlign: 'center' }}><Opt tight on={form.sendType === '直送一式'}>直送一式</Opt>・<Opt tight on={form.sendType === '直送長距離'}>直送・長距離</Opt></td>
+                <td style={{ ...pc, fontSize: 7.5, padding: '0 2px', textAlign: 'center' }}><Opt tight on={form.sendType === '直送一式'}>直送一式</Opt></td>
+                <td style={{ ...pc, fontSize: 7.5, padding: '0 2px', textAlign: 'center' }}><Opt tight on={form.sendType === '直送長距離'}>直送・長距離</Opt></td>
               </tr>
               <tr>
-                <td style={{ ...pc, fontSize: 7.5, padding: '0 2px', textAlign: 'center' }}><Opt tight on={form.sendType === '限定混載便'}>限定　混載便</Opt></td>
+                <td style={{ ...pc, fontSize: 7.5, padding: '0 2px', textAlign: 'right' }}><Opt tight on={form.sendType === '限定混載便'}>限定</Opt></td>
+                <td style={{ ...pc, fontSize: 7.5, padding: '0 2px', textAlign: 'center' }}><Opt tight on={form.sendType === '限定混載便'}>混 載 便</Opt></td>
               </tr>
               <tr>
-                <td style={{ ...pc, fontSize: 7.5, padding: '0 2px', textAlign: 'center' }}><Opt tight on={form.sendType === '積切'}>積切</Opt></td>
+                <td style={{ ...pc, fontSize: 7.5, padding: '0 2px', textAlign: 'right' }}><Opt tight on={form.sendType === '積切'}>積切</Opt></td>
+                <td style={pc}></td>
               </tr>
             </tbody></table>
             <table style={tbl}><tbody>
@@ -1465,7 +1474,7 @@ function PreviewModal({ form, totals, onClose }) {
               <tr>
                 <td style={{ ...pl, textAlign: 'center' }} colSpan={2}>作 業 内 容 の 確 認</td>
                 <td style={{ ...pl, textAlign: 'center', fontSize: 8 }} colSpan={2}>
-                  ピアノ/U・G エレクトーン作業{form.pianoWork ? <span style={{ fontWeight: 400, fontSize: 7 }}>　{form.pianoWork}</span> : ''}
+                  ピアノU・G　エレクトーン作業{form.pianoWork ? <span style={{ fontWeight: 400, fontSize: 7 }}>　{form.pianoWork}</span> : ''}
                 </td>
                 <td style={{ ...pl, textAlign: 'center', fontSize: 6.5 }} colSpan={2}>エアコン移設（パイプ延長・ガス補充等別途）くわしいことは係員までお問い合せ下さい</td>
                 <td style={{ ...pl, textAlign: 'center' }}>オプション工事</td>
@@ -1481,19 +1490,19 @@ function PreviewModal({ form, totals, onClose }) {
               </tr>
               <tr>
                 <td style={{ ...pl, fontSize: 8 }}>家具梱包</td>
-                <td style={pc}>{PERSON_CHOICES.map(c => <Opt key={c} on={form.packFurniBy === c}>{c}</Opt>)}<span style={{ fontSize: 8, color: '#555' }}>（D・E）➡</span></td>
+                <td style={pc}>{PERSON_CHOICES.map(c => <Opt key={c} on={form.packFurniBy === c}>{c}</Opt>)}<span style={{ fontSize: 8, color: '#555' }}>（D・E）</span></td>
                 <td style={{ ...pc, fontSize: 8 }}>階段・エレベーター ➡</td>
                 <td style={{ ...pc, fontSize: 8 }}>階段・エレベーター</td>
-                <td style={{ ...pc, fontSize: 8 }}>セパレートS/W {form.airconSep}台 ➡</td>
-                <td style={{ ...pc, fontSize: 8 }}>セパレートS/W {form.airconSep}台</td>
+                <td style={{ ...pc, fontSize: 8 }}>セパレート<St2 a="S" b="M" /> {form.airconSep}台 ➡</td>
+                <td style={{ ...pc, fontSize: 8 }}>セパレート<St2 a="S" b="M" /> {form.airconSep}台</td>
               </tr>
               <tr>
                 <td style={{ ...pl, fontSize: 8 }}>開梱作業</td>
                 <td style={pc}>{PERSON_CHOICES.map(c => <Opt key={c} on={form.packOpenBy === c}>{c}</Opt>)}<span style={{ fontSize: 8, color: '#555' }}>（ALL・Part）</span></td>
                 <td style={{ ...pc, fontSize: 8 }}>窓出し・機械</td>
                 <td style={{ ...pc, fontSize: 8 }}>窓出し・機械</td>
-                <td style={{ ...pc, fontSize: 8 }}>ウィンドS/W {form.airconWindow}台</td>
-                <td style={{ ...pc, fontSize: 8 }}>ウィンドS/W {form.airconWindow}台</td>
+                <td style={{ ...pc, fontSize: 8 }}>ウィンド<St2 a="S" b="M" /> {form.airconWindow}台</td>
+                <td style={{ ...pc, fontSize: 8 }}>ウィンド<St2 a="S" b="M" /> {form.airconWindow}台</td>
               </tr>
             </tbody>
           </table>
@@ -1720,6 +1729,10 @@ function PreviewModal({ form, totals, onClose }) {
                         <td style={{ ...pc, textAlign: 'right', fontSize: 8.5, padding: '1px 3px' }}><span style={gy}>¥</span></td>
                       </tr>
                     ))}
+                    <tr>
+                      <td style={{ ...pl, fontWeight: 400, fontSize: 7 }}>&nbsp;</td>
+                      <td style={pc}></td><td style={pc}></td><td style={pc}></td><td style={pc}></td>
+                    </tr>
                     <tr><td style={pl} colSpan={3}>小 計（C）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9 }} colSpan={2}>{totals.c > 0 ? `¥ ${totals.c.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
                   </tbody>
                 </table>
@@ -1745,6 +1758,7 @@ function PreviewModal({ form, totals, onClose }) {
               {FEE_D.map(f => (
                 <tr key={f.key}><td style={{ ...pl, fontWeight: 400, fontSize: 7.5 }}>{f.label}</td><td style={{ ...pc, textAlign: 'right', fontSize: 8.5, width: 74 }}>{num(form.feeD?.[f.key]) > 0 ? `¥ ${num(form.feeD[f.key]).toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
               ))}
+              <tr><td style={{ ...pl, fontWeight: 400, fontSize: 7.5 }}>&nbsp;</td><td style={{ ...pc, textAlign: 'right', fontSize: 8.5 }}><span style={gy}>¥</span></td></tr>
               <tr><td style={pl}>小 計（D）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9 }}>{totals.d > 0 ? `¥ ${totals.d.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
               <tr>
                 <td style={{ ...pl, fontSize: 8, lineHeight: 1.3 }} rowSpan={2}>合 計<br />(A)+(B)+(C)+(D)</td>
