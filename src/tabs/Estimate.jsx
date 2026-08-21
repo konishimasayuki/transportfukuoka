@@ -1314,6 +1314,12 @@ function PreviewModal({ form, totals, onClose }) {
   const vert = { ...pl, textAlign: 'center', padding: '2px 0', lineHeight: 1.2, verticalAlign: 'middle' }
   // 未記入時に紙の下地（月 日 など）を薄く見せる
   const gy = { color: '#999' }
+  // 紙は項目名をセル幅いっぱいの均等割付で組んでいる
+  const just = { textAlign: 'justify', textAlignLast: 'justify' }
+  // 小さな2段の添え字（外し／付け など、St2 より少し大きい）
+  const Sub2 = ({ a, b }) => (
+    <span style={{ display: 'inline-block', fontSize: 5.5, lineHeight: 1.05, verticalAlign: 'middle', textAlign: 'center' }}>{a}<br />{b}</span>
+  )
   // 選択肢：選ばれたものを丸で囲む（紙の「○で囲む」を再現）。tight は詰め表示（媒体行など）
   const Opt = ({ on, tight, children }) => (
     <span style={{ display: 'inline-block', padding: tight ? '0 1px' : '0 4px', margin: tight ? 0 : '0 1px', borderRadius: 9,
@@ -1702,17 +1708,17 @@ function PreviewModal({ form, totals, onClose }) {
                 <table style={tbl}><tbody>
                   <tr><td style={{ ...pl, textAlign: 'center' }} colSpan={2}>基 本 料 金</td></tr>
                   {FEE_A.map(f => (
-                    <tr key={f.key}><td style={{ ...pl, fontWeight: 400, fontSize: 8 }}>{f.label}</td><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}>{num(form.feeA?.[f.key]) > 0 ? `¥ ${num(form.feeA[f.key]).toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
+                    <tr key={f.key}><td style={{ ...pl, ...just, fontWeight: 400, fontSize: 8 }}>{f.label}</td><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}>{num(form.feeA?.[f.key]) > 0 ? `¥ ${num(form.feeA[f.key]).toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
                   ))}
                   <tr><td style={{ ...pl, fontWeight: 400, fontSize: 8 }}></td><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}><span style={gy}>¥</span></td></tr>
-                  <tr><td style={pl}>小 計（A）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9 }}>{totals.a > 0 ? `¥ ${totals.a.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
+                  <tr><td style={{ ...pl, ...just }}>小 計（A）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9 }}>{totals.a > 0 ? `¥ ${totals.a.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
                 </tbody></table>
                 <table style={tbl}><tbody>
                   <tr><td style={{ ...pl, textAlign: 'center' }} colSpan={2}>附 帯 料 金</td></tr>
                   {FEE_B.map(f => (
-                    <tr key={f.key}><td style={{ ...pl, fontWeight: 400, fontSize: 8 }}>{f.label}</td><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}>{num(form.feeB?.[f.key]) > 0 ? `¥ ${num(form.feeB[f.key]).toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
+                    <tr key={f.key}><td style={{ ...pl, ...just, fontWeight: 400, fontSize: 8 }}>{f.label}</td><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}>{num(form.feeB?.[f.key]) > 0 ? `¥ ${num(form.feeB[f.key]).toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
                   ))}
-                  <tr><td style={pl}>小 計（B）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9 }}>{totals.b > 0 ? `¥ ${totals.b.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
+                  <tr><td style={{ ...pl, ...just }}>小 計（B）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9 }}>{totals.b > 0 ? `¥ ${totals.b.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
                 </tbody></table>
                 <table style={tbl}>
                   <colgroup>
@@ -1722,7 +1728,7 @@ function PreviewModal({ form, totals, onClose }) {
                     <tr><td style={{ ...pl, textAlign: 'center' }} colSpan={5}>資 材 の 料 金</td></tr>
                     {FEE_C.map(f => (
                       <tr key={f.key}>
-                        <td style={{ ...pl, fontWeight: 400, fontSize: 7 }}>{f.label}</td>
+                        <td style={{ ...pl, fontWeight: 400, fontSize: 7, ...(f.label.length <= 1 ? { textAlign: 'center' } : just) }}>{f.label}</td>
                         <td style={{ ...pc, fontSize: 7, textAlign: 'center', padding: '1px 1px' }}>{num(form.matCount?.[f.key]) > 0 ? `${form.matCount[f.key]}${f.unit}` : <span style={gy}>{f.unit}</span>}</td>
                         <td style={{ ...pc, textAlign: 'right', fontSize: 8.5, padding: '1px 3px' }}>{num(form.feeC?.[f.key]) > 0 ? `¥ ${num(form.feeC[f.key]).toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td>
                         <td style={{ ...pc, fontSize: 7, textAlign: 'center', padding: '1px 1px' }}><span style={gy}>{f.unit}</span></td>
@@ -1733,7 +1739,7 @@ function PreviewModal({ form, totals, onClose }) {
                       <td style={{ ...pl, fontWeight: 400, fontSize: 7 }}>&nbsp;</td>
                       <td style={pc}></td><td style={pc}></td><td style={pc}></td><td style={pc}></td>
                     </tr>
-                    <tr><td style={pl} colSpan={3}>小 計（C）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9 }} colSpan={2}>{totals.c > 0 ? `¥ ${totals.c.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
+                    <tr><td style={{ ...pl, ...just }} colSpan={3}>小 計（C）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9 }}>{totals.c > 0 ? `¥ ${totals.c.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td><td style={pc}></td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1756,18 +1762,19 @@ function PreviewModal({ form, totals, onClose }) {
               </tr>
               <tr><td style={{ ...pl, textAlign: 'center' }} colSpan={2}>そ の 他 の 料 金</td></tr>
               {FEE_D.map(f => (
-                <tr key={f.key}><td style={{ ...pl, fontWeight: 400, fontSize: 7.5 }}>{f.label}</td><td style={{ ...pc, textAlign: 'right', fontSize: 8.5, width: 74 }}>{num(form.feeD?.[f.key]) > 0 ? `¥ ${num(form.feeD[f.key]).toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
+                <tr key={f.key}><td style={{ ...pl, ...just, fontWeight: 400, fontSize: f.key === 'washer' ? 6.8 : 7.5, whiteSpace: 'nowrap' }}>
+                  {f.key === 'aircon' ? <>エアコン基本工事<Sub2 a="外し" b="付け" /></> : f.label}</td><td style={{ ...pc, textAlign: 'right', fontSize: 8.5, width: 74 }}>{num(form.feeD?.[f.key]) > 0 ? `¥ ${num(form.feeD[f.key]).toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
               ))}
               <tr><td style={{ ...pl, fontWeight: 400, fontSize: 7.5 }}>&nbsp;</td><td style={{ ...pc, textAlign: 'right', fontSize: 8.5 }}><span style={gy}>¥</span></td></tr>
-              <tr><td style={pl}>小 計（D）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9 }}>{totals.d > 0 ? `¥ ${totals.d.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
+              <tr><td style={{ ...pl, ...just }}>小 計（D）</td><td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9 }}>{totals.d > 0 ? `¥ ${totals.d.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
               <tr>
                 <td style={{ ...pl, fontSize: 8, lineHeight: 1.3 }} rowSpan={2}>合 計<br />(A)+(B)+(C)+(D)</td>
                 <td style={{ ...pc, textAlign: 'right', fontWeight: 800, fontSize: 9.5 }}>{totals.goukei > 0 ? `¥ ${totals.goukei.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td>
               </tr>
               <tr><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}><span style={gy}>¥</span></td></tr>
-              <tr><td style={pl}>総 合 計</td><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}><span style={gy}>¥</span></td></tr>
-              <tr><td style={pl}>消 費 税</td><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}>{totals.tax > 0 ? `¥ ${totals.tax.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
-              <tr><td style={{ ...pl, fontSize: 11 }}>再 計</td><td style={{ ...pc, textAlign: 'right', fontWeight: 900, fontSize: 12 }}>{totals.saikei > 0 ? `¥${totals.saikei.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
+              <tr><td style={{ ...pl, ...just }}>総 合 計</td><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}><span style={gy}>¥</span></td></tr>
+              <tr><td style={{ ...pl, ...just }}>消 費 税</td><td style={{ ...pc, textAlign: 'right', fontSize: 9 }}>{totals.tax > 0 ? `¥ ${totals.tax.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
+              <tr><td style={{ ...pl, ...just, fontSize: 11 }}>再 計</td><td style={{ ...pc, textAlign: 'right', fontWeight: 900, fontSize: 12 }}>{totals.saikei > 0 ? `¥${totals.saikei.toLocaleString('ja-JP')}` : <span style={gy}>¥</span>}</td></tr>
             </tbody></table>
           </div>
 
@@ -1780,7 +1787,7 @@ function PreviewModal({ form, totals, onClose }) {
                 </td>
               </tr>
               <tr>
-                <td style={{ ...pc, height: 34, verticalAlign: 'top' }}><span style={{ fontSize: 8, fontWeight: 700, color: '#333' }}>ご紹介先</span>　{form.refName}</td>
+                <td style={{ ...pc, height: 48, verticalAlign: 'top' }}><span style={{ fontSize: 8, fontWeight: 700, color: '#333' }}>ご紹介先</span>　{form.refName}</td>
               </tr>
             </tbody></table>
             <div style={{ border: bd, textAlign: 'center', fontSize: 8.5, lineHeight: 1.5, padding: 3 }}>
