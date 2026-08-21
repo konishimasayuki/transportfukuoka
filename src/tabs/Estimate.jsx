@@ -19,7 +19,7 @@ const COMPANY = {
   address: '福岡県福岡市東区若宮 4-3-29',
   tel: '0120-078-786',
   fax: '092-405-6215',
-  regNo: '',   // 実物の帳票に記載がないため空。入れる場合はここに登録番号を書く
+  regNo: 'T2920001095787',
 }
 
 /* -------------------------------------------------------------------------
@@ -1293,7 +1293,11 @@ function PrintStyle() {
   )
 }
 
+// 控えの種別（複写式の代わりに印刷前に選ぶ）
+const COPY_KINDS = ['お客様控', '会社控']
+
 function PreviewModal({ form, totals, onClose }) {
+  const [copyKind, setCopyKind] = useState(COPY_KINDS[0])
   // 紙の御見積書（会社控）を再現した印刷レイアウト。
   // 空欄は空欄のまま印刷する（紙と同じく、書いていない欄は白）。
   const bd = '1px solid #333'
@@ -1323,6 +1327,11 @@ function PreviewModal({ form, totals, onClose }) {
       <div style={{ width: '100%', minHeight: '100%', background: '#525659', padding: '16px 0' }}>
         <div className="no-print" style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 14 }}>
           <button className="btn btn-outline" style={{ background: '#fff' }} onClick={onClose}>← 戻る</button>
+          {/* 複写式の代わりに、印刷前に控えの種別を選ぶ */}
+          <select value={copyKind} onChange={e => setCopyKind(e.target.value)}
+            style={{ padding: '7px 10px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', background: '#fff' }}>
+            {COPY_KINDS.map(k => <option key={k} value={k}>{k}</option>)}
+          </select>
           <button className="btn btn-primary" onClick={() => window.print()}>🖨 印刷 / PDF</button>
         </div>
 
@@ -1330,7 +1339,7 @@ function PreviewModal({ form, totals, onClose }) {
 
           {/* 見出し＋受付（紙と同じく受付(1)(2)は独立した2つの枠） */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: 3, flex: 1 }}>御 見 積 書 <span style={{ fontSize: 14 }}>（お客様控）</span></div>
+            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: 3, flex: 1 }}>御 見 積 書 <span style={{ fontSize: 14 }}>（{copyKind}）</span></div>
             {[['受付(1)', form.reception1], ['受付(2)', form.reception2]].map(([lab, val]) => (
               <table key={lab} style={{ borderCollapse: 'collapse', width: 160, minWidth: 0, marginLeft: 18 }}>
                 <tbody>
