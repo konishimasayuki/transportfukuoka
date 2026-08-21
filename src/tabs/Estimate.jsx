@@ -15,11 +15,11 @@ import { GMAPS_KEY, zipFromAddress } from '../lib/gmaps'
 // 会社情報（見積書ヘッダで使用）
 const COMPANY = {
   name: '株式会社トランスポーター',
-  zip: '〒815-0083',
-  address: '福岡市南区高宮5-9-1-510',
+  zip: '〒813-0036',
+  address: '福岡県福岡市東区若宮 4-3-29',
   tel: '0120-078-786',
-  fax: '092-521-8379',
-  regNo: 'T2920001095787',
+  fax: '092-405-6215',
+  regNo: '',   // 実物の帳票に記載がないため空。入れる場合はここに登録番号を書く
 }
 
 /* -------------------------------------------------------------------------
@@ -1330,7 +1330,7 @@ function PreviewModal({ form, totals, onClose }) {
 
           {/* 見出し＋受付（紙と同じく受付(1)(2)は独立した2つの枠） */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: 3, flex: 1 }}>御 見 積 書 <span style={{ fontSize: 14 }}>（会社控）</span></div>
+            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: 3, flex: 1 }}>御 見 積 書 <span style={{ fontSize: 14 }}>（お客様控）</span></div>
             {[['受付(1)', form.reception1], ['受付(2)', form.reception2]].map(([lab, val]) => (
               <table key={lab} style={{ borderCollapse: 'collapse', width: 160, minWidth: 0, marginLeft: 18 }}>
                 <tbody>
@@ -1764,7 +1764,7 @@ function PreviewModal({ form, totals, onClose }) {
               <div style={{ fontSize: 12, fontWeight: 900 }}>{COMPANY.name}</div>
               <div>{COMPANY.zip} {COMPANY.address}</div>
               <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 1 }}>☎ {COMPANY.tel}</div>
-              <div>FAX {COMPANY.fax}　登録番号 {COMPANY.regNo}</div>
+              <div>FAX {COMPANY.fax}{COMPANY.regNo ? `　登録番号 ${COMPANY.regNo}` : ''}</div>
             </div>
             <table style={tbl}><tbody>
               <tr>
