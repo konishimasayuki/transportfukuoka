@@ -446,21 +446,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       moveAP: md.ap || 'AM',
       kazai: Array.isArray(item.kazai) ? item.kazai : [],
       boxCount: item.boxCount || '',
-      memo: item.memo || '', // 要望は下の request 欄に入れるので、ここは担当者メモのみ（重複表示を防ぐ）
-      // 見積書の帳票レイアウトで使う項目（担当者が見積書側で編集すればそちらが優先される）
-      ageGender: item.ageGender || '',
-      job: item.job || '',
-      email: item.email || '',
-      persons: item.count || '',
-      moveTime: item.preferredTime || '',
-      requestDate: item.requestedAt || item.receivedAt || '', // 依頼日（査定サイトの受付日時）
-      works: (item.works && typeof item.works === 'object') ? item.works : {}, // 依頼作業のチェック
-      fromType: item.fromType || '', fromFloor: item.fromFloor || '',
-      fromElevator: item.fromElevator || '', fromLayout: item.fromLayout || '',
-      toType: item.toType || '', toFloor: item.toFloor || '',
-      toElevator: item.toElevator || '', toLayout: item.toLayout || '',
-      request: [item.request, item.option].filter(Boolean).join(' / '),
-      priceText: item.amount ? `¥${Number(item.amount).toLocaleString('ja-JP')}` : (item.referenceFee || ''),
+      memo: [item.memo, item.request, item.option].filter(Boolean).join(' / '),
     }
     try { sessionStorage.setItem('tf_estimate_prefill', JSON.stringify(prefill)) } catch {}
     setDetailItem(null)
