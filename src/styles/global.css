@@ -449,3 +449,49 @@ tr:hover td { background: var(--bg); }
   .no-print { display: none !important; }
   @page { size: portrait; }
 }
+
+/* ===== 配車表（車格×案件テーブル） ===== */
+.db-table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; min-width: 1080px; }
+.db-table th, .db-table td { border: 1px solid #CBD5E1; padding: 4px 6px; text-align: center; vertical-align: middle; }
+.db-table thead th { background: #E9EEF5; font-weight: 800; color: #334155; font-size: 11px; padding: 6px 4px; }
+.db-table .c-no { width: 28px; background: #F1F5F9; font-weight: 800; color: #64748B; }
+.db-table .c-cls { width: 86px; }
+.db-table .c-cls .cls-name { font-weight: 800; margin-top: 2px; }
+.db-table .c-driver { width: 92px; }
+.db-table .c-helper { width: 56px; }
+.db-table .c-time { width: 118px; white-space: nowrap; }
+.db-table .c-tel { width: 120px; }
+.db-table .c-cat { width: 96px; }
+.db-table .c-amt { width: 92px; text-align: right; font-weight: 700; white-space: nowrap; }
+.db-table .c-rw { width: 46px; }
+.db-table .c-fl { width: 46px; }
+.db-table .c-tilde { width: 24px; color: #64748B; background: #F8FAFC; }
+.db-table .c-note { width: 130px; }
+.db-table .c-name { text-align: left; padding-left: 10px; }
+.db-table .c-addr { text-align: left; padding-left: 10px; font-weight: 700; color: #1E3A5F; }
+.db-table .c-load { font-weight: 700; }
+.db-table tr.r1 td { border-bottom-style: dashed; border-bottom-color: #E2E8F0; }
+.db-table tr.r2 td { border-top: 0; }
+.db-table tr.conflict td { background: #FEF2F2; }
+/* 未手配（薄黄色） */
+.db-table tr.unrow td { background: #FEFCE8; }
+.db-table td.unlabel { color: #A16207; font-weight: 800; letter-spacing: 2px; }
+/* セル内の入力・選択（枠に馴染ませる） */
+.db-cellin { width: 100%; border: 1px solid transparent; border-radius: 4px; padding: 3px 4px; font: inherit; font-size: 12px; background: transparent; outline: none; }
+.db-cellin.ctr { text-align: center; }
+.db-cellin:hover { border-color: #E2E8F0; background: #fff; }
+.db-cellin:focus { border-color: #93C5FD; background: #fff; }
+.db-cellsel { width: 100%; border: 1px solid #E2E8F0; border-radius: 6px; padding: 4px; font: inherit; font-size: 12px; background: #fff; }
+.db-tsel { border: 1px solid #E2E8F0; border-radius: 6px; padding: 3px 2px; font: inherit; font-size: 12px; background: #fff; }
+.db-table .t-edit { display: flex; align-items: center; gap: 2px; justify-content: center; }
+.db-table .t-acts { margin-top: 4px; display: flex; gap: 6px; justify-content: center; align-items: center; }
+.db-mini { border: 1px solid #E2E8F0; background: #fff; color: #475569; border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; font-family: inherit; }
+.db-mini:hover { background: #F1F5F9; }
+.db-mini.assign { border-color: #1E5FA8; color: #fff; background: #1E5FA8; margin-top: 4px; }
+.db-mini.assign:disabled { opacity: .45; cursor: not-allowed; }
+.db-mini.danger { border-color: #FECACA; color: #DC2626; background: #FEF2F2; }
+.db-namebtn { border: 0; background: none; font: inherit; font-weight: 800; color: #1E293B; cursor: pointer; padding: 0; }
+.db-namebtn:hover { color: #1E5FA8; text-decoration: underline; }
+.db-conf { color: #DC2626; font-weight: 800; font-size: 11px; }
+.db-empty { color: #CBD5E1; }
+.db-whn { font-size: 11px; color: #92700B; font-weight: 700; }

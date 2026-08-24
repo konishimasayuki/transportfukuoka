@@ -51,7 +51,7 @@ const splitRoute = (route) => { const p = String(route || '').split(/\s*(?:→|-
 const isActiveContract = (c) => c && !['失注', 'キャンセル', 'キャンセル済み'].includes(c.status)
 const contractToCard = (c) => {
   const [from, to] = splitRoute(c.route)
-  return { contractId: c.id, cat: 'move', name: (c.name || '') + ' 様', crew: (String(c.persons || '').replace(/[^\d]/g, '') || '2') + '名', need: '2t', from, to, whn: c.moveDateText || c.date || '', src: String(c.srcLabel || 'hp'), amt: Number(c.amount) || 0 }
+  return { contractId: c.id, cat: 'move', name: (c.name || '') + ' 様', crew: (String(c.persons || '').replace(/[^\d]/g, '') || '2') + '名', need: '2t', from, to, whn: c.moveDateText || c.date || '', src: String(c.srcLabel || 'hp'), amt: Number(c.amount) || 0, tel: c.phone || '', fromAddr: c.fromAddress || '', toAddr: c.toAddress || '' }
 }
 
 // 地図の表示範囲を合わせる。
@@ -82,6 +82,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const [editCrew, setEditCrew] = useState(null) // 乗務員ラベル選択中の車両key
   const [crewList, setCrewList] = useState(DEFAULT_CREW) // 選択できる乗務員(班)ラベル（設定→乗務員設定）
   const [crewMap, setCrewMap] = useState({})     // その日の乗務員割当 { 車両key: ラベル }（日付別・他日と非共有）
+  const [helperMap, setHelperMap] = useState({}) // その日の助手割当 { 車両key: [助手1..4] }（日付別）
   const [tip, setTip] = useState(null)       // ツールチップ { job, x, y }
   const [showVeh, setShowVeh] = useState(false)
   const [jobDetail, setJobDetail] = useState(null) // クリックした配置済みジョブ（詳細モーダル表示用）
@@ -119,7 +120,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
     const seedCrew = (fleet) => Object.fromEntries((fleet || []).map(v => [v.key, v.crew || '']))
     if (isDemo) {
       setJobs([]); setManualUn([]); setCrewList(DEFAULT_CREW)
-      setVehicles(DEFAULT_FLEET); setCrewMap(seedCrew(DEFAULT_FLEET))
+      setVehicles(DEFAULT_FLEET); setCrewMap(seedCrew(DEFAULT_FLEET)); setHelperMap({})
       readyKey.current = boardKey; return
     }
     let cancelled = false; readyKey.current = ''
@@ -133,6 +134,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
       setCrewList(Array.isArray(data._crew) && data._crew.length ? data._crew : DEFAULT_CREW)
       // その日に保存済みの乗務員があればそれを、無ければフリート既定で初期化（編集は日付別に保存）
       setCrewMap(st.crew && Object.keys(st.crew).length ? st.crew : seedCrew(fleet))
+      setHelperMap(st.helpers || {})
       readyKey.current = boardKey
     }).catch(() => { if (!cancelled) { setJobs([]); setManualUn([]); readyKey.current = boardKey } })
     return () => { cancelled = true }
@@ -146,10 +148,10 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
     saveTimer.current = setTimeout(() => {
       // 車両フリートは名前・大きさのみ（全日共通）。乗務員(crew)はその日の割当として日付別に保存。
       const fleet = vehicles.map(v => ({ key: v.key, id: v.id, cls: v.cls, ...(v.ext ? { ext: true } : {}) }))
-      fetch('/api/dispatch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: boardKey, jobs, manualUn, crew: crewMap, fleet }) }).catch(() => {})
+      fetch('/api/dispatch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: boardKey, jobs, manualUn, crew: crewMap, helpers: helperMap, fleet }) }).catch(() => {})
     }, 800)
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
-  }, [jobs, manualUn, crewMap, vehicles, boardKey, isDemo])
+  }, [jobs, manualUn, crewMap, helperMap, vehicles, boardKey, isDemo])
 
   // ツールチップ(hover詳細)が画面に残る不具合対策：モーダルを開いた時、
   // またはクリック/スクロールが起きた時に必ず閉じる（mouseleaveが発火しないケースの保険）。
@@ -201,7 +203,36 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
 
   const ownCount = vehicles.filter(v => !v.ext).length
 
-  // 未手配カード → 空き枠クリックで割当。同一車両で時間が重なれば conflict。
+  // 未手配カード → 表の割当ボタンで車両へ割り当てる。同一車両で時間が重なれば conflict。
+  const assignCard = (index, vKey, hour) => {
+    const u = unassigned[index]
+    if (!u || !vKey) return
+    const dur = u.cat === 'move' ? 3 : 1.5
+    const clash = jobs.some(j => j.v === vKey && hour < (j.s + j.d) && (hour + dur) > j.s)
+    const isExt = !!(vehOf(vKey) || {}).ext
+    const id = 'j' + (++idRef.current)
+    setJobs(prev => [...prev, { id, contractId: u.contractId, v: vKey, cat: u.cat, name: u.name, crew: u.crew, from: u.from, to: u.to, s: hour, d: dur, st: clash ? 'conflict' : 'tentative', src: String(u.src || '').toUpperCase(), amt: u.amt || 0, extJob: isExt, tel: u.tel || '' }])
+    if (index >= contractCardsAvail.length) { const mi = index - contractCardsAvail.length; setManualUn(prev => prev.filter((_, i) => i !== mi)) }
+    toast(clash ? '割り当てました（時間重複あり・要確認）' : '割り当てました')
+  }
+  // 配置済みジョブの項目（時間・道幅・階数・物量・備考など）をその場で更新
+  const patchJob = (id, patch) => setJobs(prev => prev.map(j => j.id === id ? { ...j, ...patch } : j))
+  const changeJobTime = (id, s, d) => {
+    const j = jobs.find(x => x.id === id); if (!j) return
+    const clash = jobs.some(o => o.id !== id && o.v === j.v && s < (o.s + o.d) && (s + d) > o.s)
+    patchJob(id, { s, d, st: clash ? 'conflict' : (j.st === 'confirmed' ? 'confirmed' : 'tentative') })
+  }
+  const changeJobVehicle = (id, vKey) => {
+    const j = jobs.find(x => x.id === id); if (!j || j.v === vKey) return
+    const clash = jobs.some(o => o.id !== id && o.v === vKey && j.s < (o.s + o.d) && (j.s + j.d) > o.s)
+    patchJob(id, { v: vKey, st: clash ? 'conflict' : (j.st === 'confirmed' ? 'confirmed' : 'tentative'), extJob: !!(vehOf(vKey) || {}).ext })
+  }
+  const setHelper = (vKey, idx, val) => setHelperMap(prev => {
+    const arr = [...(prev[vKey] || ['', '', '', ''])]; arr[idx] = val
+    return { ...prev, [vKey]: arr }
+  })
+
+  // （旧・車両×時間グリッド用。表形式に置き換えたため未使用）
   const assignHere = (vKey, hour) => {
     if (armed === null) { toast('未手配カードを選んでから枠をクリック'); return }
     const u = unassigned[armed]
@@ -364,144 +395,145 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
       {/* ===== 配車ルートマップ ===== */}
       <DispatchMap vehicles={vehicles} jobs={jobs} show={show} />
 
-      {/* ===== ボード ＋ 未手配 ===== */}
-      <div className="db-layout">
-        <div className="db-wrap" ref={boardRef}>
-          <div className="db-head">
-            <h3>車両 × 時間 <span>· 自社{ownCount}台{k.extLanes ? ` ＋ 外注${k.extLanes}` : ''}</span></h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div className="db-legend">
-                <span><i style={{ background: 'var(--blueL)' }} />引っ越し</span>
-                <span><i style={{ background: '#F59E0B' }} />見積り</span>
-                <span><i style={{ background: '#22C55E' }} />段ボール配達</span>
-                <span><i style={{ background: 'var(--red)' }} />重複</span>
-              </div>
-              <button className="btn btn-outline btn-sm" onClick={() => setShowVeh(true)}>🚚 車両設定</button>
+      {/* ===== 配車表（車格×案件） ===== */}
+      <div className="db-wrap">
+        <div className="db-head">
+          <h3>配車表 <span>· 自社{ownCount}台{k.extLanes ? ` ＋ 外注${k.extLanes}` : ''}</span></h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div className="db-legend">
+              <span><i style={{ background: '#FEF9C3', border: '1px solid #FDE047' }} />未手配</span>
+              <span><i style={{ background: 'var(--red)' }} />時間重複</span>
             </div>
-          </div>
-
-          <div className="scroll-x">
-            <div className="db-grid">
-              {/* 時間ヘッダ */}
-              <div className="db-timerow">
-                <div className="corner">車両 / 乗務員</div>
-                {Array.from({ length: COLS }, (_, i) => (
-                  <div key={i} className="tc">{String(START + i).padStart(2, '0')}:00</div>
-                ))}
-              </div>
-
-              {/* 車両行 */}
-              {vehicles.map(v => (
-                <div className="db-row" key={v.key}>
-                  <div className={'db-veh' + (v.ext ? ' ext' : '')}>
-                    <span className="db-badge">{v.ext ? '外注' : '#' + v.id}</span>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="db-vt">{v.cls}</div>
-                      {editCrew === v.key ? (
-                        <select className="db-crew-input" autoFocus value={crewMap[v.key] || ''}
-                          onChange={e => chooseCrew(v.key, e.target.value)}
-                          onBlur={() => setEditCrew(null)}
-                          onKeyDown={e => { if (e.key === 'Escape') setEditCrew(null) }}>
-                          <option value="">（未割当）</option>
-                          {/* その日に他車両へ割当済みの乗務員は選べないよう非表示。この車両の現在値は残す */}
-                          {crewList.filter(c => c === crewMap[v.key] || !Object.entries(crewMap).some(([k, cc]) => k !== v.key && cc === c)).map(c => <option key={c} value={c}>{c}</option>)}
-                          {crewMap[v.key] && !crewList.includes(crewMap[v.key]) && <option value={crewMap[v.key]}>{crewMap[v.key]}</option>}
-                        </select>
-                      ) : crewMap[v.key] ? (
-                        <div className="db-vc db-vc-edit" title="クリックで乗務員を変更" onClick={() => startEditCrew(v)}>
-                          {crewMap[v.key]}<span className="db-vc-pen">▾</span>
-                        </div>
-                      ) : (
-                        <div className="db-vc-unassigned" title="クリックで乗務員を割り当て" onClick={() => startEditCrew(v)}>
-                          ⚠ 乗務員 未割当
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className={'db-lane' + (armed !== null || dragId ? ' armed' : '')}>
-                    {/* 空き枠（クリックで割当／ドラッグ中はドロップ先） */}
-                    {Array.from({ length: COLS }, (_, i) => (
-                      <div key={i} className="db-slot" style={{ left: pctL(START + i) + '%' }}
-                        onClick={() => assignHere(v.key, START + i)}
-                        onDragOver={(e) => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } }}
-                        onDrop={(e) => { e.preventDefault(); const id = dragId || e.dataTransfer.getData('text/plain'); moveJob(id, v.key, START + i); setDragId(null) }} />
-                    ))}
-                    {/* ジョブブロック（ドラッグで他車両へ移動可・クリックで詳細モーダル） */}
-                    {jobs.filter(j => j.v === v.key && show(j.cat)).map((j) => (
-                      <div key={j.id} className={jobClass(j) + (dragId === j.id ? ' dragging' : '')}
-                        draggable
-                        onDragStart={(e) => { setTip(null); setDragId(j.id); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', j.id) } catch {} }}
-                        onDragEnd={() => setDragId(null)}
-                        style={{ left: pctL(j.s) + '%', width: `calc(${pctW(j.d)}% - 6px)`, cursor: 'pointer' }}
-                        onClick={(e) => { e.stopPropagation(); openJobDetail(j) }}
-                        onMouseMove={(e) => moveTip(e, j)} onMouseLeave={() => setTip(null)}>
-                        <div className="db-acts">
-                          <button title="未手配に戻す" onClick={(e) => { e.stopPropagation(); returnJob(j.id) }}>↩</button>
-                        </div>
-                        <div className="jt">
-                          {j.st === 'conflict' && <span title="時間重複の疑い">⚠ </span>}
-                          {j.name}
-                          {j.st === 'tentative' && <span className="db-tag">仮</span>}
-                          {j.extJob && <span className="db-tag">外注</span>}
-                        </div>
-                        <div className="jm"><b>S</b> {j.from}{j.to && j.to !== '—' ? <> → <b>G</b> {j.to}</> : ''} · {CAT_NAME[j.cat]}</div>
-                        <div className="jtime">{fmt(j.s)}–{fmt(j.s + j.d)}</div>
-                      </div>
-                    ))}
-                    {showNow && <div className="db-nowline" style={{ left: pctL(nowH) + '%' }} />}
-                  </div>
-                </div>
-              ))}
-
-              {/* 外注枠を追加 */}
-              <button className="db-addext" onClick={addExt}>＋ 外注枠を追加</button>
-            </div>
+            <button className="btn btn-outline btn-sm" onClick={() => setShowVeh(true)}>🚚 車両設定</button>
           </div>
         </div>
 
-        {/* 未手配案件（高さは左ボードに合わせ、あふれたら内部スクロール） */}
-        <aside className="db-side" style={sideH ? { height: sideH } : undefined}>
-          <div className="db-side-head">
-            <div className="t"><span className="dot" />未手配案件</div>
-            <div className="cnt">{unassigned.length}</div>
-          </div>
-          <div className="db-side-hint">カードを選び、ボードの空き枠をクリックで割り当て。配置済みカードはドラッグで別の車両へ移動できます。</div>
-          <div className="db-side-list">
-            {unassigned.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 14 }}>未手配はありません</div>}
-            {unassigned.map((u, i) => show(u.cat) && (
-              <div key={i} className={'db-ucard' + (armed === i ? ' selected' : '')}
-                onClick={() => setArmed(armed === i ? null : i)}>
-                <div className="row1">
-                  <div className="nm">{u.name}</div>
-                  <div className={'db-catpill ' + u.cat}>{CAT_NAME[u.cat]}</div>
-                  {i >= contractCardsAvail.length && (
-                    <button title="この未手配を削除" onClick={(e) => { e.stopPropagation(); removeManualUn(i - contractCardsAvail.length) }}
-                      style={{ marginLeft: 4, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, width: 22, height: 22, cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>×</button>
-                  )}
-                </div>
-                <div className="route">📍 {u.from}{u.to && u.to !== '—' ? ' → ' + u.to : ''}</div>
-                <div className="need">希望車両 {u.need} ・ 作業員 {u.crew}</div>
-                <div className="foot">
-                  <div className="whn">🕐 {u.whn}</div>
-                  <div className={'src db-src-' + u.src}>{SRC_TXT[u.src] || u.src}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </aside>
+        <div className="scroll-x">
+          <table className="db-table">
+            <thead>
+              <tr>
+                <th className="c-no" rowSpan={2}></th>
+                <th className="c-cls" rowSpan={2}>車格</th>
+                <th className="c-driver" rowSpan={2}>運転手</th>
+                <th className="c-helper" colSpan={4}>助手</th>
+                <th className="c-time" rowSpan={2}>時間</th>
+                <th colSpan={2}>連絡先・手配</th>
+                <th className="c-amt">金額</th>
+                <th className="c-rw">道幅</th>
+                <th className="c-fl">階数</th>
+                <th className="c-tilde" rowSpan={2}>〜</th>
+                <th className="c-rw">道幅</th>
+                <th className="c-fl">階数</th>
+                <th className="c-note" rowSpan={2}>備考</th>
+              </tr>
+              <tr>
+                <th colSpan={4} style={{ fontWeight: 400, fontSize: 10, color: '#64748B' }}>（4名まで）</th>
+                <th colSpan={2}>顧客名</th>
+                <th>物量</th>
+                <th colSpan={2}>積地</th>
+                <th colSpan={2}>卸地</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(() => {
+                let no = 0
+                const rows = []
+                const timeOpts = Array.from({ length: (END - START) * 2 + 1 }, (_, i) => START + i / 2)
+                const timeSel = (val, onChange, min) => (
+                  <select className="db-tsel" value={val} onChange={e => onChange(parseFloat(e.target.value))}>
+                    {timeOpts.filter(t => min == null || t > min).map(t => <option key={t} value={t}>{fmt(t)}</option>)}
+                  </select>
+                )
+                const cellIn = (val, onCh, cls = '', ph = '') => (
+                  <input className={'db-cellin ' + cls} value={val || ''} placeholder={ph} onChange={e => onCh(e.target.value)} />
+                )
+                vehicles.forEach(v => {
+                  const vjobs = jobs.filter(j => j.v === v.key && show(j.cat)).sort((a, b) => a.s - b.s)
+                  const pairs = Math.max(1, vjobs.length)
+                  for (let pi = 0; pi < pairs; pi++) {
+                    const j = vjobs[pi]
+                    const c = j && j.contractId ? contracts.find(x => x.id === j.contractId) : null
+                    const key = v.key + '-' + (j ? j.id : 'empty')
+                    no++
+                    const conflictCls = j && j.st === 'conflict' ? ' conflict' : ''
+                    rows.push(
+                      <tr key={key + '-1'} className={'r1' + conflictCls}>
+                        {pi === 0 && <>
+                          <td className="c-no" rowSpan={pairs * 2}>{vehicles.indexOf(v) + 1}</td>
+                          <td className="c-cls" rowSpan={pairs * 2}>
+                            <span className="db-badge">{v.ext ? '外注' : '#' + v.id}</span>
+                            <div className="cls-name">{v.cls}</div>
+                          </td>
+                          <td className="c-driver" rowSpan={pairs * 2}>
+                            <select className="db-cellsel" value={crewMap[v.key] || ''} onChange={e => chooseCrew(v.key, e.target.value)}>
+                              <option value="">（未割当）</option>
+                              {crewList.filter(cw => cw === crewMap[v.key] || !Object.entries(crewMap).some(([kk, cc]) => kk !== v.key && cc === cw)).map(cw => <option key={cw} value={cw}>{cw}</option>)}
+                              {crewMap[v.key] && !crewList.includes(crewMap[v.key]) && <option value={crewMap[v.key]}>{crewMap[v.key]}</option>}
+                            </select>
+                          </td>
+                          {Array.from({ length: 4 }, (_, hi) => (
+                            <td key={hi} className="c-helper" rowSpan={pairs * 2}>
+                              {cellIn((helperMap[v.key] || [])[hi], val => setHelper(v.key, hi, val), 'ctr')}
+                            </td>
+                          ))}
+                        </>}
+                        <td className="c-time" rowSpan={2}>
+                          {j ? <>
+                            <div className="t-edit">
+                              {timeSel(j.s, t => changeJobTime(j.id, t, Math.max(0.5, j.s + j.d - t)))}
+                              <span>〜</span>
+                              {timeSel(j.s + j.d, t => changeJobTime(j.id, j.s, t - j.s), j.s)}
+                            </div>
+                            <div className="t-acts">
+                              {j.st === 'conflict' && <span className="db-conf" title="時間重複の疑い">⚠重複</span>}
+                              <button className="db-mini" title="未手配に戻す" onClick={() => returnJob(j.id)}>↩ 戻す</button>
+                            </div>
+                          </> : <span className="db-empty">—</span>}
+                        </td>
+                        <td className="c-tel">{j ? cellIn(j.tel ?? (c ? c.phone : ''), val => patchJob(j.id, { tel: val }), '', '電話番号') : ''}</td>
+                        <td className="c-cat">{j ? <span className={'db-catpill ' + j.cat}>{CAT_NAME[j.cat]}</span> : ''}</td>
+                        <td className="c-amt">{j ? (j.amt ? money(j.amt) : '—') : ''}</td>
+                        <td className="c-rw">{j ? cellIn(j.rw1, val => patchJob(j.id, { rw1: val }), 'ctr') : ''}</td>
+                        <td className="c-fl">{j ? cellIn(j.fl1, val => patchJob(j.id, { fl1: val }), 'ctr', '階') : ''}</td>
+                        {pi === 0 && <td className="c-tilde" rowSpan={pairs * 2}>〜</td>}
+                        <td className="c-rw">{j ? cellIn(j.rw2, val => patchJob(j.id, { rw2: val }), 'ctr') : ''}</td>
+                        <td className="c-fl">{j ? cellIn(j.fl2, val => patchJob(j.id, { fl2: val }), 'ctr', '階') : ''}</td>
+                        <td className="c-note" rowSpan={2}>{j ? cellIn(j.note, val => patchJob(j.id, { note: val }), '', 'メモ') : ''}</td>
+                      </tr>
+                    )
+                    rows.push(
+                      <tr key={key + '-2'} className={'r2' + conflictCls}>
+                        <td colSpan={2} className="c-name">
+                          {j ? <button className="db-namebtn" onClick={() => openJobDetail(j)} title="詳細を開く">
+                            {j.st === 'tentative' && <span className="db-tag">仮</span>}
+                            {j.extJob && <span className="db-tag">外注</span>}
+                            {j.name}
+                          </button> : <span className="db-empty">案件なし</span>}
+                        </td>
+                        <td className="c-load">{j ? cellIn(j.load, val => patchJob(j.id, { load: val }), 'ctr', '才') : ''}</td>
+                        <td colSpan={2} className="c-addr">{j ? ((c && c.fromAddress) || j.from || '') : ''}</td>
+                        <td colSpan={2} className="c-addr">{j ? ((c && c.toAddress) || (j.to && j.to !== '—' ? j.to : '')) : ''}</td>
+                      </tr>
+                    )
+                  }
+                })
+                return rows
+              })()}
+
+              {/* 未手配案件（薄黄色）：車両と開始時刻を選んで割当 */}
+              {unassigned.map((u, i) => show(u.cat) && (
+                <UnassignedRows key={'un' + i} u={u} index={i} vehicles={vehicles}
+                  onAssign={assignCard}
+                  onRemove={i >= contractCardsAvail.length ? () => removeManualUn(i - contractCardsAvail.length) : null} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {unassigned.length === 0 && jobs.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 12 }}>本日の案件はありません</div>
+        )}
       </div>
 
-      {/* ツールチップ */}
-      {tip && (
-        <div className="db-tip" style={tipStyle()}>
-          <b>{tip.job.name}</b> · {CAT_NAME[tip.job.cat]}{tip.job.extJob ? '（外注）' : ''}
-          <div className="tr"><span>区間</span><span>S {tip.job.from}{tip.job.to && tip.job.to !== '—' ? ' → G ' + tip.job.to : ''}</span></div>
-          <div className="tr"><span>時間</span><span>{fmt(tip.job.s)}–{fmt(tip.job.s + tip.job.d)}（{tip.job.d}h）</span></div>
-          <div className="tr"><span>作業員</span><span>{tip.job.crew}</span></div>
-          <div className="tr"><span>状態</span><span>{{ confirmed: '確定', tentative: '仮予約', conflict: '⚠ 時間重複の疑い' }[tip.job.st]}</span></div>
-          {tip.job.amt ? <div className="tr"><span>見積</span><span>{money(tip.job.amt)}</span></div> : null}
-        </div>
-      )}
 
       {showVeh && (
         <VehicleModal vehicles={vehicles} jobs={jobs} onClose={() => setShowVeh(false)} onApply={applyVehicles} />
@@ -511,6 +543,56 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
         <ContractDetailModal item={jobDetailItem} isNew={false} onClose={() => setJobDetail(null)} onSave={saveJobDetail} />
       )}
     </div>
+  )
+}
+
+// ===== 未手配案件の行（薄黄色・車両と開始時刻を選んで割当） =====
+function UnassignedRows({ u, index, vehicles, onAssign, onRemove }) {
+  const [vSel, setVSel] = useState('')
+  const [tSel, setTSel] = useState(9)
+  const timeOpts = Array.from({ length: (END - START) * 2 + 1 }, (_, i) => START + i / 2)
+  return (
+    <>
+      <tr className="r1 unrow">
+        <td className="c-no" rowSpan={2}>！</td>
+        <td className="c-cls" rowSpan={2}>
+          <select className="db-cellsel" value={vSel} onChange={e => setVSel(e.target.value)}>
+            <option value="">車両を選択</option>
+            {vehicles.map(v => <option key={v.key} value={v.key}>{(v.ext ? '外注' : '#' + v.id) + ' ' + v.cls}</option>)}
+          </select>
+        </td>
+        <td className="c-driver" rowSpan={2}>
+          <div className="t-edit">
+            <select className="db-tsel" value={tSel} onChange={e => setTSel(parseFloat(e.target.value))}>
+              {timeOpts.slice(0, -1).map(t => <option key={t} value={t}>{fmt(t)}</option>)}
+            </select>
+          </div>
+          <button className="db-mini assign" disabled={!vSel} onClick={() => onAssign(index, vSel, tSel)}>→ 割当</button>
+        </td>
+        <td className="c-helper unlabel" colSpan={4} rowSpan={2}>未手配</td>
+        <td className="c-time" rowSpan={2}><span className="db-whn">🕐 {u.whn || '—'}</span></td>
+        <td className="c-tel">{u.tel || ''}</td>
+        <td className="c-cat"><span className={'db-catpill ' + u.cat}>{CAT_NAME[u.cat]}</span></td>
+        <td className="c-amt">{u.amt ? money(u.amt) : '—'}</td>
+        <td className="c-rw"></td>
+        <td className="c-fl"></td>
+        <td className="c-tilde" rowSpan={2}>〜</td>
+        <td className="c-rw"></td>
+        <td className="c-fl"></td>
+        <td className="c-note" rowSpan={2}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between' }}>
+            <span className={'src db-src-' + String(u.src || '').toLowerCase()}>{SRC_TXT[String(u.src || '').toLowerCase()] || u.src}</span>
+            {onRemove && <button className="db-mini danger" title="この未手配を削除" onClick={onRemove}>× 削除</button>}
+          </div>
+        </td>
+      </tr>
+      <tr className="r2 unrow">
+        <td colSpan={2} className="c-name"><b>{u.name}</b><span style={{ marginLeft: 6, fontSize: 10, color: '#92700B' }}>希望 {u.need}・{u.crew}</span></td>
+        <td className="c-load"></td>
+        <td colSpan={2} className="c-addr">{u.fromAddr || u.from || ''}</td>
+        <td colSpan={2} className="c-addr">{u.toAddr || (u.to && u.to !== '—' ? u.to : '')}</td>
+      </tr>
+    </>
   )
 }
 
