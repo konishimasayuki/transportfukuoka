@@ -24,8 +24,11 @@ function buildKazai() {
       }
       const [key, name, size, pt] = it
       const isDitto = name.startsWith('〃')
+      // サイズ記号は紙と同じ固定位置(12.2mm)。ただし名称が長い行は紙どおり直後に続ける
+      const fits = name.replace(/\s/g, '').length <= 4
       const nm = el('div', 'kz name', `<span${isDitto ? ' style="margin-left:4.2mm"' : ''}>${name}</span>` +
-        (size ? `<span style="position:absolute;left:12.2mm;letter-spacing:0">${size}</span>` : ''))
+        (size ? (fits ? `<span style="position:absolute;left:12.2mm;letter-spacing:0">${size}</span>`
+                      : `<span style="letter-spacing:0">${size}</span>`) : ''))
       nm.style.position = 'relative'
       const ptc = el('div', 'kz pt', pt === null ? '<span style="transform:rotate(-20deg)">/</span>' : (pt === '' ? '' : String(pt)))
       const q1 = el('div', 'kz', inp('kz_' + key))
@@ -142,7 +145,7 @@ function buildPay() {
     `<div style="flex:1;display:flex;flex-direction:column"><div style="height:4.30mm;display:flex;align-items:center;border-bottom:var(--line-w) solid var(--ink);padding:0 0.5mm"><span class="yen">¥</span><span class="calc" data-calc="total"></span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span></div></div>`
   const t3 = [[73.30, 7.56, '総　合　計', 'grand'], [80.86, 6.45, '消 費 税', 'tax'], [87.31, 6.39, '再　　計', 'final']]
   t3.forEach(([top, h, label, calc], i) => {
-    const r = row(top, h, `<div style="width:20.56mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just" style="width:15mm;font-weight:${calc === 'final' ? 700 : 400}">${label}</span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span><span class="calc" data-calc="${calc}"></span></div>`)
+    const r = row(top, h, `<div style="width:20.56mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:1.7mm"><span class="just" style="width:15mm;font-weight:${calc === 'final' ? 700 : 400}">${label}</span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span><span class="calc" data-calc="${calc}"></span></div>`)
     r.style.padding = '0'
     if (i === 2) r.style.borderBottom = 'none'
   })
@@ -153,6 +156,7 @@ function buildMedia() {
   const m = $('#media-row')
   const items = ['電波', 'net', 'HP', '不動産', '電話帳', '法人名', 'DM', '再利用']
   m.style.justifyContent = 'space-between'
+  
   m.innerHTML = items.map(v => `<label class="opt"><input type="checkbox" name="media_${v}">${v}<span class="ring"></span></label>`).join('・') +
     `・<span style="display:inline-flex;align-items:center"><input class="form-input qty mini" data-field="mediaReuseCount" style="width:3.5mm">回</span>・` +
     ['チラシ', '紹介'].map(v => `<label class="opt"><input type="checkbox" name="media_${v}">${v}<span class="ring"></span></label>`).join('・')
