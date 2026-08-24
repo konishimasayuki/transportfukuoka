@@ -211,4 +211,9 @@ if (new URLSearchParams(location.search).get('debug') === 'overlay') {
   document.body.classList.add('debug-overlay')
   $('.reference-overlay').src = '../IMG_9280.jpeg'
 }
+// CRM（見積管理タブ）の「印刷プレビュー」からの流し込み
+try {
+  const stored = localStorage.getItem('transportfukuoka:estimatePrint')
+  if (stored) applyFormData(JSON.parse(stored))
+} catch { /* 壊れたデータは無視して白紙で開く */ }
 window.estimateForm = { applyFormData, readFormData, recalc }
