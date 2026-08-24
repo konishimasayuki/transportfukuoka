@@ -194,12 +194,29 @@ function recalc() {
   }
 }
 
+/* ---------- 「限定 混載便」の連動丸 ----------
+   紙では2語で1つの選択肢。どちらを押しても sendType=限定混載便 になり、丸は両方に付く */
+function syncMirrors() {
+  document.querySelectorAll('input.opt-mirror').forEach(m => {
+    const r = document.querySelector(`input[name="${m.dataset.mirrorName}"][value="${m.dataset.mirrorValue}"]`)
+    if (r) m.checked = r.checked
+  })
+}
+document.addEventListener('change', e => {
+  const t = e.target
+  if (t.matches && t.matches('input.opt-mirror')) {
+    const r = document.querySelector(`input[name="${t.dataset.mirrorName}"][value="${t.dataset.mirrorValue}"]`)
+    if (r) r.checked = t.checked
+  } else if (t.name === 'sendType') { /* 本体側の変更 */ }
+  syncMirrors()
+})
+
 /* ---------- はみ出し防止：欄に収まるまで文字を自動縮小 ---------- */
 function autoFit(el) {
   if (!el.dataset.baseFs) el.dataset.baseFs = getComputedStyle(el).fontSize
   el.style.fontSize = el.dataset.baseFs
   let fs = parseFloat(el.dataset.baseFs)
-  const min = fs * 0.55
+  const min = fs * 0.45
   if (el.tagName === 'TEXTAREA') {
     while (el.scrollHeight > el.clientHeight + 0.5 && fs > min) { fs -= 0.3; el.style.fontSize = fs + 'px' }
   } else {
@@ -256,7 +273,8 @@ document.addEventListener('focusout', e => {
 })
 // フォント読込後に、流し込んだ値のはみ出しを一括補正
 formatMoneyInputs()
+syncMirrors()
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => autoFitAll())
 else autoFitAll()
-document.addEventListener('estimate:recalc', autoFitAll)
+document.addEventListener('estimate:recalc', () => { autoFitAll(); syncMirrors() })
 window.estimateForm = { applyFormData, readFormData, recalc, autoFitAll }

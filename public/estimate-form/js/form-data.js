@@ -34,6 +34,6 @@ export function readFormData() {
     if (el.value) out[el.dataset.field] = el.dataset.value ?? el.value
   }
   for (const el of document.querySelectorAll('input[type=radio]:checked')) out[el.name] = el.value
-  for (const el of document.querySelectorAll('input[type=checkbox]:checked')) out[el.name] = true
+  for (const el of document.querySelectorAll('input[type=checkbox]:checked')) { if (el.name) out[el.name] = true }
   return out
 }
