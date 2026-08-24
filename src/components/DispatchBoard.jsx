@@ -90,7 +90,6 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const extRef = useRef(0)                   // 外注枠の連番
   const boardRef = useRef(null)              // 左ボードの高さ計測用
   const [sideH, setSideH] = useState(null)   // 未手配パネルの高さ（左ボードに合わせる）
-  const calRef = useRef(null)                // 週ストリップ右端のカレンダー入力
   const [unDetail, setUnDetail] = useState(null) // 未手配カードから開く成約の詳細（contractId）
   const [unEdits, setUnEdits] = useState({})     // 未手配のまま書き込んだ内容 { カードキー: {tel,load,memoFrom,...} }
   const toast = onToast || (() => {})
@@ -397,15 +396,18 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
             <div className="dw-count"><b>{w.count}</b>件</div>
           </button>
         ))}
-        {/* カレンダーから任意の日付へ */}
-        <button type="button" className="db-week-cell cal" title="カレンダーで日付を選ぶ"
-          onClick={() => { const el = calRef.current; if (!el) return; if (el.showPicker) el.showPicker(); else el.click() }}>
+        {/* カレンダーから任意の日付へ。
+            日付入力そのものをセル全面に透明で重ねる。button の中に input を入れると
+            スマホでネイティブの日付ピッカーが開かないため（showPicker も iOS では効かない）。 */}
+        <label className={'db-week-cell cal' + (weekCounts.some(w => w.isToday) ? '' : ' on')} title="カレンダーで日付を選ぶ">
           <div className="dw-cal">📅</div>
-          <div className="dw-date">カレンダー</div>
-          <input ref={calRef} type="date" value={boardKey}
-            onChange={e => { if (e.target.value && onChangeDate) { const d = new Date(e.target.value + 'T00:00:00'); if (!isNaN(d.getTime())) onChangeDate(d) } }}
-            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1 }} />
-        </button>
+          {/* 今週以外の日を選んでいるときは、その日付をここに出す */}
+          <div className="dw-date">{weekCounts.some(w => w.isToday)
+            ? 'カレンダー'
+            : `${boardDate.getMonth() + 1}月${boardDate.getDate()}日（${['日','月','火','水','木','金','土'][boardDate.getDay()]}）`}</div>
+          <input className="cal-input" type="date" value={boardKey} aria-label="日付を選ぶ"
+            onChange={e => { if (e.target.value && onChangeDate) { const d = new Date(e.target.value + 'T00:00:00'); if (!isNaN(d.getTime())) onChangeDate(d) } }} />
+        </label>
       </div>
 
       {/* ===== KPI（非表示。数値は表内で確認できるため） ===== */}
@@ -448,7 +450,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
       {/* ===== 配車表（車格×案件） ===== */}
       <div className="db-wrap">
         <div className="db-head">
-          <h3>配車表 <span>· 自社{ownCount}台{k.extLanes ? ` ＋ 外注${k.extLanes}` : ''}</span></h3>
+          <h3>配車表 <span>· {boardDate.getMonth() + 1}月{boardDate.getDate()}日（{['日','月','火','水','木','金','土'][boardDate.getDay()]}） · 自社{ownCount}台{k.extLanes ? ` ＋ 外注${k.extLanes}` : ''}</span></h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div className="db-legend">
               <span><i style={{ background: '#FEF9C3', border: '1px solid #FDE047' }} />未手配</span>
