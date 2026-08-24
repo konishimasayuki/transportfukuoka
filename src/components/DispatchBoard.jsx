@@ -9,7 +9,7 @@
 // データはダミー配列（後で /api/schedule 等の実データ・型に差し替え可能）。
 // 車両は内部キー(key)で参照し、号車番号(id)を変更してもジョブの紐付けが壊れない設計。
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { DEFAULT_FLEET, DEFAULT_CREW } from '../lib/fleet'
+import { DEFAULT_FLEET, DEFAULT_CREW, TRUCK_CLASSES } from '../lib/fleet'
 import ContractDetailModal, { EMPTY_CONTRACT } from './ContractDetailModal'
 
 const START = 8, END = 19, COLS = END - START // 08:00–19:00 = 11列
@@ -85,6 +85,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const [helperMap, setHelperMap] = useState({}) // その日の助手割当 { 車両key: [助手1..4] }（日付別）
   const [tip, setTip] = useState(null)       // ツールチップ { job, x, y }
   const [showVeh, setShowVeh] = useState(false)
+  const [vehTab, setVehTab] = useState('veh')   // 設定モーダルを開くタブ（車両／ドライバー）
   const [jobDetail, setJobDetail] = useState(null) // クリックした配置済みジョブ（詳細モーダル表示用）
   const idRef = useRef(1000)                 // 新規ジョブのid採番
   const extRef = useRef(0)                   // 外注枠の連番
@@ -456,7 +457,8 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
               <span><i style={{ background: '#FEF9C3', border: '1px solid #FDE047' }} />未手配</span>
               <span><i style={{ background: 'var(--red)' }} />時間重複</span>
             </div>
-            <button className="btn btn-outline btn-sm" onClick={() => setShowVeh(true)}>🚚 車両設定</button>
+            <button className="btn btn-outline btn-sm" onClick={() => { setVehTab('veh'); setShowVeh(true) }}>🚚 車両設定</button>
+            <button className="btn btn-outline btn-sm" onClick={() => { setVehTab('crew'); setShowVeh(true) }}>🧑‍✈️ ドライバー設定</button>
           </div>
         </div>
 
@@ -522,7 +524,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                             </select>
                           </td>
                           <td className="c-helper" data-l="助手" rowSpan={pairs * 2}>
-                            <HelperCell list={helpersOf(v.key)} max={HELPER_MAX}
+                            <HelperCell list={helpersOf(v.key)} max={HELPER_MAX} options={crewList}
                               onSet={(hi, val) => setHelper(v.key, hi, val)}
                               onAdd={() => addHelper(v.key)}
                               onRemove={(hi) => removeHelper(v.key, hi)} />
@@ -592,7 +594,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
 
 
       {showVeh && (
-        <VehicleModal vehicles={vehicles} jobs={jobs} crewList={crewList} onClose={() => setShowVeh(false)} onApply={applyVehicles} />
+        <VehicleModal vehicles={vehicles} jobs={jobs} crewList={crewList} initialTab={vehTab} onClose={() => setShowVeh(false)} onApply={applyVehicles} />
       )}
 
       {jobDetailItem && (
@@ -611,14 +613,19 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
 
 // ===== 助手セル =====
 // 人数で配置が変わる：1人=大きく1つ／2人=左右／3人=左上・右上・中央下／4人=2×2
-function HelperCell({ list, max, onSet, onAdd, onRemove }) {
+function HelperCell({ list, max, options = [], onSet, onAdd, onRemove }) {
   const n = list.length
   return (
     <div className={'hp-grid n' + n}>
       {list.map((hv, hi) => (
         <div className={'hp-badge' + (n === 3 && hi === 2 ? ' wide' : '')} key={hi}>
-          <input className={'db-cellin ctr' + (n === 1 ? ' big' : '')}
-            value={hv || ''} placeholder="助手" onChange={e => onSet(hi, e.target.value)} />
+          {/* 助手も運転手と同じ人リストから選ぶ */}
+          <select className={'db-cellsel hp-sel' + (n === 1 ? ' big' : '')} value={hv || ''}
+            onChange={e => onSet(hi, e.target.value)}>
+            <option value="">（未割当）</option>
+            {options.map(o => <option key={o} value={o}>{o}</option>)}
+            {hv && !options.includes(hv) && <option value={hv}>{hv}</option>}
+          </select>
           {n > 1 && <button className="hp-x" title="この枠を削除" onClick={() => onRemove(hi)}>×</button>}
         </div>
       ))}
@@ -937,8 +944,9 @@ function GoogleRouteMap({ routes }) {
   const altRef = useRef({})    // 車両key -> 選択中の経路index
   const [status, setStatus] = useState('loading') // loading | ready | error
   const [err, setErr] = useState('')
-  const [avoidHighways, setAvoidHighways] = useState(false) // OFF=高速を使う（既定）
-  const [avoidTolls, setAvoidTolls] = useState(false)       // OFF=有料を使う（既定）
+  // 既定は「使わない」（avoid = true）。必要なときだけボタンでONにする
+  const [avoidHighways, setAvoidHighways] = useState(true)
+  const [avoidTolls, setAvoidTolls] = useState(true)
   const [detail, setDetail] = useState(null)  // クリックしたルートの詳細
   const [redraw, setRedraw] = useState(0)      // 別ルート切替などで再描画
   const sig = routes.map(r => r.v.key + ':' + r.stops.join('>')).join('|')
@@ -1115,19 +1123,10 @@ function GoogleRouteMap({ routes }) {
 
 // ラッパー：APIキーがあれば実地図、無ければ概略図に自動フォールバック。
 // キーがある場合はトグルでGoogleマップAPIのON/OFFを切替可（OFFで概略図＝API呼び出し0）。
-// OFF状態は localStorage 'tf_gmaps_off' に保存し、リロード後も維持する。
 function DispatchMap({ vehicles, jobs, show }) {
   const routes = useMemo(() => computeVehicleRoutes(vehicles, jobs, show), [vehicles, jobs, show])
   const hasKey = !!GMAPS_KEY
-  const [gmapOn, setGmapOn] = useState(() => {
-    try { return hasKey && localStorage.getItem('tf_gmaps_off') !== '1' } catch { return hasKey }
-  })
-  const toggle = () => setGmapOn(prev => {
-    const next = !prev
-    try { localStorage.setItem('tf_gmaps_off', next ? '0' : '1') } catch {}
-    return next
-  })
-  const useGmap = hasKey && gmapOn
+  const useGmap = hasKey   // キーがあれば常にGoogleマップ（ON/OFFの切替ボタンは廃止）
   // スマホでは配車表を先に見せたいので、地図は畳んでおく（見出しをタップで開閉）
   const [open, setOpen] = useState(() => {
     try { return !(window.matchMedia && window.matchMedia('(max-width: 820px)').matches) } catch { return true }
@@ -1138,18 +1137,10 @@ function DispatchMap({ vehicles, jobs, show }) {
         <h3><span className="db-mapfold">{open ? '▾' : '▸'}</span>🗺 配車ルートマップ <span className="c-sub">· 各車両の進行ルート</span></h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} onClick={e => e.stopPropagation()}>
           {!hasKey && <span className="c-sub">区の相対位置に基づく概略図</span>}
-          {hasKey && (
-            <button type="button" onClick={toggle}
-              title={gmapOn ? 'クリックでGoogleマップをOFFにします' : 'クリックでGoogleマップをONにします'}
-              className={'db-gmap-toggle' + (gmapOn ? ' on' : '')}>
-              <span className="knob" />
-              <span className="lbl">Googleマップ {gmapOn ? 'ON' : 'OFF'}</span>
-            </button>
-          )}
         </div>
       </div>
       {/* OFF時（キーあり・トグルOFF）や、スマホで畳んでいるときは本文を出さない */}
-      {open && !(hasKey && !gmapOn) && (
+      {open && (
         <div className="card-body" style={{ padding: 12 }}>
           {routes.length === 0
             ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
@@ -1161,10 +1152,10 @@ function DispatchMap({ vehicles, jobs, show }) {
 }
 
 // ===== 車両／乗務員 設定モーダル =====
-function VehicleModal({ vehicles, jobs, crewList = [], onClose, onApply }) {
+function VehicleModal({ vehicles, jobs, crewList = [], initialTab = 'veh', onClose, onApply }) {
   const [draft, setDraft] = useState(() => vehicles.map(v => ({ ...v })))
   const [crew, setCrew] = useState(() => (crewList.length ? [...crewList] : ['']))
-  const [tab, setTab] = useState('veh')   // 'veh' | 'crew'
+  const [tab, setTab] = useState(initialTab)   // 'veh' | 'crew'
   const nextKey = useRef(1)
   const jobCount = (key) => jobs.filter(j => j.v === key).length
   const setCrewAt = (i, val) => setCrew(prev => prev.map((c, ix) => ix === i ? val : c))
@@ -1172,7 +1163,7 @@ function VehicleModal({ vehicles, jobs, crewList = [], onClose, onApply }) {
   const removeCrew = (i) => setCrew(prev => { const a = prev.filter((_, ix) => ix !== i); return a.length ? a : [''] })
 
   const setField = (key, field, val) => setDraft(prev => prev.map(v => v.key === key ? { ...v, [field]: field === 'n' ? (parseInt(val, 10) || 0) : val } : v))
-  const addRow = () => setDraft(prev => [...prev, { key: 'new' + (nextKey.current++) + '_' + Date.now(), id: '', cls: '2t', crew: '', n: 2 }])
+  const addRow = () => setDraft(prev => [...prev, { key: 'new' + (nextKey.current++) + '_' + Date.now(), id: '', cls: '', crew: '', n: 2 }])
   const removeRow = (key) => setDraft(prev => prev.filter(v => v.key !== key))
 
   const save = () => {
@@ -1191,16 +1182,17 @@ function VehicleModal({ vehicles, jobs, crewList = [], onClose, onApply }) {
     <div style={ov}>
       <div style={bx}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div><div style={{ fontSize: 15, fontWeight: 800 }}>車両・乗務員の設定</div><div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>号車・車両クラスと、運転手プルダウンに出す乗務員を登録します</div></div>
+          <div><div style={{ fontSize: 15, fontWeight: 800 }}>車両・ドライバーの設定</div><div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>号車・車両クラスと、運転手／助手のプルダウンに出す人を登録します</div></div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94A3B8' }}>×</button>
         </div>
         <div style={{ display: 'flex', gap: 6, padding: '10px 18px 0' }}>
-          {[['veh', '🚚 車両'], ['crew', '🧑‍✈️ 乗務員']].map(([tk, lb]) => (
+          {[['veh', '🚚 車両'], ['crew', '🧑‍✈️ ドライバー']].map(([tk, lb]) => (
             <button key={tk} className="btn btn-sm" onClick={() => setTab(tk)}
               style={tab === tk ? { background: '#1E5FA8', color: '#fff' } : { background: '#fff', color: '#64748B', border: '1px solid #E2E8F0' }}>{lb}</button>
           ))}
         </div>
         <div style={{ padding: '14px 18px', maxHeight: '60vh', overflowY: 'auto', display: tab === 'crew' ? 'none' : 'block' }}>
+          <datalist id="db-cls-list">{TRUCK_CLASSES.map(c => <option key={c} value={c} />)}</datalist>
           <table style={{ width: '100%', minWidth: 0, borderCollapse: 'collapse' }}>
             <thead>
               <tr>
@@ -1214,9 +1206,9 @@ function VehicleModal({ vehicles, jobs, crewList = [], onClose, onApply }) {
                 <tr key={v.key}>
                   <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9' }}><input style={ip} value={v.id} onChange={e => setField(v.key, 'id', e.target.value)} placeholder="831" /></td>
                   <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9' }}>
-                    <select style={ip} value={v.cls} onChange={e => setField(v.key, 'cls', e.target.value)}>
-                      {['軽', '2t', '2tロング', '3t', '4t', '外注枠'].map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                    {/* クラスは自由記述。よく使う値は候補として出す */}
+                    <input style={ip} list="db-cls-list" value={v.cls}
+                      onChange={e => setField(v.key, 'cls', e.target.value)} placeholder="2tロング / 4tユニック など" />
                   </td>
                   <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9', textAlign: 'center' }}>
                     <button title={jobCount(v.key) ? '削除（配置済みは未手配へ戻る）' : '削除'}
@@ -1239,8 +1231,8 @@ function VehicleModal({ vehicles, jobs, crewList = [], onClose, onApply }) {
                 style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 7, width: 28, height: 28, cursor: 'pointer', fontSize: 13, flexShrink: 0 }}>×</button>
             </div>
           ))}
-          <button className="btn btn-outline btn-sm" style={{ marginTop: 4 }} onClick={addCrew}>＋ 乗務員を追加</button>
-          <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 8, lineHeight: 1.5 }}>※ ここで登録した名前が、配車表の「運転手」プルダウンに出ます。<br />※ 一覧から消した乗務員が割り当て済みだった場合は、その割当が外れます（日付ごとの割当は保持）。</div>
+          <button className="btn btn-outline btn-sm" style={{ marginTop: 4 }} onClick={addCrew}>＋ ドライバーを追加</button>
+          <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 8, lineHeight: 1.5 }}>※ ここで登録した名前が、配車表の「運転手」と「助手」のプルダウンに出ます。<br />※ 一覧から消した乗務員が割り当て済みだった場合は、その割当が外れます（日付ごとの割当は保持）。</div>
         </div>
         <div style={{ padding: '13px 18px', borderTop: '1px solid #EEF2F7', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn btn-outline" onClick={onClose}>キャンセル</button>
