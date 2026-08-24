@@ -19,10 +19,10 @@
 .thin-b { border-bottom-width: 0.18mm; }
 
 /* ---- Block01 タイトル・受付 ---- */
-.title { position: absolute; left: 28.0mm; top: 13.75mm; font-size: 8.8mm; font-weight: 700; letter-spacing: 0.02mm; line-height: 1; }
+.title { position: absolute; left: 28.0mm; top: 14.1mm; font-size: 8.8mm; font-weight: 700; letter-spacing: 0.02mm; line-height: 1; }
 .title .copy-kind { position: absolute; left: 38.7mm; top: 3.6mm; font-size: 4.5mm; font-weight: 700; letter-spacing: 0.2mm; white-space: nowrap; }
-.uketsuke1 { left: 107.8mm; top: 17.2mm; width: 48.0mm; height: 6.4mm; }
-.uketsuke2 { left: 155.8mm; top: 17.2mm; width: 48.1mm; height: 6.4mm; }
+.uketsuke1 { left: 107.8mm; top: 17.35mm; width: 48.0mm; height: 6.4mm; }
+.uketsuke2 { left: 155.8mm; top: 17.35mm; width: 48.1mm; height: 6.4mm; }
 .uketsuke1 .grid, .uketsuke2 .grid { grid-template-columns: 11.4mm 1fr; }
 .uketsuke2 .grid { grid-template-columns: 11.5mm 1fr; }
 
@@ -37,18 +37,18 @@
 .sched-send .grid { grid-template-columns: 12.3mm 1fr; grid-template-rows: 3.9mm 3.78mm 3.82mm 1fr; }
 .sched-est { left: 172.8mm; top: 24.7mm; width: 30.9mm; height: 15.45mm; }
 .sched-est .grid { grid-template-columns: 9.0mm 1fr; grid-template-rows: 3.9mm 3.78mm 1fr; }
-.date-ph { position: relative; width: 100%; height: 100%; font-size: 2.6mm; }
+.date-ph { position: relative; width: 100%; height: 100%; font-size: 2.7mm; }
 .date-ph .slot { position: absolute; top: 50%; transform: translate(-50%, -50%); }
 .date-ph .di { position: absolute; top: 0; height: 100%; width: 5mm; }
 .ampm-v { font-size: 1.55mm; line-height: 1.12; text-align: center; }
-.ampm { font-size: 1.6mm; line-height: 1.05; text-align: center; }
+.ampm { font-size: 1.7mm; line-height: 1.05; text-align: center; }
 .front-box { left: 172.9mm; top: 39.9mm; width: 30.8mm; height: 7.6mm; }
-.front-box .flabel { position: absolute; top: 0.2mm; left: 0.8mm; font-size: 2.55mm; letter-spacing: 0.5mm; }
+.front-box .flabel { position: absolute; top: 0.4mm; left: 1.4mm; font-size: 2.7mm; letter-spacing: 0.8mm; }
 
 /* ---- Block03 お名前 ---- */
 .name-box { left: 5.5mm; top: 40.7mm; width: 97.5mm; height: 11.3mm; }
 .name-box .grid { grid-template-columns: 17.3mm 1fr; grid-template-rows: 2.4mm 1fr; }
-.name-note { position: absolute; left: 104.5mm; top: 40.9mm; width: 67mm; font-size: 2.35mm; line-height: 1.38; letter-spacing: 0; }
+.name-note { position: absolute; left: 110.7mm; top: 40.9mm; width: 62.5mm; font-size: 2.5mm; line-height: 1.32; letter-spacing: 0.05mm; }
 .sama { font-size: 3.6mm; font-weight: 700; }
 
 /* ---- Block04/05 現住所・転居先 ---- */
@@ -73,7 +73,7 @@
 /* ---- Block07 作業内容の確認・ピアノ・エアコン ---- */
 .workconf1 { left: 5.5mm; top: 85.3mm; width: 49.1mm; height: 15.95mm; }
 .workconf1 .grid { padding-bottom: 0.62mm; grid-template-columns: 14.1mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
-.workconf2 { left: 55.7mm; top: 85.3mm; width: 49.9mm; height: 15.95mm; }
+.workconf2 { left: 55.7mm; top: 85.3mm; width: 50.02mm; height: 15.95mm; }
 .workconf2 .grid { padding-bottom: 0.62mm; grid-template-columns: 23.5mm 3.5mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
 .workconf3 { left: 106.8mm; top: 85.3mm; width: 97.1mm; height: 15.95mm; }
 .workconf3 .grid { padding-bottom: 0.62mm; grid-template-columns: 22.84mm 3.4mm 23.0mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
@@ -86,7 +86,7 @@
 /* ---- Block09 作業状況 ---- */
 .workstat { left: 5.5mm; top: 104.1mm; width: 198.4mm; height: 11.4mm; }
 .workstat .grid {
-  grid-template-columns: 3.9mm 10.2mm 83.32mm 41.68mm 25.6mm 16.8mm 1fr;
+  grid-template-columns: 3.9mm 10.2mm 83.62mm 41.38mm 25.6mm 16.8mm 1fr;
   grid-template-rows: 2.23mm 3.55mm 1fr;
 }
 .ws-label { grid-row: 1 / 4; }
@@ -100,9 +100,9 @@
   grid-auto-rows: var(--kazai-row); }
 .kz.mats-edge { border-right: 0; }
 .kz { border-right: var(--line-w) solid var(--ink); border-bottom: var(--line-w) solid var(--ink);
-     font-size: 2.2mm; display: flex; align-items: center; overflow: hidden; white-space: nowrap; height: var(--kazai-row); padding: 0 0.5mm; }
+     font-size: 2.2mm; letter-spacing: 0.1mm; display: flex; align-items: center; overflow: hidden; white-space: nowrap; height: var(--kazai-row); padding: 0 0.5mm; }
 .kz.name { justify-content: flex-start; }
-.kz.pt { justify-content: flex-end; padding-right: 0.8mm; font-size: 2.1mm; }
+.kz.pt { justify-content: flex-end; padding-right: 1.0mm; font-size: 2.1mm; letter-spacing: 0; }
 .kz.sub { height: 3.3mm; font-size: 2.5mm; font-weight: 400; }
 /* 荷造資材（右端ブロック）は独自グリッド */
 .mats { position: absolute; left: 153.25mm; top: 0; width: 44.44mm; height: 100%; border-left: var(--line-w) solid var(--ink); font-size: 2.2mm; }
