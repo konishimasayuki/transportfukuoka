@@ -1,5 +1,6 @@
 // 配車ボードの保存／取得（日付別の割当ジョブ ＋ 車両フリート設定 ＋ 乗務員ラベル一覧）
 // 構造: { '_fleet':[vehicles(名前/大きさ)], '_crew':[乗務員ラベル],
+//         'YYYY-MM-DD': { jobs, manualUn, crew(車両→乗務員), helpers(車両→助手配列), unEdits(未手配の追記) },
 //         'YYYY-MM-DD': { jobs:[...], manualUn:[...], crew:{車両key:ラベル}, updatedAt } }
 // ※乗務員(crew)は日付別に保存し、他の日付とは共有しない。
 const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL
@@ -36,9 +37,13 @@ export default async function handler(req, res) {
       const body = req.body || {}
       const all = await getAll()
       if (Array.isArray(body.fleet)) all._fleet = body.fleet // 車両フリート（全日共通の設定）
-      if (Array.isArray(body.crew)) all._crew = body.crew    // 乗務員(班)ラベル一覧（全日共通）
-      if (body.date) { // その日の割当（乗務員crewも日付別に保存＝他日と非共有）
-        all[body.date] = { jobs: body.jobs || [], manualUn: body.manualUn || [], crew: body.crew || {}, updatedAt: new Date().toISOString() }
+      if (Array.isArray(body.crewList)) all._crew = body.crewList // 乗務員(班)ラベル一覧（全日共通）
+      if (body.date) { // その日の割当（乗務員crew・助手helpers・未手配の書き込みunEditsも日付別）
+        all[body.date] = {
+          jobs: body.jobs || [], manualUn: body.manualUn || [],
+          crew: body.crew || {}, helpers: body.helpers || {}, unEdits: body.unEdits || {},
+          updatedAt: new Date().toISOString(),
+        }
       }
       await setAll(all)
       return res.json({ ok: true })
