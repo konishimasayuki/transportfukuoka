@@ -327,7 +327,7 @@ function TruckSettings({ isDemo }) {
   }, [isDemo])
 
   const setField = (key, field, val) => setList(prev => prev.map(v => v.key === key ? { ...v, [field]: field === 'n' ? (parseInt(val, 10) || 0) : val } : v))
-  const addRow = () => setList(prev => [...prev, { key: 'v_new' + (nextKey.current++) + '_' + prev.length, id: '', cls: '2t', crew: '', n: 2 }]) // crewは配車ボードで割当
+  const addRow = () => setList(prev => [...prev, { key: 'v_new' + (nextKey.current++) + '_' + prev.length, id: '', cls: '', crew: '', n: 2 }]) // crewは配車ボードで割当
   const removeRow = (key) => setList(prev => prev.filter(v => v.key !== key))
 
   const save = async () => {
@@ -358,6 +358,7 @@ function TruckSettings({ isDemo }) {
           <div style={{ fontSize: 12, color: '#94A3B8' }}>読み込み中...</div>
         ) : (
           <>
+            <datalist id="truck-cls-list">{TRUCK_CLASSES.map(c => <option key={c} value={c} />)}</datalist>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
@@ -371,9 +372,9 @@ function TruckSettings({ isDemo }) {
                   <tr key={v.key}>
                     <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9' }}><input style={ip} value={v.id} onChange={e => setField(v.key, 'id', e.target.value)} placeholder="831" /></td>
                     <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9' }}>
-                      <select style={ip} value={v.cls} onChange={e => setField(v.key, 'cls', e.target.value)}>
-                        {TRUCK_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
+                      {/* クラスは自由記述。よく使う値は候補として出す */}
+                      <input style={ip} list="truck-cls-list" value={v.cls}
+                        onChange={e => setField(v.key, 'cls', e.target.value)} placeholder="2tロング / 4tユニック など" />
                     </td>
                     <td style={{ padding: 4, borderBottom: '1px solid #F1F5F9', textAlign: 'center' }}>
                       <button title="削除" onClick={() => removeRow(v.key)}
