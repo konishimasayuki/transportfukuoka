@@ -158,13 +158,16 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
 
   return (
     <div>
-      <div className="page-hdr" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-        <div>
-          <h1>{view === 'board' ? '配車ボード' : '月カレンダー'}</h1>
-          <p>{view === 'board' ? '車両×時間で当日の配車を組み立てます' : '引っ越し・見積り・段ボール配達の予定を管理します'}</p>
+      {/* ボード表示は上部バーのタイトルだけで足りるため、ページ内見出しは月ビューのみ */}
+      {view === 'month' && (
+        <div className="page-hdr" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <h1>月カレンダー</h1>
+            <p>引っ越し・見積り・段ボール配達の予定を管理します</p>
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={() => openAdd()}>＋ 予定を作成</button>
         </div>
-        {view === 'month' && <button className="btn btn-primary btn-sm" onClick={() => openAdd()}>＋ 予定を作成</button>}
-      </div>
+      )}
 
       {/* 月カレンダーの更新ボタン（ジャンルフィルターは廃止＝全ジャンル常時表示） */}
       {view === 'month' && !isDemo && (
@@ -181,23 +184,10 @@ export default function Schedule({ user, switchTab, view = 'month' }) {
           <button className="btn btn-outline btn-sm" onClick={() => gotoMonth(1)}>翌月 ›</button>
           <div style={{ fontSize: 16, fontWeight: 900, marginLeft: 6 }}>{monthLabel}</div>
         </div>
-      ) : (
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
-          <button className="btn btn-outline btn-sm" style={{ padding: '4px 8px' }} onClick={() => shiftBoardDay(-1)}>‹</button>
-          <button className="btn btn-outline btn-sm" style={{ padding: '4px 10px' }} onClick={() => setBoardDate(new Date())}>今日</button>
-          <button className="btn btn-outline btn-sm" style={{ padding: '4px 8px' }} onClick={() => shiftBoardDay(1)}>›</button>
-          {/* 日付をカレンダーで直接選択 */}
-          <input type="date" value={ymd(boardDate)}
-            onChange={e => { if (e.target.value) { const d = new Date(e.target.value + 'T00:00:00'); if (!isNaN(d.getTime())) setBoardDate(d) } }}
-            style={{ padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--text)', outline: 'none' }} />
-          {/* 日付ピッカーに年月日は出るので、ここは曜日のみ表示 */}
-          <div style={{ fontSize: 13, fontWeight: 800, marginLeft: 4 }}>({WEEK[boardDate.getDay()]})</div>
-          {boardIsToday && <span className="badge bb" style={{ marginLeft: 2 }}>今日</span>}
-        </div>
-      )}
+      ) : null}
 
       {/* ============ 配車ボード（フィルターなし＝全件表示） ============ */}
-      {view === 'board' && <DispatchBoard onToast={showToast} contracts={contracts} onUpdateContract={updateContract} boardDate={boardDate} isDemo={isDemo} />}
+      {view === 'board' && <DispatchBoard onToast={showToast} contracts={contracts} onUpdateContract={updateContract} boardDate={boardDate} onChangeDate={setBoardDate} isDemo={isDemo} />}
 
       {/* ============ 月カレンダー（既存）============ */}
       {view === 'month' && (loading ? (

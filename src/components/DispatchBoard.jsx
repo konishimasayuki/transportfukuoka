@@ -73,7 +73,7 @@ function fitNicely(g, map, bounds) {
   } catch {}
 }
 
-export default function DispatchBoard({ filter, onToast, contracts = [], onUpdateContract, boardDate = new Date(), isDemo = false }) {
+export default function DispatchBoard({ filter, onToast, contracts = [], onUpdateContract, boardDate = new Date(), onChangeDate, isDemo = false }) {
   const [vehicles, setVehicles] = useState(INIT_VEHICLES)
   const [jobs, setJobs] = useState([])          // その日の割当（/api/dispatch で日付別に保存）
   const [manualUn, setManualUn] = useState([])  // 成約以外の未手配カード（手動追加・非成約の戻し）。成約由来は下でderive
@@ -90,6 +90,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const extRef = useRef(0)                   // 外注枠の連番
   const boardRef = useRef(null)              // 左ボードの高さ計測用
   const [sideH, setSideH] = useState(null)   // 未手配パネルの高さ（左ボードに合わせる）
+  const calRef = useRef(null)                // 週ストリップ右端のカレンダー入力
   const toast = onToast || (() => {})
   const boardKey = ymd(boardDate)
   const show = (c) => !filter || filter[c] !== false // カテゴリチップの絞り込み
@@ -353,42 +354,56 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
       {/* ===== 1週間の成約件数（表示日を起点に7日分） ===== */}
       <div className="db-week">
         {weekCounts.map(w => (
-          <div key={w.key} className={`db-week-cell${w.isToday ? ' on' : ''}${w.dow === 0 ? ' sun' : ''}${w.dow === 6 ? ' sat' : ''}`}>
+          <button key={w.key} type="button"
+            className={`db-week-cell${w.isToday ? ' on' : ''}${w.dow === 0 ? ' sun' : ''}${w.dow === 6 ? ' sat' : ''}`}
+            title="この日の配車を表示"
+            onClick={() => onChangeDate && onChangeDate(new Date(w.key + 'T00:00:00'))}>
             <div className="dw-date">{w.month}月{w.day}日（{w.wd}）</div>
             <div className="dw-count"><b>{w.count}</b>件</div>
-          </div>
+          </button>
         ))}
+        {/* カレンダーから任意の日付へ */}
+        <button type="button" className="db-week-cell cal" title="カレンダーで日付を選ぶ"
+          onClick={() => { const el = calRef.current; if (!el) return; if (el.showPicker) el.showPicker(); else el.click() }}>
+          <div className="dw-cal">📅</div>
+          <div className="dw-date">カレンダー</div>
+          <input ref={calRef} type="date" value={boardKey}
+            onChange={e => { if (e.target.value && onChangeDate) { const d = new Date(e.target.value + 'T00:00:00'); if (!isNaN(d.getTime())) onChangeDate(d) } }}
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1 }} />
+        </button>
       </div>
 
-      {/* ===== KPI ===== */}
-      <div className="db-kpis">
-        <div className="db-kpi util">
-          <div className="lab">本日の稼働率</div>
-          <div className="val">{k.util}<small>%</small></div>
-          <div className="bar"><i style={{ width: k.util + '%' }} /></div>
-        </div>
-        <div className="db-kpi">
-          <div className="lab">配車ステータス</div>
-          <div className="db-splitk">
-            <div className="u"><b style={{ color: 'var(--green)' }}>{k.conf}</b><span>確定</span></div>
-            <div className="u"><b style={{ color: 'var(--yellow)' }}>{k.tent + k.clash}</b><span>仮</span></div>
-            <div className="u"><b style={{ color: 'var(--muted)' }}>{k.un}</b><span>未手配</span></div>
+      {/* ===== KPI（稼働率・ステータス・外注・アラートを1枚に統合） ===== */}
+      <div className="db-kpis two">
+        <div className="db-kpi combo">
+          <div className="seg">
+            <div className="lab">本日の稼働率</div>
+            <div className="val">{k.util}<small>%</small></div>
+            <div className="bar"><i style={{ width: k.util + '%' }} /></div>
+          </div>
+          <div className="seg">
+            <div className="lab">配車ステータス</div>
+            <div className="db-splitk">
+              <div className="u"><b style={{ color: 'var(--green)' }}>{k.conf}</b><span>確定</span></div>
+              <div className="u"><b style={{ color: 'var(--yellow)' }}>{k.tent + k.clash}</b><span>仮</span></div>
+              <div className="u"><b style={{ color: 'var(--muted)' }}>{k.un}</b><span>未手配</span></div>
+            </div>
+          </div>
+          <div className="seg">
+            <div className="lab"><i style={{ background: 'var(--purple)' }} />外注</div>
+            <div className="val">{k.extLanes}<small>台</small></div>
+            <div className="meta">{k.extLanes ? (k.extJobs ? k.extJobs + '件を外注手配' : '外注枠 空き') : '外注なし'}</div>
+          </div>
+          <div className={'seg' + (k.clash ? ' warn' : '')}>
+            <div className="lab"><i style={{ background: 'var(--red)' }} />要確認</div>
+            <div className="val" style={k.clash ? { color: 'var(--red)' } : undefined}>{k.clash}</div>
+            <div className="meta">{k.clash ? '時間重複の疑い' : '重複なし'}</div>
           </div>
         </div>
         <div className="db-kpi">
           <div className="lab">本日の売上見込</div>
           <div className="val">{money(k.revenue)}</div>
           <div className="meta">確定・仮の見積合計</div>
-        </div>
-        <div className="db-kpi">
-          <div className="lab"><i style={{ background: 'var(--purple)' }} />外注（協力会社）</div>
-          <div className="val">{k.extLanes}<small>台</small></div>
-          <div className="meta">{k.extLanes ? (k.extJobs ? k.extJobs + '件を外注手配' : '外注枠 空き') : '外注なし'}</div>
-        </div>
-        <div className="db-kpi alert">
-          <div className="lab"><i style={{ background: 'var(--red)' }} />要確認アラート</div>
-          <div className="val">{k.clash}</div>
-          <div className="meta">{k.clash ? '時間重複の疑い' : '重複なし'}</div>
         </div>
       </div>
 
@@ -412,7 +427,6 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
           <table className="db-table">
             <thead>
               <tr>
-                <th className="c-no" rowSpan={2}></th>
                 <th className="c-cls" rowSpan={2}>車格</th>
                 <th className="c-driver" rowSpan={2}>運転手</th>
                 <th className="c-helper" colSpan={4}>助手</th>
@@ -459,7 +473,6 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                     rows.push(
                       <tr key={key + '-1'} className={'r1' + conflictCls}>
                         {pi === 0 && <>
-                          <td className="c-no" rowSpan={pairs * 2}>{vehicles.indexOf(v) + 1}</td>
                           <td className="c-cls" rowSpan={pairs * 2}>
                             <span className="db-badge">{v.ext ? '外注' : '#' + v.id}</span>
                             <div className="cls-name">{v.cls}</div>
@@ -554,7 +567,6 @@ function UnassignedRows({ u, index, vehicles, onAssign, onRemove }) {
   return (
     <>
       <tr className="r1 unrow">
-        <td className="c-no" rowSpan={2}>！</td>
         <td className="c-cls" rowSpan={2}>
           <select className="db-cellsel" value={vSel} onChange={e => setVSel(e.target.value)}>
             <option value="">車両を選択</option>
