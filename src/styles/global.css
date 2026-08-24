@@ -504,10 +504,16 @@ tr:hover td { background: var(--bg); }
 .db-kpi.combo .seg:first-child { border-left: 0; padding-left: 0; }
 @media (max-width: 900px) { .db-kpi.combo { grid-template-columns: 1fr 1fr; } .db-kpi.combo .seg { border-left: 0; padding-left: 0; } }
 .db-week { grid-template-columns: repeat(7, 1fr) 64px; }
-button.db-week-cell { cursor: pointer; font-family: inherit; }
-button.db-week-cell:hover { border-color: var(--blueL); }
+button.db-week-cell, label.db-week-cell { cursor: pointer; font-family: inherit; }
+button.db-week-cell:hover, label.db-week-cell:hover { border-color: var(--blueL); }
 .db-week-cell.cal { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
 .db-week-cell.cal .dw-cal { font-size: 16px; line-height: 1; }
+/* 日付入力をセル全面に透明で重ねる（タップでそのままネイティブのカレンダーが開く） */
+.db-week-cell.cal .cal-input {
+  position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px);
+  opacity: 0; border: 0; margin: 0; padding: 0; background: transparent;
+  -webkit-appearance: none; appearance: none; cursor: pointer;
+}
 @media (max-width: 900px) { .db-week { grid-template-columns: repeat(4, 1fr); } .db-week-cell.cal { grid-column: span 1; } }
 
 /* 配車表：助手バッジ・メモ列・金額中央・顧客詳細ボタン */
