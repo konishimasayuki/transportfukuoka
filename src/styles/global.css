@@ -495,3 +495,17 @@ tr:hover td { background: var(--bg); }
 .db-conf { color: #DC2626; font-weight: 800; font-size: 11px; }
 .db-empty { color: #CBD5E1; }
 .db-whn { font-size: 11px; color: #92700B; font-weight: 700; }
+
+/* 配車ボード：KPI統合カードと週ストリップのボタン化 */
+.db-kpis.two { grid-template-columns: 2.4fr 1fr; }
+@media (max-width: 900px) { .db-kpis.two { grid-template-columns: 1fr; } }
+.db-kpi.combo { display: grid; grid-template-columns: 1.2fr 1.2fr 0.8fr 0.8fr; gap: 10px; align-items: start; }
+.db-kpi.combo .seg { min-width: 0; border-left: 1px solid var(--border); padding-left: 12px; }
+.db-kpi.combo .seg:first-child { border-left: 0; padding-left: 0; }
+@media (max-width: 900px) { .db-kpi.combo { grid-template-columns: 1fr 1fr; } .db-kpi.combo .seg { border-left: 0; padding-left: 0; } }
+.db-week { grid-template-columns: repeat(7, 1fr) 64px; }
+button.db-week-cell { cursor: pointer; font-family: inherit; }
+button.db-week-cell:hover { border-color: var(--blueL); }
+.db-week-cell.cal { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+.db-week-cell.cal .dw-cal { font-size: 16px; line-height: 1; }
+@media (max-width: 900px) { .db-week { grid-template-columns: repeat(4, 1fr); } .db-week-cell.cal { grid-column: span 1; } }
