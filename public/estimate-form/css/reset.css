@@ -1,0 +1,5 @@
+/* 最小リセット：帳票座標を狂わせる既定スタイルだけ殺す */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+table { border-collapse: collapse; border-spacing: 0; }
+input, textarea, select, button { font: inherit; color: inherit; }

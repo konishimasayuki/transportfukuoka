@@ -1,0 +1,60 @@
+/* A4キャンバスと表示スケール。
+   座標系: 原本スキャン(1654x2339px, A4@200dpi)の実測値を mm へ変換したもの。
+   1px(基準画像) = 210/1654 mm = 0.126966mm */
+:root {
+  /* 主要ブロック原点（実測） */
+  --title-y: 10.6mm;
+  --uketsuke-y: 17.2mm;
+  --sched-y: 24.7mm;
+  --name-y: 39.9mm;
+  --addrA-y: 52.0mm;
+  --addrB-y: 68.2mm;
+  --workconf-y: 84.4mm;
+  --workstat-y: 104.1mm;
+  --kazai-y: 116.33mm;
+  --kazai-row: 2.6345mm;      /* 家財表の行ピッチ(実測 20.75px) */
+  --billing-y: 181.0mm;
+  --pay-y: 180.2mm;
+  --promise-y: 199.6mm;
+  --fees-y: 231.64mm;
+  --fee-row: 3.85mm;         /* 料金表の行ピッチ(実測 30.2px) */
+  --footer-y: 273.9mm;
+  --left-x: 5.5mm;
+  --right-x: 203.9mm;
+  --ink: #2b2b2b;             /* 印刷の黒 */
+  --line-w: 0.25mm;           /* 標準罫線(実測約2px) */
+  --line-w2: 0.4mm;           /* 外枠の太罫線 */
+}
+/* フォントは同梱の IPAPGothic サブセットに固定する（実測環境と本番を一致させるため）。
+   ライセンス: fonts/IPA_Font_License.txt */
+@font-face {
+  font-family: 'IPAPGothic-Web';
+  src: url('../fonts/ipagp-subset.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: block;
+}
+html, body { background: #525659; }
+.sheet-viewport { width: 100%; overflow-x: hidden; }
+.sheet-scale { transform-origin: top left; }
+.a4-sheet {
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  background: #fff;
+  color: var(--ink);
+  overflow: hidden;
+  font-family: 'IPAPGothic-Web', 'IPAPGothic', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+  font-size: 2.6mm;
+  line-height: 1.15;
+  -webkit-font-smoothing: antialiased;
+}
+/* すべてのブロックは絶対配置（mm 座標） */
+.a4-sheet section { position: absolute; }
+/* 開発用オーバーレイ（?debug=overlay のときだけ app.js が有効化） */
+.reference-overlay {
+  display: none;
+  position: absolute; inset: 0;
+  width: 210mm; height: 297mm;
+  opacity: 0.5; pointer-events: none; z-index: 90;
+}
+body.debug-overlay .reference-overlay { display: block; }

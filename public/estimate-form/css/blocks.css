@@ -1,0 +1,153 @@
+/* 各ブロックの座標とセル構造（数値はすべて原本実測 mm） */
+
+/* ---- 汎用 ---- */
+.box { position: absolute; border: var(--line-w2) solid var(--ink); border-radius: 1.4mm; background: #fff; }
+.grid { display: grid; height: 100%; }
+.c { border-right: var(--line-w) solid var(--ink); border-bottom: var(--line-w) solid var(--ink);
+     display: flex; align-items: center; padding: 0 0.7mm; overflow: hidden; white-space: nowrap; }
+.c.last-col, .grid > .c:last-child { border-right: 0; }
+.c.bot { border-bottom: 0; }
+.c.ctr { justify-content: center; }
+.c.rt { justify-content: flex-end; }
+.c.top { align-items: flex-start; }
+.lbl { font-size: 2.7mm; letter-spacing: 0.2mm; }
+.just { text-align: justify; text-align-last: justify; display: block; width: 100%; }
+.vtext { writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 0.4mm; }
+.small { font-size: 2.1mm; }
+.xs { font-size: 1.8mm; }
+.hdr { justify-content: center; font-weight: 400; letter-spacing: 0.7mm; }
+.thin-b { border-bottom-width: 0.18mm; }
+
+/* ---- Block01 タイトル・受付 ---- */
+.title { position: absolute; left: 28.0mm; top: 13.75mm; font-size: 8.5mm; font-weight: 700; letter-spacing: 0.12mm; line-height: 1; }
+.title .copy-kind { position: absolute; left: 38.7mm; top: 3.6mm; font-size: 4.5mm; font-weight: 700; letter-spacing: 0.2mm; white-space: nowrap; }
+.uketsuke1 { left: 107.8mm; top: 17.2mm; width: 48.0mm; height: 6.4mm; }
+.uketsuke2 { left: 155.8mm; top: 17.2mm; width: 48.1mm; height: 6.4mm; }
+.uketsuke1 .grid, .uketsuke2 .grid { grid-template-columns: 11.4mm 1fr; }
+.uketsuke2 .grid { grid-template-columns: 11.5mm 1fr; }
+
+/* ---- Block02 日程・スペース・引越・発送内容・見積日 ---- */
+.sched-date { left: 5.4mm; top: 24.7mm; width: 77.8mm; height: 15.2mm; }
+.sched-date .grid { grid-template-columns: 8.9mm 30.1mm 9.2mm 1fr; grid-auto-rows: 1fr; }
+.sched-mid { left: 84.9mm; top: 24.7mm; width: 31.8mm; height: 15.2mm; }
+.sched-mid .grid { grid-template-columns: 13.6mm 1fr; grid-template-rows: 3.9mm 3.78mm 3.82mm 1fr; }
+.sched-fl { left: 118.1mm; top: 24.7mm; width: 27.4mm; height: 15.2mm; }
+.sched-fl .grid { grid-template-columns: 11.9mm 1fr; grid-template-rows: 3.9mm 3.78mm 3.82mm 1fr; }
+.sched-send { left: 146.8mm; top: 24.7mm; width: 24.9mm; height: 15.2mm; }
+.sched-send .grid { grid-template-columns: 12.3mm 1fr; grid-template-rows: 3.9mm 3.78mm 3.82mm 1fr; }
+.sched-est { left: 172.8mm; top: 24.7mm; width: 30.9mm; height: 15.2mm; }
+.sched-est .grid { grid-template-columns: 9.0mm 1fr; grid-template-rows: 3.9mm 3.78mm 1fr; }
+.date-ph { position: relative; width: 100%; height: 100%; font-size: 2.6mm; }
+.date-ph .slot { position: absolute; top: 50%; transform: translate(-50%, -50%); }
+.date-ph .di { position: absolute; top: 0; height: 100%; width: 5mm; }
+.ampm-v { font-size: 1.55mm; line-height: 1.12; text-align: center; }
+.ampm { font-size: 1.6mm; line-height: 1.05; text-align: center; }
+.front-box { left: 172.9mm; top: 39.9mm; width: 30.8mm; height: 7.6mm; }
+.front-box .flabel { position: absolute; top: 0.4mm; left: 1mm; font-size: 2.4mm; letter-spacing: 0.5mm; }
+
+/* ---- Block03 お名前 ---- */
+.name-box { left: 5.5mm; top: 40.7mm; width: 97.5mm; height: 11.3mm; }
+.name-box .grid { grid-template-columns: 17.3mm 1fr; grid-template-rows: 2.4mm 1fr; }
+.name-note { position: absolute; left: 104.5mm; top: 40.9mm; width: 67mm; font-size: 2.35mm; line-height: 1.38; letter-spacing: 0; }
+.sama { font-size: 3.6mm; font-weight: 700; }
+
+/* ---- Block04/05 現住所・転居先 ---- */
+.addr-box { left: 5.5mm; width: 176.3mm; }
+.addr-box.a { top: 52.0mm; height: 16.2mm; }
+.addr-box.b { top: 68.2mm; height: 16.5mm; }
+.addr-box .grid {
+  grid-template-columns: 17.3mm 107.2mm 4.6mm 11.3mm 1fr;
+  grid-template-rows: 2.5mm 1fr;
+}
+.addr-label { grid-row: 1 / 3; }
+.addr-main { grid-row: 2 / 3; position: relative; }
+.tel-v { grid-row: 1 / 3; }
+.tel-rows { display: grid; grid-template-rows: 1fr 1fr 1fr; height: 100%; }
+.addr-box.a .tel-l { grid-template-rows: 6.0mm 4.4mm 1fr; }
+.addr-box.a .tel-r { grid-template-rows: 6.0mm 4.4mm 1fr; }
+.addr-box.b .tel-l, .addr-box.b .tel-r { grid-template-rows: 6.0mm 4.4mm 1fr; }
+.postal { position: absolute; top: 0.8mm; left: 1.6mm; font-size: 2.9mm; letter-spacing: 0.6mm; }
+.confirm-box { left: 182.9mm; top: 52.0mm; width: 20.9mm; height: 22.2mm; }
+.confirm-box .grid { grid-template-columns: 4.5mm 1fr; grid-template-rows: 4.5mm 4.4mm 1fr; }
+
+/* ---- Block07 作業内容の確認・ピアノ・エアコン ---- */
+.workconf1 { left: 5.5mm; top: 85.3mm; width: 49.1mm; height: 15.95mm; }
+.workconf1 .grid { padding-bottom: 0.62mm; grid-template-columns: 14.1mm 1fr; grid-template-rows: 3.75mm 1fr 1fr 1fr; }
+.workconf2 { left: 55.7mm; top: 85.3mm; width: 49.9mm; height: 15.95mm; }
+.workconf2 .grid { padding-bottom: 0.62mm; grid-template-columns: 23.5mm 3.5mm 1fr; grid-template-rows: 3.75mm 1fr 1fr 1fr; }
+.workconf3 { left: 106.8mm; top: 85.3mm; width: 97.1mm; height: 15.95mm; }
+.workconf3 .grid { padding-bottom: 0.62mm; grid-template-columns: 22.84mm 3.4mm 23.0mm 1fr; grid-template-rows: 3.75mm 1fr 1fr 1fr; }
+.arrow-cell { display: flex; align-items: center; justify-content: center; border-bottom: 0; font-size: 3mm; }
+.opt-cell { grid-row: 1 / 5; border-left: var(--line-w) solid var(--ink); flex-direction: column; justify-content: flex-start; padding-top: 0.6mm; }
+
+/* ---- Block09 作業状況 ---- */
+.workstat { left: 5.5mm; top: 104.1mm; width: 198.4mm; height: 11.4mm; }
+.workstat .grid {
+  grid-template-columns: 3.9mm 10.2mm 83.55mm 41.45mm 25.6mm 16.8mm 1fr;
+  grid-template-rows: 2.23mm 3.55mm 1fr;
+}
+.ws-label { grid-row: 1 / 4; }
+.ws-h2 { grid-column: 2 / 4; }
+
+/* ---- Block10 家財表（本体は app.js が生成） ---- */
+.kazai { left: 5.51mm; top: 116.33mm; width: 198.43mm; height: 63.88mm; border: var(--line-w2) solid var(--ink); border-radius: 1.4mm; background: #fff; position: absolute; }
+.kazai-cols { display: grid; position: absolute; left: 0; top: 0; height: 100%; width: 153.25mm;
+  /* 列幅は原本の縦罫線位置（実測）から逆算。列3と列4の間に原本どおり幅1.66mmの細い空き列がある */
+  grid-template-columns: 14.74mm 4.22mm 5.79mm 5.73mm  14.88mm 4.19mm 5.78mm 5.80mm  14.96mm 4.42mm 5.82mm 5.60mm  1.90mm  13.30mm 4.06mm 5.81mm 5.90mm  14.78mm 4.35mm 5.88mm 5.34mm;
+  grid-auto-rows: var(--kazai-row); }
+.kz.mats-edge { border-right: 0; }
+.kz { border-right: var(--line-w) solid var(--ink); border-bottom: var(--line-w) solid var(--ink);
+     font-size: 2.2mm; display: flex; align-items: center; overflow: hidden; white-space: nowrap; height: var(--kazai-row); padding: 0 0.5mm; }
+.kz.name { justify-content: space-between; }
+.kz.pt { justify-content: flex-end; padding-right: 0.4mm; font-size: 2.1mm; }
+.kz.sub { height: 3.3mm; font-size: 2.5mm; font-weight: 400; }
+/* 荷造資材（右端ブロック）は独自グリッド */
+.mats { position: absolute; left: 153.25mm; top: 0; width: 44.44mm; height: 100%; border-left: var(--line-w) solid var(--ink); font-size: 2.2mm; }
+.mats .m-row { position: absolute; left: 0; right: 0; border-bottom: var(--line-w) solid var(--ink); display: flex; }
+
+/* ---- Block12 請求先 ---- */
+.billing { left: 5.6mm; top: 181.0mm; width: 148.7mm; height: 18.2mm; }
+.billing .grid { grid-template-columns: 15.9mm 1fr; grid-template-rows: 5.9mm 5.9mm 1fr; }
+.bill-r3 { display: grid; grid-template-columns: 22.2mm 21.9mm 48.8mm 25.0mm 16.4mm 1fr; }
+
+/* ---- お支払方法・その他の料金 ---- */
+.pay { left: 154.9mm; top: 180.2mm; width: 49.3mm; height: 93.7mm; }
+.pay .p-row { position: absolute; left: 0; right: 0; border-bottom: var(--line-w) solid var(--ink); display: flex; align-items: center; padding: 0 1mm; overflow: hidden; }
+
+/* ---- Block13 お約束事項 ---- */
+.promise { left: 5.6mm; top: 199.6mm; width: 148.7mm; height: 31.18mm; }
+.promise .grid { grid-template-columns: 6.3mm 1fr; }
+.notes { font-size: 2.25mm; line-height: 1.5; padding: 0 1mm 1.3mm 1mm; display: flex; flex-direction: column; justify-content: flex-end; }
+.pay-note { position: absolute; left: 91.9mm; top: 27.0mm; width: 57.7mm; height: 3.5mm; background: #111; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 2.5mm; letter-spacing: 0.4mm; border-radius: 0.3mm; }
+
+/* ---- Block14 料金表（行は app.js が生成） ---- */
+.fees-a { left: 5.5mm; top: 231.64mm; width: 46.7mm; height: 42.68mm; }
+.fees-b { left: 52.2mm; top: 231.64mm; width: 46.3mm; height: 42.68mm; border-left: 0; }
+.fees-c { left: 98.5mm; top: 231.64mm; width: 55.8mm; height: 42.68mm; border-left: 0; }
+.fee-hd { height: 3.72mm; display: flex; align-items: center; justify-content: center; font-weight: 400; letter-spacing: 2.2mm; font-size: 2.7mm; border-bottom: var(--line-w) solid var(--ink); text-indent: 2.2mm; }
+.fee-row { height: var(--fee-row); display: flex; border-bottom: var(--line-w) solid var(--ink); font-size: 2.35mm; }
+.fee-row:last-child { border-bottom: 0; }
+.fee-row .fl { display: flex; align-items: center; padding: 0 0.8mm; border-right: var(--line-w) solid var(--ink); overflow: hidden; }
+.fee-row .fv { display: flex; align-items: center; padding: 0 0.6mm; flex: 1; }
+.yen { font-size: 2.4mm; margin-right: 0.5mm; }
+
+/* ---- Block16 フッター ---- */
+.media-box { left: 5.5mm; top: 275.4mm; width: 62.7mm; height: 3.64mm; }
+.refbox { left: 5.5mm; top: 279.62mm; width: 62.7mm; height: 10.88mm; }
+.refbox .grid { grid-template-columns: 14.1mm 1fr; }
+.media-box .m1 { height: 100%; display: flex; align-items: center; padding: 0 0.8mm; font-size: 1.95mm; }
+
+.company { position: absolute; left: 68.2mm; top: 275.0mm; width: 86mm; text-align: center; }
+.company .nm { font-size: 5.0mm; font-weight: 800; letter-spacing: 0.7mm; }
+.company .ad { font-size: 2.6mm; margin-top: 0.4mm; }
+.company .tel { font-size: 4.9mm; font-weight: 800; letter-spacing: 0.8mm; margin-top: 0.2mm; }
+.company .fax { font-size: 2.8mm; margin-top: 0.2mm; }
+.biz-box { left: 154.3mm; top: 275.4mm; width: 49.6mm; height: 15.4mm; }
+.biz-box .b1 { display: grid; grid-template-columns: 17.2mm 16.4mm 1fr; height: 7.7mm; border-bottom: var(--line-w) solid var(--ink); }
+.biz-box .b1 > div { border-right: var(--line-w) solid var(--ink); display: flex; align-items: center; justify-content: center; font-size: 2.6mm; letter-spacing: 0.5mm; }
+.biz-box .b1 > div:last-child { border-right: 0; }
+.biz-box .b2 { display: grid; grid-template-columns: 15.2mm 1fr; height: calc(100% - 9.2mm); }
+
+/* 作業内容3ボックスは最終行の下線を引く（枠線との間に紙と同じ0.6mmの隙間） */
+.workconf1 .c.bot, .workconf2 .c.bot, .workconf3 .c.bot, .workconf2 .arrow-cell.bot { border-bottom: var(--line-w) solid var(--ink); }

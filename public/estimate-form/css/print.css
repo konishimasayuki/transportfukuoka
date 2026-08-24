@@ -1,0 +1,9 @@
+@page { size: A4 portrait; margin: 0; }
+@media print {
+  html, body { background: #fff; }
+  .sheet-scale { transform: none !important; }
+  .a4-sheet { width: 210mm; height: 297mm; }
+  .reference-overlay { display: none !important; }
+  .form-input:focus, .form-area:focus { background: transparent; }
+  .no-print { display: none !important; }
+}
