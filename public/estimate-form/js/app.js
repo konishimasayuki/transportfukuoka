@@ -7,6 +7,9 @@ const $ = (s, r = document) => r.querySelector(s)
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e }
 const inp = (field, cls = 'form-input qty', attrs = '') =>
   `<input class="${cls}" data-field="${field}" inputmode="numeric" ${attrs}>`
+// 自動計算セル：値は自動で入るが、手入力すれば上書きできる（空にすると自動に戻る）
+const calcIn = (name, extra = '') =>
+  `<input class="form-input num calc" data-calc="${name}" inputmode="numeric" ${extra}>`
 
 /* ---------- 家財表 ---------- */
 function buildKazai() {
@@ -42,7 +45,7 @@ function buildKazai() {
     const lb = el('div', 'kz sub', '<span class="just">小　　計</span>')
     lb.style.gridColumn = 'span 2'
     const v = el('div', 'kz sub'); v.style.gridColumn = 'span 2'
-    v.innerHTML = `<span class="calc" data-calc="ptcol${c}"></span>`
+    v.innerHTML = calcIn('ptcol' + c, 'style="text-align:right;font-weight:600"')
     lb.classList.add('bot'); v.classList.add('bot')
     if (c === 4) v.classList.add('mats-edge')
     grid.append(lb, v)
@@ -71,7 +74,7 @@ function buildMats() {
   const wrow = (top, h, html) => { const r = row(top, h, html); r.style.right = (44.45 - 33.93) + 'mm'; return r }
   wrow(37.30, 5.58, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.6mm"><span class="just small">作　成　日</span></div><div style="flex:1"><input class="form-input mini" data-field="createDate"></div>`)
   wrow(42.88, 5.53, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.6mm"><span class="just small">配　達　日</span></div><div style="flex:1"><input class="form-input mini" data-field="delivDate"></div>`)
-  wrow(48.41, 7.40, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.6mm" class="small">ポイント<br>合　　計</div><div style="flex:1;display:flex;align-items:center;justify-content:center;font-size:4mm;font-weight:700"><span data-calc="pointTotal"></span></div>`)
+  wrow(48.41, 7.40, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.6mm" class="small">ポイント<br>合　　計</div><div style="flex:1;display:flex;align-items:center;justify-content:center;font-size:4mm;font-weight:700">${calcIn('pointTotal', 'style="text-align:center;font-size:4mm;font-weight:700"')}</div>`)
   row(55.81, 4.07, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.6mm"><span class="just small">保　　管</span></div><div style="flex:1;display:flex;align-items:center;justify-content:center" class="small"><input class="form-input ctr mini" data-field="storageUntil" style="width:14mm">年　　月　　日迄</div>`)
   const sec = row(59.88, 4.0, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.4mm" class="xs">シークレット</div><div style="flex:1;display:flex;align-items:center;justify-content:space-evenly" class="xs">${['車輌','資材','制服','引越先'].map(v => `<label class="opt"><input type="checkbox" name="secret_${v}">${v}<span class="ring"></span></label>`).join('・')}</div>`)
   sec.style.borderBottom = 'none'
@@ -96,11 +99,11 @@ function feeRow(label, field, last) {
 function buildFees() {
   const a = $('#fees-a'); a.append(el('div', 'fee-hd', '基　本　料　金'))
   FEE_A.forEach(([key, label]) => a.append(feeRow(label, key ? { name: 'feeA_' + key, lw: 19 } : null)))
-  const sa = feeRow('小 計 （A）', null); sa.querySelector('.fv').innerHTML = '<span class="yen">¥</span><span class="calc" data-calc="subA"></span>'; a.append(sa)
+  const sa = feeRow('小 計 （A）', null); sa.querySelector('.fv').innerHTML = '<span class="yen">¥</span>' + calcIn('subA'); a.append(sa)
 
   const b = $('#fees-b'); b.append(el('div', 'fee-hd', '附　帯　料　金'))
   FEE_B.forEach(([key, label]) => b.append(feeRow(label, { name: 'feeB_' + key, lw: 19.45 })))
-  const sb = feeRow('小 計 （B）', null); sb.querySelector('.fv').innerHTML = '<span class="yen">¥</span><span class="calc" data-calc="subB"></span>'; b.append(sb)
+  const sb = feeRow('小 計 （B）', null); sb.querySelector('.fv').innerHTML = '<span class="yen">¥</span>' + calcIn('subB'); b.append(sb)
 
   const c = $('#fees-c'); c.append(el('div', 'fee-hd', '資　材　の　料　金'))
   FEE_C.forEach(([key, label, unit]) => {
@@ -112,7 +115,7 @@ function buildFees() {
     c.append(r)
   })
   c.append(el('div', 'fee-row', '<div class="fl" style="width:18.4mm"></div><div class="fv" style="flex:0 0 14.5mm;border-right:var(--line-w) solid var(--ink)"></div><div class="fl" style="width:8.9mm"></div><div class="fv"></div>'))
-  const sc = el('div', 'fee-row', '<div class="fl" style="width:32.9mm"><span class="just small">小 計 （C）</span></div><div class="fv"><span class="yen">¥</span><span class="calc" data-calc="subC"></span></div>')
+  const sc = el('div', 'fee-row', '<div class="fl" style="width:32.9mm"><span class="just small">小 計 （C）</span></div><div class="fv"><span class="yen">¥</span>' + calcIn('subC') + '</div>')
   c.append(sc)
 }
 
@@ -138,14 +141,14 @@ function buildPay() {
       `<div style="width:${lw}mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just small" style="width:${note ? 17.5 : 22.5}mm">${label}</span>${noteHtml}</div>` +
       `<div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span>${key ? inp('feeD_' + key, 'form-input num mini') : ''}</div>`).style.padding = '0'
   })
-  row(60.40, 4.13, '<div style="width:24.63mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just small" style="width:17mm">小　計 (D)</span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span><span class="calc" data-calc="subD"></span></div>').style.padding = '0'
+  row(60.40, 4.13, '<div style="width:24.63mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just small" style="width:17mm">小　計 (D)</span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span>' + calcIn('subD') + '</div>').style.padding = '0'
   // 合計（ラベルが2段の¥をまたぐ）
   const g = row(64.53, 8.77, '', ''); g.style.padding = '0'
   g.innerHTML = `<div style="width:20.56mm;height:100%;display:flex;flex-direction:column;justify-content:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just small" style="width:15mm">合　　計</span><span class="xs">(A)+(B)+(C)+(D)</span></div>` +
-    `<div style="flex:1;display:flex;flex-direction:column"><div style="height:4.30mm;display:flex;align-items:center;border-bottom:var(--line-w) solid var(--ink);padding:0 0.5mm"><span class="yen">¥</span><span class="calc" data-calc="total"></span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span></div></div>`
+    `<div style="flex:1;display:flex;flex-direction:column"><div style="height:4.30mm;display:flex;align-items:center;border-bottom:var(--line-w) solid var(--ink);padding:0 0.5mm"><span class="yen">¥</span>${calcIn('total')}</div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span></div></div>`
   const t3 = [[73.30, 7.56, '総　合　計', 'grand'], [80.86, 6.45, '消 費 税', 'tax'], [87.31, 6.39, '再　　計', 'final']]
   t3.forEach(([top, h, label, calc], i) => {
-    const r = row(top, h, `<div style="width:20.56mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:1.7mm"><span class="just" style="width:15mm;font-weight:${calc === 'final' ? 700 : 400}">${label}</span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span><span class="calc" data-calc="${calc}"></span></div>`)
+    const r = row(top, h, `<div style="width:20.56mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:1.7mm"><span class="just" style="width:15mm;font-weight:${calc === 'final' ? 700 : 400}">${label}</span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span>${calcIn(calc)}</div>`)
     r.style.padding = '0'
     if (i === 2) r.style.borderBottom = 'none'
   })
@@ -184,7 +187,10 @@ function recalc() {
   out.pointTotal = pt
   for (const [k, v] of Object.entries(out)) {
     const e = document.querySelector(`[data-calc="${k}"]`)
-    if (e) e.textContent = v > 0 ? fmt(v) : ''
+    if (!e) continue
+    if (e.dataset.manual === '1') continue      // 手入力で上書き中は自動計算を書き込まない
+    if ('value' in e) e.value = v > 0 ? fmt(v) : ''
+    else e.textContent = v > 0 ? fmt(v) : ''
   }
 }
 
@@ -218,7 +224,10 @@ function fitScale() {
 buildKazai(); buildFees(); buildPay(); buildMedia()
 document.addEventListener('input', e => {
   const t = e.target
-  if (t.matches && t.matches('.num, .qty, [data-field^="fee"], [data-field^="kz_"]')) recalc()
+  if (t.matches && t.matches('[data-calc]')) {
+    if (t.value.trim() === '') { delete t.dataset.manual } else { t.dataset.manual = '1' }
+  }
+  if (t.matches && t.matches('.num, .qty, [data-field^="fee"], [data-field^="kz_"], [data-calc]')) recalc()
   if (t.matches && t.matches('.form-input, .form-area')) autoFit(t)
 })
 document.addEventListener('estimate:recalc', recalc)
@@ -236,8 +245,10 @@ try {
 // 金額欄はカンマ区切りで表示（内部値は data-value に保持）
 function formatMoneyInputs() {
   document.querySelectorAll('.form-input.num').forEach(el => {
-    const raw = String(el.dataset.value ?? el.value).replace(/[,\s]/g, '')
+    // 常に「今の表示値」を基準にする（保存済み data-value を優先すると手入力が巻き戻る）
+    const raw = String(el.value).replace(/[,\s]/g, '')
     if (raw && isFinite(Number(raw))) { el.dataset.value = raw; el.value = Number(raw).toLocaleString('ja-JP') }
+    else if (!raw) { delete el.dataset.value }
   })
 }
 document.addEventListener('focusout', e => {
