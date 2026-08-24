@@ -19,10 +19,10 @@
 .thin-b { border-bottom-width: 0.18mm; }
 
 /* ---- Block01 タイトル・受付 ---- */
-.title { position: absolute; left: 28.0mm; top: 13.75mm; font-size: 8.8mm; font-weight: 700; letter-spacing: 0.02mm; line-height: 1; }
+.title { position: absolute; left: 28.0mm; top: 14.1mm; font-size: 8.8mm; font-weight: 700; letter-spacing: 0.02mm; line-height: 1; }
 .title .copy-kind { position: absolute; left: 38.7mm; top: 3.6mm; font-size: 4.5mm; font-weight: 700; letter-spacing: 0.2mm; white-space: nowrap; }
-.uketsuke1 { left: 107.8mm; top: 17.2mm; width: 48.0mm; height: 6.4mm; }
-.uketsuke2 { left: 155.8mm; top: 17.2mm; width: 48.1mm; height: 6.4mm; }
+.uketsuke1 { left: 107.8mm; top: 17.35mm; width: 48.0mm; height: 6.4mm; }
+.uketsuke2 { left: 155.8mm; top: 17.35mm; width: 48.1mm; height: 6.4mm; }
 .uketsuke1 .grid, .uketsuke2 .grid { grid-template-columns: 11.4mm 1fr; }
 .uketsuke2 .grid { grid-template-columns: 11.5mm 1fr; }
 
@@ -73,7 +73,7 @@
 /* ---- Block07 作業内容の確認・ピアノ・エアコン ---- */
 .workconf1 { left: 5.5mm; top: 85.3mm; width: 49.1mm; height: 15.95mm; }
 .workconf1 .grid { padding-bottom: 0.62mm; grid-template-columns: 14.1mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
-.workconf2 { left: 55.7mm; top: 85.3mm; width: 49.9mm; height: 15.95mm; }
+.workconf2 { left: 55.7mm; top: 85.3mm; width: 50.02mm; height: 15.95mm; }
 .workconf2 .grid { padding-bottom: 0.62mm; grid-template-columns: 23.5mm 3.5mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
 .workconf3 { left: 106.8mm; top: 85.3mm; width: 97.1mm; height: 15.95mm; }
 .workconf3 .grid { padding-bottom: 0.62mm; grid-template-columns: 22.84mm 3.4mm 23.0mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
@@ -86,7 +86,7 @@
 /* ---- Block09 作業状況 ---- */
 .workstat { left: 5.5mm; top: 104.1mm; width: 198.4mm; height: 11.4mm; }
 .workstat .grid {
-  grid-template-columns: 3.9mm 10.2mm 83.32mm 41.68mm 25.6mm 16.8mm 1fr;
+  grid-template-columns: 3.9mm 10.2mm 83.62mm 41.38mm 25.6mm 16.8mm 1fr;
   grid-template-rows: 2.23mm 3.55mm 1fr;
 }
 .ws-label { grid-row: 1 / 4; }
