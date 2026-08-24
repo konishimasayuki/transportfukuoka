@@ -212,22 +212,23 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
     const clash = jobs.some(j => j.v === vKey && hour < (j.s + j.d) && (hour + dur) > j.s)
     const isExt = !!(vehOf(vKey) || {}).ext
     const id = 'j' + (++idRef.current)
-    setJobs(prev => [...prev, { id, contractId: u.contractId, v: vKey, cat: u.cat, name: u.name, crew: u.crew, from: u.from, to: u.to, s: hour, d: dur, st: clash ? 'conflict' : 'tentative', src: String(u.src || '').toUpperCase(), amt: u.amt || 0, extJob: isExt, tel: u.tel || '' }])
+    setJobs(prev => withConflicts([...prev, { id, contractId: u.contractId, v: vKey, cat: u.cat, name: u.name, crew: u.crew, from: u.from, to: u.to, s: hour, d: dur, st: 'tentative', src: String(u.src || '').toUpperCase(), amt: u.amt || 0, extJob: isExt, tel: u.tel || '' }]))
     if (index >= contractCardsAvail.length) { const mi = index - contractCardsAvail.length; setManualUn(prev => prev.filter((_, i) => i !== mi)) }
     toast(clash ? '割り当てました（時間重複あり・要確認）' : '割り当てました')
   }
+  // 重複（同一車両で時間が重なる）を全件まとめて判定し直す。
+  // 1件を未手配へ戻した／時間をずらした結果、残った側の⚠が消えないバグを防ぐ。
+  const withConflicts = (list) => list.map(j => {
+    const clash = list.some(o => o.id !== j.id && o.v === j.v && j.s < (o.s + o.d) && (j.s + j.d) > o.s)
+    if (clash) return j.st === 'conflict' ? j : { ...j, st: 'conflict' }
+    if (j.st === 'conflict') return { ...j, st: 'tentative' }
+    return j
+  })
+
   // 配置済みジョブの項目（時間・道幅・階数・物量・備考など）をその場で更新
-  const patchJob = (id, patch) => setJobs(prev => prev.map(j => j.id === id ? { ...j, ...patch } : j))
-  const changeJobTime = (id, s, d) => {
-    const j = jobs.find(x => x.id === id); if (!j) return
-    const clash = jobs.some(o => o.id !== id && o.v === j.v && s < (o.s + o.d) && (s + d) > o.s)
-    patchJob(id, { s, d, st: clash ? 'conflict' : (j.st === 'confirmed' ? 'confirmed' : 'tentative') })
-  }
-  const changeJobVehicle = (id, vKey) => {
-    const j = jobs.find(x => x.id === id); if (!j || j.v === vKey) return
-    const clash = jobs.some(o => o.id !== id && o.v === vKey && j.s < (o.s + o.d) && (j.s + j.d) > o.s)
-    patchJob(id, { v: vKey, st: clash ? 'conflict' : (j.st === 'confirmed' ? 'confirmed' : 'tentative'), extJob: !!(vehOf(vKey) || {}).ext })
-  }
+  const patchJob = (id, patch) => setJobs(prev => withConflicts(prev.map(j => j.id === id ? { ...j, ...patch } : j)))
+  const changeJobTime = (id, s, d) => patchJob(id, { s, d })
+  const changeJobVehicle = (id, vKey) => patchJob(id, { v: vKey, extJob: !!(vehOf(vKey) || {}).ext })
   const setHelper = (vKey, idx, val) => setHelperMap(prev => {
     const arr = [...(prev[vKey] || ['', '', '', ''])]; arr[idx] = val
     return { ...prev, [vKey]: arr }
@@ -257,9 +258,9 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
     if (j.v === vKey && j.s === hour) return // 同じ位置なら何もしない
     const clash = jobs.some(o => o.id !== id && o.v === vKey && hour < (o.s + o.d) && (hour + j.d) > o.s)
     const isExt = !!(vehOf(vKey) || {}).ext
-    setJobs(prev => prev.map(x => x.id === id
-      ? { ...x, v: vKey, s: hour, st: clash ? 'conflict' : (x.st === 'confirmed' ? 'confirmed' : 'tentative'), extJob: isExt }
-      : x))
+    setJobs(prev => withConflicts(prev.map(x => x.id === id
+      ? { ...x, v: vKey, s: hour, extJob: isExt }
+      : x)))
     toast(clash ? '移動しました（時間重複あり・要確認）' : '移動しました')
   }
 
@@ -276,7 +277,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const returnJob = (id) => {
     const j = jobs.find(x => x.id === id)
     if (!j) return
-    setJobs(prev => prev.filter(x => x.id !== id))
+    setJobs(prev => withConflicts(prev.filter(x => x.id !== id)))
     if (!j.contractId) setManualUn(prev => [jobToUn(j), ...prev]) // 成約由来はderiveで自動的に未手配へ戻る
     toast('未手配に戻しました')
   }
@@ -427,6 +428,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
           <table className="db-table">
             <thead>
               <tr>
+                <th className="c-no" rowSpan={2}>No</th>
                 <th className="c-cls" rowSpan={2}>車格</th>
                 <th className="c-driver" rowSpan={2}>運転手</th>
                 <th className="c-helper" colSpan={4}>助手</th>
@@ -450,8 +452,8 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
             </thead>
             <tbody>
               {(() => {
-                let no = 0
                 const rows = []
+                let no = 0
                 const timeOpts = Array.from({ length: (END - START) * 2 + 1 }, (_, i) => START + i / 2)
                 const timeSel = (val, onChange, min) => (
                   <select className="db-tsel" value={val} onChange={e => onChange(parseFloat(e.target.value))}>
@@ -461,17 +463,19 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                 const cellIn = (val, onCh, cls = '', ph = '') => (
                   <input className={'db-cellin ' + cls} value={val || ''} placeholder={ph} onChange={e => onCh(e.target.value)} />
                 )
+                // 案件が入っている車両だけを行にする（空の車両行は出さない＝最初は未手配だけが並ぶ）
                 vehicles.forEach(v => {
                   const vjobs = jobs.filter(j => j.v === v.key && show(j.cat)).sort((a, b) => a.s - b.s)
-                  const pairs = Math.max(1, vjobs.length)
-                  for (let pi = 0; pi < pairs; pi++) {
-                    const j = vjobs[pi]
-                    const c = j && j.contractId ? contracts.find(x => x.id === j.contractId) : null
-                    const key = v.key + '-' + (j ? j.id : 'empty')
+                  if (!vjobs.length) return
+                  const pairs = vjobs.length
+                  vjobs.forEach((j, pi) => {
+                    const c = j.contractId ? contracts.find(x => x.id === j.contractId) : null
+                    const key = v.key + '-' + j.id
                     no++
-                    const conflictCls = j && j.st === 'conflict' ? ' conflict' : ''
+                    const conflictCls = j.st === 'conflict' ? ' conflict' : ''
                     rows.push(
                       <tr key={key + '-1'} className={'r1' + conflictCls}>
+                        <td className="c-no" rowSpan={2}>{no}</td>
                         {pi === 0 && <>
                           <td className="c-cls" rowSpan={pairs * 2}>
                             <span className="db-badge">{v.ext ? '外注' : '#' + v.id}</span>
@@ -491,54 +495,56 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                           ))}
                         </>}
                         <td className="c-time" rowSpan={2}>
-                          {j ? <>
-                            <div className="t-edit">
-                              {timeSel(j.s, t => changeJobTime(j.id, t, Math.max(0.5, j.s + j.d - t)))}
-                              <span>〜</span>
-                              {timeSel(j.s + j.d, t => changeJobTime(j.id, j.s, t - j.s), j.s)}
-                            </div>
-                            <div className="t-acts">
-                              {j.st === 'conflict' && <span className="db-conf" title="時間重複の疑い">⚠重複</span>}
-                              <button className="db-mini" title="未手配に戻す" onClick={() => returnJob(j.id)}>↩ 戻す</button>
-                            </div>
-                          </> : <span className="db-empty">—</span>}
+                          <div className="t-edit">
+                            {timeSel(j.s, t => changeJobTime(j.id, t, Math.max(0.5, j.s + j.d - t)))}
+                            <span>〜</span>
+                            {timeSel(j.s + j.d, t => changeJobTime(j.id, j.s, t - j.s), j.s)}
+                          </div>
+                          <div className="t-acts">
+                            {j.st === 'conflict' && <span className="db-conf" title="時間重複の疑い">⚠重複</span>}
+                            <button className="db-mini" title="未手配に戻す" onClick={() => returnJob(j.id)}>↩ 戻す</button>
+                          </div>
                         </td>
-                        <td className="c-tel">{j ? cellIn(j.tel ?? (c ? c.phone : ''), val => patchJob(j.id, { tel: val }), '', '電話番号') : ''}</td>
-                        <td className="c-cat">{j ? <span className={'db-catpill ' + j.cat}>{CAT_NAME[j.cat]}</span> : ''}</td>
-                        <td className="c-amt">{j ? (j.amt ? money(j.amt) : '—') : ''}</td>
-                        <td className="c-rw">{j ? cellIn(j.rw1, val => patchJob(j.id, { rw1: val }), 'ctr') : ''}</td>
-                        <td className="c-fl">{j ? cellIn(j.fl1, val => patchJob(j.id, { fl1: val }), 'ctr', '階') : ''}</td>
-                        {pi === 0 && <td className="c-tilde" rowSpan={pairs * 2}>〜</td>}
-                        <td className="c-rw">{j ? cellIn(j.rw2, val => patchJob(j.id, { rw2: val }), 'ctr') : ''}</td>
-                        <td className="c-fl">{j ? cellIn(j.fl2, val => patchJob(j.id, { fl2: val }), 'ctr', '階') : ''}</td>
-                        <td className="c-note" rowSpan={2}>{j ? cellIn(j.note, val => patchJob(j.id, { note: val }), '', 'メモ') : ''}</td>
+                        <td className="c-tel">{cellIn(j.tel ?? (c ? c.phone : ''), val => patchJob(j.id, { tel: val }), '', '電話番号')}</td>
+                        <td className="c-cat"><span className={'db-catpill ' + j.cat}>{CAT_NAME[j.cat]}</span></td>
+                        <td className="c-amt">{j.amt ? money(j.amt) : '—'}</td>
+                        <td className="c-rw">{cellIn(j.rw1, val => patchJob(j.id, { rw1: val }), 'ctr')}</td>
+                        <td className="c-fl">{cellIn(j.fl1, val => patchJob(j.id, { fl1: val }), 'ctr', '階')}</td>
+                        <td className="c-tilde" rowSpan={2}>〜</td>
+                        <td className="c-rw">{cellIn(j.rw2, val => patchJob(j.id, { rw2: val }), 'ctr')}</td>
+                        <td className="c-fl">{cellIn(j.fl2, val => patchJob(j.id, { fl2: val }), 'ctr', '階')}</td>
+                        <td className="c-note" rowSpan={2}>{cellIn(j.note, val => patchJob(j.id, { note: val }), '', 'メモ')}</td>
                       </tr>
                     )
                     rows.push(
                       <tr key={key + '-2'} className={'r2' + conflictCls}>
                         <td colSpan={2} className="c-name">
-                          {j ? <button className="db-namebtn" onClick={() => openJobDetail(j)} title="詳細を開く">
+                          <button className="db-namebtn" onClick={() => openJobDetail(j)} title="詳細を開く">
                             {j.st === 'tentative' && <span className="db-tag">仮</span>}
                             {j.extJob && <span className="db-tag">外注</span>}
                             {j.name}
-                          </button> : <span className="db-empty">案件なし</span>}
+                          </button>
                         </td>
-                        <td className="c-load">{j ? cellIn(j.load, val => patchJob(j.id, { load: val }), 'ctr', '才') : ''}</td>
-                        <td colSpan={2} className="c-addr">{j ? ((c && c.fromAddress) || j.from || '') : ''}</td>
-                        <td colSpan={2} className="c-addr">{j ? ((c && c.toAddress) || (j.to && j.to !== '—' ? j.to : '')) : ''}</td>
+                        <td className="c-load">{cellIn(j.load, val => patchJob(j.id, { load: val }), 'ctr', '才')}</td>
+                        <td colSpan={2} className="c-addr">{(c && c.fromAddress) || j.from || ''}</td>
+                        <td colSpan={2} className="c-addr">{(c && c.toAddress) || (j.to && j.to !== '—' ? j.to : '')}</td>
                       </tr>
                     )
-                  }
+                  })
+                })
+
+                // 未手配案件（薄黄色）：番号は配置済みの続き。車両と開始時刻を選んで割当
+                unassigned.forEach((u, i) => {
+                  if (!show(u.cat)) return
+                  no++
+                  rows.push(
+                    <UnassignedRows key={'un' + i} u={u} index={i} no={no} vehicles={vehicles}
+                      onAssign={assignCard}
+                      onRemove={i >= contractCardsAvail.length ? () => removeManualUn(i - contractCardsAvail.length) : null} />
+                  )
                 })
                 return rows
               })()}
-
-              {/* 未手配案件（薄黄色）：車両と開始時刻を選んで割当 */}
-              {unassigned.map((u, i) => show(u.cat) && (
-                <UnassignedRows key={'un' + i} u={u} index={i} vehicles={vehicles}
-                  onAssign={assignCard}
-                  onRemove={i >= contractCardsAvail.length ? () => removeManualUn(i - contractCardsAvail.length) : null} />
-              ))}
             </tbody>
           </table>
         </div>
@@ -560,13 +566,14 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
 }
 
 // ===== 未手配案件の行（薄黄色・車両と開始時刻を選んで割当） =====
-function UnassignedRows({ u, index, vehicles, onAssign, onRemove }) {
+function UnassignedRows({ u, index, no, vehicles, onAssign, onRemove }) {
   const [vSel, setVSel] = useState('')
   const [tSel, setTSel] = useState(9)
   const timeOpts = Array.from({ length: (END - START) * 2 + 1 }, (_, i) => START + i / 2)
   return (
     <>
       <tr className="r1 unrow">
+        <td className="c-no" rowSpan={2}>{no}</td>
         <td className="c-cls" rowSpan={2}>
           <select className="db-cellsel" value={vSel} onChange={e => setVSel(e.target.value)}>
             <option value="">車両を選択</option>
