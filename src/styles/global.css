@@ -451,7 +451,7 @@ tr:hover td { background: var(--bg); }
 }
 
 /* ===== 配車表（車格×案件テーブル） ===== */
-.db-table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; min-width: 1080px; }
+.db-table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; min-width: 1180px; }
 .db-table th, .db-table td { border: 1px solid #CBD5E1; padding: 4px 6px; text-align: center; vertical-align: middle; }
 .db-table thead th { background: #E9EEF5; font-weight: 800; color: #334155; font-size: 11px; padding: 6px 4px; }
 .db-table .c-no { width: 28px; background: #F1F5F9; font-weight: 800; color: #64748B; }
@@ -460,13 +460,13 @@ tr:hover td { background: var(--bg); }
 .db-table .c-driver { width: 92px; }
 .db-table .c-helper { width: 56px; }
 .db-table .c-time { width: 118px; white-space: nowrap; }
-.db-table .c-tel { width: 120px; }
-.db-table .c-cat { width: 96px; }
+.db-table .c-tel { width: 110px; }
+.db-table .c-cat { width: 88px; }
 .db-table .c-amt { width: 92px; text-align: right; font-weight: 700; white-space: nowrap; }
 .db-table .c-rw { width: 46px; }
 .db-table .c-fl { width: 46px; }
 .db-table .c-tilde { width: 24px; color: #64748B; background: #F8FAFC; }
-.db-table .c-note { width: 130px; }
+.db-table .c-note { width: 120px; }
 .db-table .c-name { text-align: left; padding-left: 10px; }
 .db-table .c-addr { text-align: left; padding-left: 10px; font-weight: 700; color: #1E3A5F; }
 .db-table .c-load { font-weight: 700; }
@@ -509,3 +509,22 @@ button.db-week-cell:hover { border-color: var(--blueL); }
 .db-week-cell.cal { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
 .db-week-cell.cal .dw-cal { font-size: 16px; line-height: 1; }
 @media (max-width: 900px) { .db-week { grid-template-columns: repeat(4, 1fr); } .db-week-cell.cal { grid-column: span 1; } }
+
+/* 配車表：助手バッジ・メモ列・金額中央・顧客詳細ボタン */
+.db-table .c-amt { text-align: center; }
+.db-table .c-helper { width: 150px; }
+.db-table .c-memo { width: 150px; }
+.hp-wrap { display: flex; align-items: stretch; gap: 3px; }
+.hp-badge { position: relative; flex: 1; min-width: 0; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; }
+.hp-badge .db-cellin { padding: 4px 2px; }
+.hp-badge .db-cellin.big { font-size: 14px; font-weight: 700; padding: 7px 4px; }
+.hp-badge:hover .hp-x { opacity: 1; }
+.hp-x { position: absolute; top: -6px; right: -5px; width: 15px; height: 15px; line-height: 1;
+  border: 1px solid #FECACA; background: #FEF2F2; color: #DC2626; border-radius: 50%;
+  font-size: 10px; cursor: pointer; opacity: 0; transition: opacity .15s; padding: 0; font-family: inherit; }
+.hp-add { flex: 0 0 22px; border: 1px dashed #CBD5E1; background: #fff; color: #64748B;
+  border-radius: 6px; cursor: pointer; font-size: 13px; font-family: inherit; padding: 0; }
+.hp-add:hover { border-color: var(--blueL); color: var(--blue); background: #EFF6FF; }
+.db-cellin.addr { font-weight: 700; color: #1E3A5F; text-align: left; }
+.db-mini.detail { display: block; width: 100%; margin-top: 3px; border-color: #CBD5E1; }
+.db-mini.detail:hover { border-color: var(--blueL); color: var(--blue); }

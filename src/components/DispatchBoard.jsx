@@ -91,6 +91,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const boardRef = useRef(null)              // 左ボードの高さ計測用
   const [sideH, setSideH] = useState(null)   // 未手配パネルの高さ（左ボードに合わせる）
   const calRef = useRef(null)                // 週ストリップ右端のカレンダー入力
+  const [unDetail, setUnDetail] = useState(null) // 未手配カードから開く成約の詳細（contractId）
   const toast = onToast || (() => {})
   const boardKey = ymd(boardDate)
   const show = (c) => !filter || filter[c] !== false // カテゴリチップの絞り込み
@@ -135,7 +136,13 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
       setCrewList(Array.isArray(data._crew) && data._crew.length ? data._crew : DEFAULT_CREW)
       // その日に保存済みの乗務員があればそれを、無ければフリート既定で初期化（編集は日付別に保存）
       setCrewMap(st.crew && Object.keys(st.crew).length ? st.crew : seedCrew(fleet))
-      setHelperMap(st.helpers || {})
+      // 旧データ（4枠固定）は末尾の空欄を落として可変バッジへ移行
+      const hm = st.helpers || {}
+      setHelperMap(Object.fromEntries(Object.entries(hm).map(([kk, arr]) => {
+        const a = Array.isArray(arr) ? [...arr] : []
+        while (a.length > 1 && !String(a[a.length - 1] || '').trim()) a.pop()
+        return [kk, a.length ? a : ['']]
+      })))
       readyKey.current = boardKey
     }).catch(() => { if (!cancelled) { setJobs([]); setManualUn([]); readyKey.current = boardKey } })
     return () => { cancelled = true }
@@ -229,9 +236,21 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const patchJob = (id, patch) => setJobs(prev => withConflicts(prev.map(j => j.id === id ? { ...j, ...patch } : j)))
   const changeJobTime = (id, s, d) => patchJob(id, { s, d })
   const changeJobVehicle = (id, vKey) => patchJob(id, { v: vKey, extJob: !!(vehOf(vKey) || {}).ext })
+  // 助手は可変バッジ。既定は1枠（大きく1つ）、＋で分割数を増やす（最大4）
+  const HELPER_MAX = 4
+  const helpersOf = (vKey) => { const a = helperMap[vKey]; return Array.isArray(a) && a.length ? a : [''] }
   const setHelper = (vKey, idx, val) => setHelperMap(prev => {
-    const arr = [...(prev[vKey] || ['', '', '', ''])]; arr[idx] = val
+    const arr = [...helpersOf(vKey)]; arr[idx] = val
     return { ...prev, [vKey]: arr }
+  })
+  const addHelper = (vKey) => setHelperMap(prev => {
+    const arr = [...helpersOf(vKey)]
+    if (arr.length >= HELPER_MAX) return prev
+    return { ...prev, [vKey]: [...arr, ''] }
+  })
+  const removeHelper = (vKey, idx) => setHelperMap(prev => {
+    const arr = helpersOf(vKey).filter((_, i) => i !== idx)
+    return { ...prev, [vKey]: arr.length ? arr : [''] }
   })
 
   // （旧・車両×時間グリッド用。表形式に置き換えたため未使用）
@@ -431,19 +450,16 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                 <th className="c-no" rowSpan={2}>No</th>
                 <th className="c-cls" rowSpan={2}>車格</th>
                 <th className="c-driver" rowSpan={2}>運転手</th>
-                <th className="c-helper" colSpan={4}>助手</th>
+                <th className="c-helper" rowSpan={2}>助手</th>
                 <th className="c-time" rowSpan={2}>時間</th>
                 <th colSpan={2}>連絡先・手配</th>
                 <th className="c-amt">金額</th>
-                <th className="c-rw">道幅</th>
-                <th className="c-fl">階数</th>
+                <th className="c-memo" colSpan={2}>積地メモ</th>
                 <th className="c-tilde" rowSpan={2}>〜</th>
-                <th className="c-rw">道幅</th>
-                <th className="c-fl">階数</th>
+                <th className="c-memo" colSpan={2}>卸地メモ</th>
                 <th className="c-note" rowSpan={2}>備考</th>
               </tr>
               <tr>
-                <th colSpan={4} style={{ fontWeight: 400, fontSize: 10, color: '#64748B' }}>（4名まで）</th>
                 <th colSpan={2}>顧客名</th>
                 <th>物量</th>
                 <th colSpan={2}>積地</th>
@@ -488,11 +504,22 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                               {crewMap[v.key] && !crewList.includes(crewMap[v.key]) && <option value={crewMap[v.key]}>{crewMap[v.key]}</option>}
                             </select>
                           </td>
-                          {Array.from({ length: 4 }, (_, hi) => (
-                            <td key={hi} className="c-helper" rowSpan={pairs * 2}>
-                              {cellIn((helperMap[v.key] || [])[hi], val => setHelper(v.key, hi, val), 'ctr')}
-                            </td>
-                          ))}
+                          <td className="c-helper" rowSpan={pairs * 2}>
+                            <div className="hp-wrap">
+                              {helpersOf(v.key).map((hv, hi) => (
+                                <div className="hp-badge" key={hi}>
+                                  <input className={'db-cellin ctr' + (helpersOf(v.key).length === 1 ? ' big' : '')}
+                                    value={hv || ''} placeholder="助手" onChange={e => setHelper(v.key, hi, e.target.value)} />
+                                  {helpersOf(v.key).length > 1 && (
+                                    <button className="hp-x" title="この枠を削除" onClick={() => removeHelper(v.key, hi)}>×</button>
+                                  )}
+                                </div>
+                              ))}
+                              {helpersOf(v.key).length < HELPER_MAX && (
+                                <button className="hp-add" title="助手の枠を増やす" onClick={() => addHelper(v.key)}>＋</button>
+                              )}
+                            </div>
+                          </td>
                         </>}
                         <td className="c-time" rowSpan={2}>
                           <div className="t-edit">
@@ -508,12 +535,13 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                         <td className="c-tel">{cellIn(j.tel ?? (c ? c.phone : ''), val => patchJob(j.id, { tel: val }), '', '電話番号')}</td>
                         <td className="c-cat"><span className={'db-catpill ' + j.cat}>{CAT_NAME[j.cat]}</span></td>
                         <td className="c-amt">{j.amt ? money(j.amt) : '—'}</td>
-                        <td className="c-rw">{cellIn(j.rw1, val => patchJob(j.id, { rw1: val }), 'ctr')}</td>
-                        <td className="c-fl">{cellIn(j.fl1, val => patchJob(j.id, { fl1: val }), 'ctr', '階')}</td>
+                        <td className="c-memo" colSpan={2}>{cellIn(j.memoFrom, val => patchJob(j.id, { memoFrom: val }), '', '道幅・階数など')}</td>
                         <td className="c-tilde" rowSpan={2}>〜</td>
-                        <td className="c-rw">{cellIn(j.rw2, val => patchJob(j.id, { rw2: val }), 'ctr')}</td>
-                        <td className="c-fl">{cellIn(j.fl2, val => patchJob(j.id, { fl2: val }), 'ctr', '階')}</td>
-                        <td className="c-note" rowSpan={2}>{cellIn(j.note, val => patchJob(j.id, { note: val }), '', 'メモ')}</td>
+                        <td className="c-memo" colSpan={2}>{cellIn(j.memoTo, val => patchJob(j.id, { memoTo: val }), '', '道幅・階数など')}</td>
+                        <td className="c-note" rowSpan={2}>
+                          {cellIn(j.note, val => patchJob(j.id, { note: val }), '', 'メモ')}
+                          <button className="db-mini detail" onClick={() => openJobDetail(j)}>👤 顧客詳細</button>
+                        </td>
                       </tr>
                     )
                     rows.push(
@@ -526,8 +554,8 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                           </button>
                         </td>
                         <td className="c-load">{cellIn(j.load, val => patchJob(j.id, { load: val }), 'ctr', '才')}</td>
-                        <td colSpan={2} className="c-addr">{(c && c.fromAddress) || j.from || ''}</td>
-                        <td colSpan={2} className="c-addr">{(c && c.toAddress) || (j.to && j.to !== '—' ? j.to : '')}</td>
+                        <td colSpan={2} className="c-addr">{cellIn(j.addrFrom ?? ((c && c.fromAddress) || j.from || ''), val => patchJob(j.id, { addrFrom: val }), 'addr', '積地')}</td>
+                        <td colSpan={2} className="c-addr">{cellIn(j.addrTo ?? ((c && c.toAddress) || (j.to && j.to !== '—' ? j.to : '')), val => patchJob(j.id, { addrTo: val }), 'addr', '卸地')}</td>
                       </tr>
                     )
                   })
@@ -540,6 +568,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                   rows.push(
                     <UnassignedRows key={'un' + i} u={u} index={i} no={no} vehicles={vehicles}
                       onAssign={assignCard}
+                      onDetail={u.contractId ? () => setUnDetail(u.contractId) : null}
                       onRemove={i >= contractCardsAvail.length ? () => removeManualUn(i - contractCardsAvail.length) : null} />
                   )
                 })
@@ -561,12 +590,19 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
       {jobDetailItem && (
         <ContractDetailModal item={jobDetailItem} isNew={false} onClose={() => setJobDetail(null)} onSave={saveJobDetail} />
       )}
+
+      {/* 未手配カードの「顧客詳細」 */}
+      {unDetail && (() => {
+        const c = contracts.find(x => x.id === unDetail)
+        return c ? <ContractDetailModal item={c} isNew={false} onClose={() => setUnDetail(null)}
+          onSave={(patch) => { onUpdateContract && onUpdateContract(c, patch); setUnDetail(null) }} /> : null
+      })()}
     </div>
   )
 }
 
 // ===== 未手配案件の行（薄黄色・車両と開始時刻を選んで割当） =====
-function UnassignedRows({ u, index, no, vehicles, onAssign, onRemove }) {
+function UnassignedRows({ u, index, no, vehicles, onAssign, onRemove, onDetail }) {
   const [vSel, setVSel] = useState('')
   const [tSel, setTSel] = useState(9)
   const timeOpts = Array.from({ length: (END - START) * 2 + 1 }, (_, i) => START + i / 2)
@@ -588,21 +624,20 @@ function UnassignedRows({ u, index, no, vehicles, onAssign, onRemove }) {
           </div>
           <button className="db-mini assign" disabled={!vSel} onClick={() => onAssign(index, vSel, tSel)}>→ 割当</button>
         </td>
-        <td className="c-helper unlabel" colSpan={4} rowSpan={2}>未手配</td>
+        <td className="c-helper unlabel" rowSpan={2}>未手配</td>
         <td className="c-time" rowSpan={2}><span className="db-whn">🕐 {u.whn || '—'}</span></td>
         <td className="c-tel">{u.tel || ''}</td>
         <td className="c-cat"><span className={'db-catpill ' + u.cat}>{CAT_NAME[u.cat]}</span></td>
         <td className="c-amt">{u.amt ? money(u.amt) : '—'}</td>
-        <td className="c-rw"></td>
-        <td className="c-fl"></td>
+        <td className="c-memo" colSpan={2}></td>
         <td className="c-tilde" rowSpan={2}>〜</td>
-        <td className="c-rw"></td>
-        <td className="c-fl"></td>
+        <td className="c-memo" colSpan={2}></td>
         <td className="c-note" rowSpan={2}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between' }}>
             <span className={'src db-src-' + String(u.src || '').toLowerCase()}>{SRC_TXT[String(u.src || '').toLowerCase()] || u.src}</span>
             {onRemove && <button className="db-mini danger" title="この未手配を削除" onClick={onRemove}>× 削除</button>}
           </div>
+          {onDetail && <button className="db-mini detail" onClick={onDetail}>👤 顧客詳細</button>}
         </td>
       </tr>
       <tr className="r2 unrow">
