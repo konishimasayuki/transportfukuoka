@@ -297,6 +297,70 @@ const inputStyle = {
 const labelStyle = { fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4, display: 'block' }
 const feeInput = { ...inputStyle, textAlign: 'right', padding: '6px 8px' }
 
+
+/* -------------------------------------------------------------------------
+ * 印刷プレビュー：原本再現の帳票フォーム（/estimate-form/）へデータを渡して開く。
+ * 帳票側は localStorage のデータを読み込んで各欄へ流し込む。
+ * ----------------------------------------------------------------------- */
+const PRINT_FORM_KEY = 'transportfukuoka:estimatePrint'
+// 家財キーの名称差（見積タブ → 帳票フォーム）
+const PRINT_KEY_MAP = {
+  bunkbed: 'bed2', sofa_3: 'sofa3', sofa_2: 'sofa2', sofa_1: 'sofa1',
+  getabako: 'getabako_T', getabako_y: 'getabako_Y', juutan: 'jutan',
+  kitchencnt: 'kitchen_c', dining_A: 'shokutaku_A', dining_B: 'shokutaku_B',
+  table: 'table_wy',
+}
+function splitDate(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || '')
+  return m ? { month: String(Number(m[2])), day: String(Number(m[3])) } : { month: '', day: '' }
+}
+function buildPrintData(form) {
+  const d = {}
+  const put = (k, v) => { if (v !== undefined && v !== null && v !== '') d[k] = v }
+  // 顧客
+  put('customerName', form.name); put('customerFurigana', form.kana)
+  put('currentPostal', form.fromZip); put('currentAddress', form.fromAddress)
+  put('curTelHome', form.fromTelHome); put('curTelWork', form.fromTelWork); put('curTelMobile', form.fromTelMobile)
+  put('destPostal', form.toZip); put('destAddress', form.toAddress)
+  put('dstTelHome', form.toTelHome); put('dstTelWork', form.toTelWork); put('dstTelMobile', form.toTelMobile)
+  // 日程
+  const mv = splitDate(form.moveDate); put('moveMonth', mv.month); put('moveDay', mv.day); put('moveAmPm', form.moveAP)
+  const dv = splitDate(form.deliverDate); put('deliverMonth', dv.month); put('deliverDay', dv.day); put('deliverAmPm', form.deliverAP)
+  const pk = splitDate(form.packDate); put('packMonth', pk.month); put('packDay', pk.day)
+  const op = splitDate(form.openDate); put('unpackMonth', op.month); put('unpackDay', op.day)
+  // 見積日は欄が狭いので YY.M.D に整形して渡す
+  const ed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(form.estimateDate || '')
+  put('estimateDate', ed ? `${ed[1].slice(2)}.${Number(ed[2])}.${Number(ed[3])}` : form.estimateDate)
+  put('estimatorName', form.estimator)
+  put('sendType', form.sendType); put('distanceKm', form.distanceKm)
+  // 作業内容の確認・作業状況
+  put('packSmallBy', form.packSmallBy); put('packFurniBy', form.packFurniBy); put('packOpenBy', form.packOpenBy)
+  put('airconSepFrom', form.airconSep); put('airconSepTo', form.airconSep)
+  put('airconWinFrom', form.airconWindow); put('airconWinTo', form.airconWindow)
+  put('optionWork', form.optionWork)
+  put('twoPlaceC', form.twoPlace)
+  if (form.elevator) put('elevC', form.elevator)
+  if (form.windowLift) put('windowC', form.windowLift === 'F' || form.windowLift === '有' ? 'F' : '無')
+  if (form.machine) put('machineC', form.machine)
+  // 家財数量
+  for (const [k, v] of Object.entries(form.items || {})) {
+    if (num(v) > 0) d['kz_' + (PRINT_KEY_MAP[k] || k)] = v
+  }
+  // 料金
+  for (const f of FEE_A) put('feeA_' + f.key, form.feeA?.[f.key])
+  for (const f of FEE_B) put('feeB_' + f.key, form.feeB?.[f.key])
+  for (const f of FEE_C) put('feeC_' + f.key + '_amt1', form.feeC?.[f.key])
+  for (const f of FEE_D) put('feeD_' + f.key, form.feeD?.[f.key])
+  // 支払・備考
+  put('payMethod', form.payment)
+  put('promiseText', form.memo)
+  return d
+}
+function openPrintPreview(form) {
+  try { localStorage.setItem(PRINT_FORM_KEY, JSON.stringify(buildPrintData(form))) } catch { /* 容量超過等は素通し */ }
+  window.open('/estimate-form/index.html', '_blank')
+}
+
 export default function Estimate({ user, switchTab }) {
   const isDemo = user?.mode === 'demo'
   const [items, setItems]         = useState([])
@@ -635,7 +699,7 @@ export default function Estimate({ user, switchTab }) {
           <div style={{ fontSize: 16, fontWeight: 900 }}>御見積書 {editId ? '編集' : '作成'}</div>
           <div style={{ fontSize: 11, color: '#64748B' }}>見積番号 {form.estimateNo}</div>
         </div>
-        <button className="btn btn-outline btn-sm" onClick={() => setPreview(true)}>🖨 印刷プレビュー</button>
+        <button className="btn btn-outline btn-sm" onClick={() => openPrintPreview(form)}>🖨 印刷プレビュー</button>
         <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving} style={{ opacity: saving ? .6 : 1 }}>
           {saving ? '保存中...' : '保存する'}
         </button>
@@ -821,7 +885,7 @@ export default function Estimate({ user, switchTab }) {
       {/* 下部操作 */}
       <div className="no-print" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginBottom: 24 }}>
         <button className="btn btn-outline" onClick={backToList}>← 一覧へ</button>
-        <button className="btn btn-outline" onClick={() => setPreview(true)}>🖨 印刷プレビュー</button>
+        <button className="btn btn-outline" onClick={() => openPrintPreview(form)}>🖨 印刷プレビュー</button>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ opacity: saving ? .6 : 1 }}>{saving ? '保存中...' : '保存する'}</button>
       </div>
 
