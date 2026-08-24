@@ -23,7 +23,10 @@ function buildKazai() {
         continue
       }
       const [key, name, size, pt] = it
-      const nm = el('div', 'kz name', `<span>${name}${size ? '' : ''}</span><span>${size || ''}</span>`)
+      const isDitto = name.startsWith('〃')
+      const nm = el('div', 'kz name', `<span${isDitto ? ' style="margin-left:3.2mm"' : ''}>${name}</span>` +
+        (size ? `<span style="position:absolute;left:11.2mm">${size}</span>` : ''))
+      nm.style.position = 'relative'
       const ptc = el('div', 'kz pt', pt === null ? '<span style="transform:rotate(-20deg)">/</span>' : (pt === '' ? '' : String(pt)))
       const q1 = el('div', 'kz', inp('kz_' + key))
       const q2 = el('div', `kz${c === 4 ? ' mats-edge' : ''}`, inp('kz_' + key + '_x'))
