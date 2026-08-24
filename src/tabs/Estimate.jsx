@@ -489,6 +489,8 @@ export default function Estimate({ user, switchTab }) {
 
   // 住所から郵便番号を取得（転居先／現住所）。Googleマップキーが必要。
   const [zipBusy, setZipBusy] = useState('') // 'from' | 'to' | ''
+  const [kazaiQuery, setKazaiQuery] = useState('')          // 家財の検索語
+  const [kazaiOnlyEntered, setKazaiOnlyEntered] = useState(false) // 入力済みのみ表示
   const lookupZip = async (section) => {
     const addr = section === 'to' ? form.toAddress : form.fromAddress
     if (!addr || !addr.trim()) { showToast('先に住所を入力してください'); return }
@@ -692,21 +694,38 @@ export default function Estimate({ user, switchTab }) {
     <div>
       <PrintStyle />
 
-      {/* ヘッダー操作 */}
-      <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <button className="btn btn-outline btn-sm" onClick={backToList}>← 一覧へ</button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 900 }}>御見積書 {editId ? '編集' : '作成'}</div>
-          <div style={{ fontSize: 11, color: '#64748B' }}>見積番号 {form.estimateNo}</div>
+      {/* ヘッダー操作（画面上部に固定） */}
+      <div className="no-print" style={{
+        position: 'sticky', top: -16, zIndex: 50, background: '#F7F9FC',
+        margin: '-16px -16px 12px', padding: '20px 16px 6px', borderBottom: '1px solid #E2E8F0',
+        boxShadow: '0 4px 12px rgba(15,42,74,.06)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-outline btn-sm" onClick={backToList}>← 一覧へ</button>
+          <div style={{ flex: 1, minWidth: 140 }}>
+            <div style={{ fontSize: 15, fontWeight: 900 }}>御見積書 {editId ? '編集' : '作成'}</div>
+            <div style={{ fontSize: 10, color: '#64748B' }}>見積番号 {form.estimateNo}</div>
+          </div>
+          <div style={{ textAlign: 'right', marginRight: 4 }}>
+            <div style={{ fontSize: 9, color: '#64748B' }}>再計（税込）</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: '#1E5FA8', lineHeight: 1.1 }}>{yen(totals.saikei)}</div>
+          </div>
+          <button className="btn btn-outline btn-sm" onClick={() => openPrintPreview(form)}>🖨 印刷プレビュー</button>
+          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving} style={{ opacity: saving ? .6 : 1 }}>
+            {saving ? '保存中...' : '保存する'}
+          </button>
         </div>
-        <button className="btn btn-outline btn-sm" onClick={() => openPrintPreview(form)}>🖨 印刷プレビュー</button>
-        <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving} style={{ opacity: saving ? .6 : 1 }}>
-          {saving ? '保存中...' : '保存する'}
-        </button>
+        {/* セクションへジャンプ */}
+        <div style={{ display: 'flex', gap: 6, marginTop: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          {[['sec-basic', '基本'], ['sec-customer', '顧客'], ['sec-work', '作業'], ['sec-kazai', '家財'], ['sec-fee', '料金'], ['sec-pay', '支払・備考']].map(([sid, lab]) => (
+            <button key={sid} type="button" className="btn btn-sm" onClick={() => document.getElementById(sid)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              style={{ background: '#fff', border: '1px solid #E2E8F0', color: '#475569', whiteSpace: 'nowrap', padding: '3px 10px', fontSize: 11 }}>{lab}</button>
+          ))}
+        </div>
       </div>
 
       {/* 基本情報 */}
-      <Section title="基本情報">
+      <Section id="sec-basic" title="基本情報">
         <div className="three-col">
           <Field label="見積番号"><input style={inputStyle} value={form.estimateNo} onChange={e => set('estimateNo', e.target.value)} /></Field>
           <Field label="見積日"><input type="date" style={inputStyle} value={form.estimateDate} onChange={e => set('estimateDate', e.target.value)} /></Field>
@@ -739,7 +758,7 @@ export default function Estimate({ user, switchTab }) {
       </Section>
 
       {/* 顧客情報 */}
-      <Section title="顧客情報">
+      <Section id="sec-customer" title="顧客情報">
         <div className="two-col">
           <Field label="お名前 *"><input style={inputStyle} value={form.name} onChange={e => set('name', e.target.value)} placeholder="例：サンプル 太郎" /></Field>
           <Field label="フリガナ"><input style={inputStyle} value={form.kana} onChange={e => set('kana', e.target.value)} placeholder="例：サンプル タロウ" /></Field>
@@ -749,37 +768,37 @@ export default function Estimate({ user, switchTab }) {
         <div className="two-col" style={{ marginTop: 6 }}>
           <Field label="〒">
             <div style={{ display: 'flex', gap: 6 }}>
-              <input style={inputStyle} value={form.fromZip} onChange={e => set('fromZip', e.target.value)} placeholder="815-0000" />
+              <input style={inputStyle} inputMode="numeric" value={form.fromZip} onChange={e => set('fromZip', e.target.value)} placeholder="815-0000" />
               <button type="button" className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => lookupZip('from')} disabled={zipBusy === 'from'} title="住所から郵便番号を取得">{zipBusy === 'from' ? '…' : '住所から'}</button>
             </div>
           </Field>
           <Field label="住所"><input style={inputStyle} value={form.fromAddress} onChange={e => set('fromAddress', e.target.value)} placeholder="福岡市南区…" /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 6 }}>
-          <Field label="電話（自宅）"><input style={inputStyle} value={form.fromTelHome} onChange={e => set('fromTelHome', e.target.value)} /></Field>
-          <Field label="電話（勤務先）"><input style={inputStyle} value={form.fromTelWork} onChange={e => set('fromTelWork', e.target.value)} /></Field>
-          <Field label="携帯電話"><input style={inputStyle} value={form.fromTelMobile} onChange={e => set('fromTelMobile', e.target.value)} placeholder="090-…" /></Field>
+          <Field label="電話（自宅）"><input style={inputStyle} inputMode="tel" value={form.fromTelHome} onChange={e => set('fromTelHome', e.target.value)} /></Field>
+          <Field label="電話（勤務先）"><input style={inputStyle} inputMode="tel" value={form.fromTelWork} onChange={e => set('fromTelWork', e.target.value)} /></Field>
+          <Field label="携帯電話"><input style={inputStyle} inputMode="tel" value={form.fromTelMobile} onChange={e => set('fromTelMobile', e.target.value)} placeholder="090-…" /></Field>
         </div>
 
         <div style={{ marginTop: 14, fontWeight: 700, fontSize: 12, color: '#0E8A7A' }}>［B］転居先</div>
         <div className="two-col" style={{ marginTop: 6 }}>
           <Field label="〒">
             <div style={{ display: 'flex', gap: 6 }}>
-              <input style={inputStyle} value={form.toZip} onChange={e => set('toZip', e.target.value)} placeholder="819-0000" />
+              <input style={inputStyle} inputMode="numeric" value={form.toZip} onChange={e => set('toZip', e.target.value)} placeholder="819-0000" />
               <button type="button" className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => lookupZip('to')} disabled={zipBusy === 'to'} title="転居先の住所から郵便番号を取得">{zipBusy === 'to' ? '…' : '住所から'}</button>
             </div>
           </Field>
           <Field label="住所"><input style={inputStyle} value={form.toAddress} onChange={e => set('toAddress', e.target.value)} placeholder="福岡市南区…" /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 6 }}>
-          <Field label="電話（自宅）"><input style={inputStyle} value={form.toTelHome} onChange={e => set('toTelHome', e.target.value)} /></Field>
-          <Field label="電話（勤務先）"><input style={inputStyle} value={form.toTelWork} onChange={e => set('toTelWork', e.target.value)} /></Field>
-          <Field label="携帯電話"><input style={inputStyle} value={form.toTelMobile} onChange={e => set('toTelMobile', e.target.value)} /></Field>
+          <Field label="電話（自宅）"><input style={inputStyle} inputMode="tel" value={form.toTelHome} onChange={e => set('toTelHome', e.target.value)} /></Field>
+          <Field label="電話（勤務先）"><input style={inputStyle} inputMode="tel" value={form.toTelWork} onChange={e => set('toTelWork', e.target.value)} /></Field>
+          <Field label="携帯電話"><input style={inputStyle} inputMode="tel" value={form.toTelMobile} onChange={e => set('toTelMobile', e.target.value)} /></Field>
         </div>
       </Section>
 
       {/* 作業条件 */}
-      <Section title="作業内容・作業状況">
+      <Section id="sec-work" title="作業内容・作業状況">
         <div className="three-col">
           <Field label="小物梱包"><Seg choices={PERSON_CHOICES} value={form.packSmallBy} onChange={v => set('packSmallBy', v)} /></Field>
           <Field label="家具梱包"><Seg choices={PERSON_CHOICES} value={form.packFurniBy} onChange={v => set('packFurniBy', v)} /></Field>
@@ -807,19 +826,48 @@ export default function Estimate({ user, switchTab }) {
 
       {/* 家財リスト */}
       <Section
+        id="sec-kazai"
         title="家財リスト（数量を入力）"
         right={<span style={{ fontSize: 12, fontWeight: 800, color: '#1E5FA8' }}>ポイント合計 {totals.points.toLocaleString('ja-JP')} 才</span>}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
-          {KAZAI_GROUPS.map(group => (
+        {/* 検索と絞り込み */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            style={{ ...inputStyle, maxWidth: 260 }}
+            value={kazaiQuery}
+            onChange={e => setKazaiQuery(e.target.value)}
+            placeholder="🔍 品名で探す（例：タンス、ベッド）"
+          />
+          <button type="button" className="btn btn-sm"
+            onClick={() => setKazaiOnlyEntered(v => !v)}
+            style={kazaiOnlyEntered
+              ? { background: '#1E5FA8', color: '#fff' }
+              : { background: '#fff', color: '#64748B', border: '1px solid #E2E8F0' }}>
+            入力済みのみ {kazaiOnlyEntered ? 'ON' : 'OFF'}
+          </button>
+          {kazaiQuery && <button type="button" className="btn btn-outline btn-sm" onClick={() => setKazaiQuery('')}>クリア</button>}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+          {KAZAI_GROUPS.map(group => {
+            const visible = group.items.filter(it => {
+              if (kazaiOnlyEntered && !(num(form.items[it.key]) > 0)) return false
+              if (kazaiQuery && !(`${it.name}${it.size}`.includes(kazaiQuery))) return false
+              return true
+            })
+            if (!visible.length) return null
+            const gPts = group.items.reduce((sum, it) => sum + (it.pt != null ? num(form.items[it.key]) * it.pt : 0), 0)
+            return (
             <div key={group.title} style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ background: '#F1F5FB', padding: '7px 10px', fontSize: 11, fontWeight: 800, color: '#334155' }}>{group.title}</div>
+              <div style={{ background: '#F1F5FB', padding: '7px 10px', fontSize: 11, fontWeight: 800, color: '#334155', display: 'flex', justifyContent: 'space-between' }}>
+                <span>{group.title}</span>
+                {gPts > 0 && <span style={{ color: '#1E5FA8' }}>{gPts.toLocaleString('ja-JP')}才</span>}
+              </div>
               <div>
-                {group.items.map(it => {
+                {visible.map(it => {
                   const q = num(form.items[it.key])
                   return (
                     <div key={it.key} style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px',
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px',
                       borderTop: '1px solid #F1F5F9', background: q > 0 ? '#EFF6FF' : '#fff',
                     }}>
                       <div style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
@@ -829,26 +877,34 @@ export default function Estimate({ user, switchTab }) {
                       {q > 0 && it.pt != null && (
                         <span style={{ fontSize: 10, color: '#1E5FA8', fontWeight: 700, whiteSpace: 'nowrap' }}>{(q * it.pt).toLocaleString('ja-JP')}才</span>
                       )}
+                      <button type="button" onClick={() => setItemQty(it.key, Math.max(0, q - 1))}
+                        style={{ width: 30, height: 30, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', color: q > 0 ? '#B91C1C' : '#CBD5E1', fontSize: 16, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>−</button>
                       <input
                         type="number" min={0} inputMode="numeric"
                         value={form.items[it.key] ?? ''}
                         onChange={e => setItemQty(it.key, e.target.value)}
-                        style={{ width: 52, padding: '5px 6px', border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 13, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}
+                        style={{ width: 44, padding: '5px 4px', border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 14, textAlign: 'center', fontFamily: 'inherit', outline: 'none', fontWeight: q > 0 ? 800 : 400 }}
                       />
+                      <button type="button" onClick={() => setItemQty(it.key, q + 1)}
+                        style={{ width: 30, height: 30, border: '1px solid #1E5FA8', borderRadius: 6, background: '#EFF6FF', color: '#1E5FA8', fontSize: 16, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>＋</button>
                     </div>
                   )
                 })}
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
+        {kazaiOnlyEntered && !Object.values(form.items || {}).some(v => num(v) > 0) && (
+          <div style={{ padding: 20, textAlign: 'center', color: '#94A3B8', fontSize: 12 }}>まだ数量が入力されていません。「入力済みのみ」をOFFにしてください。</div>
+        )}
         <div style={{ marginTop: 10, fontSize: 11, color: '#94A3B8' }}>
-          ※ ポイント（才数）は数量×単価の自動合計です。「(別途)」項目（ピアノ・TV等）はサイズ別のため合計に含めません。車種判定は現在未実装です。
+          ※ ポイント（才数）は数量×単価の自動合計です。「(別途)」項目（ピアノ・TV等）はサイズ別のため合計に含めません。
         </div>
       </Section>
 
       {/* 料金 */}
-      <Section title="料金（手入力）">
+      <Section id="sec-fee" title="料金（手入力）">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
           <FeeBlock title="基本料金 (A)" list={FEE_A} obj={form.feeA} onChange={(k, v) => setFee('feeA', k, v)} subtotal={totals.a} />
           <FeeBlock title="附帯料金 (B)" list={FEE_B} obj={form.feeB} onChange={(k, v) => setFee('feeB', k, v)} subtotal={totals.b} />
@@ -871,7 +927,7 @@ export default function Estimate({ user, switchTab }) {
       </Section>
 
       {/* お約束事項・支払 */}
-      <Section title="お約束事項・お支払い">
+      <Section id="sec-pay" title="お約束事項・お支払い">
         <div className="two-col">
           <Field label="新居・お約束事項"><input style={inputStyle} value={form.requestTo} onChange={e => set('requestTo', e.target.value)} placeholder="例：新居（米曹屋郡笹栗町…）倍屋" /></Field>
           <Field label="お支払方法"><select style={inputStyle} value={form.payment} onChange={e => set('payment', e.target.value)}>{PAY_METHODS.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
@@ -882,10 +938,20 @@ export default function Estimate({ user, switchTab }) {
         <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>お支払いは、積込終了時にお願い致します。</div>
       </Section>
 
-      {/* 下部操作 */}
-      <div className="no-print" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginBottom: 24 }}>
-        <button className="btn btn-outline" onClick={backToList}>← 一覧へ</button>
-        <button className="btn btn-outline" onClick={() => openPrintPreview(form)}>🖨 印刷プレビュー</button>
+      {/* 下部固定サマリーバー（合計を見ながら保存・プレビューできる） */}
+      <div className="no-print" style={{
+        position: 'sticky', bottom: -16, zIndex: 40,
+        background: '#0F2A4A', color: '#fff', borderRadius: '12px 12px 0 0',
+        padding: '10px 14px 22px', margin: '18px -16px -16px',
+        display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+        boxShadow: '0 -6px 20px rgba(15,42,74,.25)',
+      }}>
+        <div style={{ fontSize: 11, opacity: .85 }}>ポイント<br /><b style={{ fontSize: 14 }}>{totals.points.toLocaleString('ja-JP')}才</b></div>
+        <div style={{ fontSize: 11, opacity: .85 }}>合計<br /><b style={{ fontSize: 14 }}>{yen(totals.goukei)}</b></div>
+        <div style={{ fontSize: 11, opacity: .85 }}>消費税<br /><b style={{ fontSize: 14 }}>{yen(totals.tax)}</b></div>
+        <div style={{ fontSize: 12 }}>再計（税込）<br /><b style={{ fontSize: 20, color: '#7CC4FF' }}>{yen(totals.saikei)}</b></div>
+        <div style={{ flex: 1 }} />
+        <button className="btn btn-outline" style={{ background: '#fff' }} onClick={() => openPrintPreview(form)}>🖨 印刷プレビュー</button>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ opacity: saving ? .6 : 1 }}>{saving ? '保存中...' : '保存する'}</button>
       </div>
 
@@ -896,11 +962,15 @@ export default function Estimate({ user, switchTab }) {
 }
 
 /* ===================== 小コンポーネント ===================== */
-function Section({ title, right, children }) {
+function Section({ title, right, children, id, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen)
   return (
-    <div className="card no-print">
-      <div className="card-head"><h3>{title}</h3>{right}</div>
-      <div className="card-body">{children}</div>
+    <div className="card no-print" id={id} style={{ scrollMarginTop: 64 }}>
+      <div className="card-head" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setOpen(o => !o)}>
+        <h3><span style={{ display: 'inline-block', width: 16, color: '#94A3B8' }}>{open ? '▾' : '▸'}</span>{title}</h3>
+        <div onClick={e => e.stopPropagation()}>{right}</div>
+      </div>
+      {open && <div className="card-body">{children}</div>}
     </div>
   )
 }

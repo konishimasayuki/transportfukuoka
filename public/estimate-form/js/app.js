@@ -188,6 +188,22 @@ function recalc() {
   }
 }
 
+/* ---------- はみ出し防止：欄に収まるまで文字を自動縮小 ---------- */
+function autoFit(el) {
+  if (!el.dataset.baseFs) el.dataset.baseFs = getComputedStyle(el).fontSize
+  el.style.fontSize = el.dataset.baseFs
+  let fs = parseFloat(el.dataset.baseFs)
+  const min = fs * 0.55
+  if (el.tagName === 'TEXTAREA') {
+    while (el.scrollHeight > el.clientHeight + 0.5 && fs > min) { fs -= 0.3; el.style.fontSize = fs + 'px' }
+  } else {
+    while (el.scrollWidth > el.clientWidth + 0.5 && fs > min) { fs -= 0.3; el.style.fontSize = fs + 'px' }
+  }
+}
+function autoFitAll() {
+  document.querySelectorAll('.form-input, .form-area').forEach(el => { if (el.value) autoFit(el) })
+}
+
 /* ---------- 表示スケール（スマホはA4を丸ごと縮小） ---------- */
 function fitScale() {
   const base = 210 * 96 / 25.4
@@ -203,6 +219,7 @@ buildKazai(); buildFees(); buildPay(); buildMedia()
 document.addEventListener('input', e => {
   const t = e.target
   if (t.matches && t.matches('.num, .qty, [data-field^="fee"], [data-field^="kz_"]')) recalc()
+  if (t.matches && t.matches('.form-input, .form-area')) autoFit(t)
 })
 document.addEventListener('estimate:recalc', recalc)
 recalc()
@@ -216,4 +233,19 @@ try {
   const stored = localStorage.getItem('transportfukuoka:estimatePrint')
   if (stored) applyFormData(JSON.parse(stored))
 } catch { /* 壊れたデータは無視して白紙で開く */ }
-window.estimateForm = { applyFormData, readFormData, recalc }
+// 金額欄はカンマ区切りで表示（内部値は data-value に保持）
+function formatMoneyInputs() {
+  document.querySelectorAll('.form-input.num').forEach(el => {
+    const raw = String(el.dataset.value ?? el.value).replace(/[,\s]/g, '')
+    if (raw && isFinite(Number(raw))) { el.dataset.value = raw; el.value = Number(raw).toLocaleString('ja-JP') }
+  })
+}
+document.addEventListener('focusout', e => {
+  if (e.target.matches && e.target.matches('.form-input.num')) { formatMoneyInputs(); recalc() }
+})
+// フォント読込後に、流し込んだ値のはみ出しを一括補正
+formatMoneyInputs()
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => autoFitAll())
+else autoFitAll()
+document.addEventListener('estimate:recalc', autoFitAll)
+window.estimateForm = { applyFormData, readFormData, recalc, autoFitAll }
