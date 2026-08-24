@@ -35,3 +35,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* 計算値の表示セル */
 .calc { width: 100%; text-align: right; font-weight: 600; padding-right: 0.6mm; }
+
+/* 自動計算セル（入力欄）：自動値の上から手入力で上書きできる。
+   手入力中（data-manual="1"）は文字色を少し変えて区別。空にすると自動計算に戻る */
+.form-input.calc { text-align: right; font-weight: 600; padding-right: 0.6mm; }
+.form-input.calc[data-manual="1"] { color: #7C2D12; }
