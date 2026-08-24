@@ -21,7 +21,7 @@
   --footer-y: 273.9mm;
   --left-x: 5.5mm;
   --right-x: 203.9mm;
-  --ink: #3d3e3e;             /* 印刷の黒 */
+  --ink: #4d4e4e;             /* 印刷の黒 */
   --line-w: 0.25mm;           /* 標準罫線(実測約2px) */
   --line-w2: 0.4mm;           /* 外枠の太罫線 */
 }
@@ -35,8 +35,20 @@
 }
 @font-face {
   font-family: 'NotoSansJP-Web';
+  src: url('../fonts/notosansjp-350.woff2') format('woff2');
+  font-weight: 100 399;
+  font-display: block;
+}
+@font-face {
+  font-family: 'NotoSansJP-Web';
   src: url('../fonts/notosansjp-400.woff2') format('woff2');
-  font-weight: 100 500;
+  font-weight: 400 450;
+  font-display: block;
+}
+@font-face {
+  font-family: 'NotoSansJP-Web';
+  src: url('../fonts/notosansjp-500.woff2') format('woff2');
+  font-weight: 451 599;
   font-display: block;
 }
 
@@ -58,6 +70,7 @@ html, body { background: #525659; }
   overflow: hidden;
   font-family: 'NotoSansJP-Web', 'IPAPGothic-Web', 'IPAPGothic', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
   font-size: 2.6mm;
+  font-weight: 350;
   line-height: 1.15;
   -webkit-font-smoothing: antialiased;
 }

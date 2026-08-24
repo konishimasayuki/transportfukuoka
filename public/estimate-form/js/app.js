@@ -24,8 +24,8 @@ function buildKazai() {
       }
       const [key, name, size, pt] = it
       const isDitto = name.startsWith('〃')
-      const nm = el('div', 'kz name', `<span${isDitto ? ' style="margin-left:3.2mm"' : ''}>${name}</span>` +
-        (size ? `<span style="position:absolute;left:11.2mm">${size}</span>` : ''))
+      const nm = el('div', 'kz name', `<span${isDitto ? ' style="margin-left:4.2mm"' : ''}>${name}</span>` +
+        (size ? `<span style="position:absolute;left:12.2mm;letter-spacing:0">${size}</span>` : ''))
       nm.style.position = 'relative'
       const ptc = el('div', 'kz pt', pt === null ? '<span style="transform:rotate(-20deg)">/</span>' : (pt === '' ? '' : String(pt)))
       const q1 = el('div', 'kz', inp('kz_' + key))
@@ -61,7 +61,7 @@ function buildMats() {
   let y = 7.46
   const rh = [3.81, 3.68, 3.57, 3.92, 3.86, 3.57, 3.75, 3.68]
   MATERIAL_ROWS.forEach(([key, label], i) => {
-    row(y, rh[i], `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.5mm;line-height:1.05" class="xs">${label}</div><div style="width:10.76mm;${B}">${inp('mat_' + key + '_d1')}</div><div style="width:11.21mm;${B}">${inp('mat_' + key + '_d2')}</div><div style="flex:1">${inp('mat_' + key + '_day')}</div>`)
+    row(y, rh[i], `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.5mm;line-height:1.05;font-size:1.95mm" class="xs">${label}</div><div style="width:10.76mm;${B}">${inp('mat_' + key + '_d1')}</div><div style="width:11.21mm;${B}">${inp('mat_' + key + '_d2')}</div><div style="flex:1">${inp('mat_' + key + '_day')}</div>`)
     y += rh[i]
   })
   // 作成日・配達日（右にロープ～養生資材の小列）
