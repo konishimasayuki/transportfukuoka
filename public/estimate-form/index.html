@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>御見積書（お客様控）</title>
+<link rel="stylesheet" href="css/reset.css">
+<link rel="stylesheet" href="css/sheet.css">
+<link rel="stylesheet" href="css/blocks.css">
+<link rel="stylesheet" href="css/fields.css">
+<link rel="stylesheet" href="css/print.css">
+</head>
+<body>
+<div class="sheet-viewport">
+<div class="sheet-scale">
+<main class="a4-sheet">
+
+  <!-- Block01 タイトル・受付 -->
+  <h1 class="title">御見積書 <span class="copy-kind">（お客様控）</span></h1>
+  <section class="box uketsuke1"><div class="grid">
+    <div class="c ctr bot xs">受付(1)</div>
+    <div class="c bot last-col"><input class="form-input mini" data-field="reception1" name="reception1" id="reception1"></div>
+  </div></section>
+  <section class="box uketsuke2"><div class="grid">
+    <div class="c ctr bot xs">受付(2)</div>
+    <div class="c bot last-col"><input class="form-input mini" data-field="reception2" name="reception2" id="reception2"></div>
+  </div></section>
+
+  <!-- Block02 日程ほか -->
+  <section class="box sched-date"><div class="grid">
+    <div class="c ctr lbl">引越日</div>
+    <div class="c"><span class="date-ph"><input class="form-input ctr di" data-field="moveMonth" style="left:8%"><span class="slot" style="left:28.5%">月</span><input class="form-input ctr di" data-field="moveDay" style="left:33%"><span class="slot" style="left:54.5%">日</span><span class="slot ampm-v" style="left:69.5%"><label class="opt" style="padding:0"><input type="radio" name="moveAmPm" value="AM">AM<span class="ring"></span></label><br>・<br><label class="opt" style="padding:0"><input type="radio" name="moveAmPm" value="PM">PM<span class="ring"></span></label></span><input class="form-input ctr di" data-field="moveHour" style="left:74%"><span class="slot" style="left:95%">時</span></span></div>
+    <div class="c ctr lbl">梱包日</div>
+    <div class="c last-col"><span class="date-ph"><input class="form-input ctr di" data-field="packMonth" style="left:8%"><span class="slot" style="left:28.5%">月</span><input class="form-input ctr di" data-field="packDay" style="left:33%"><span class="slot" style="left:54.5%">日</span><span class="slot ampm-v" style="left:69.5%"><label class="opt" style="padding:0"><input type="radio" name="packAmPm" value="AM">AM<span class="ring"></span></label><br>・<br><label class="opt" style="padding:0"><input type="radio" name="packAmPm" value="PM">PM<span class="ring"></span></label></span><input class="form-input ctr di" data-field="packHour" style="left:74%"><span class="slot" style="left:95%">時</span></span></div>
+    <div class="c ctr lbl bot">お届日</div>
+    <div class="c bot"><span class="date-ph"><input class="form-input ctr di" data-field="deliverMonth" style="left:8%"><span class="slot" style="left:28.5%">月</span><input class="form-input ctr di" data-field="deliverDay" style="left:33%"><span class="slot" style="left:54.5%">日</span><span class="slot ampm-v" style="left:69.5%"><label class="opt" style="padding:0"><input type="radio" name="deliverAmPm" value="AM">AM<span class="ring"></span></label><br>・<br><label class="opt" style="padding:0"><input type="radio" name="deliverAmPm" value="PM">PM<span class="ring"></span></label></span><input class="form-input ctr di" data-field="deliverHour" style="left:74%"><span class="slot" style="left:95%">時</span></span></div>
+    <div class="c ctr lbl bot">開梱日</div>
+    <div class="c bot last-col"><span class="date-ph"><input class="form-input ctr di" data-field="unpackMonth" style="left:8%"><span class="slot" style="left:28.5%">月</span><input class="form-input ctr di" data-field="unpackDay" style="left:33%"><span class="slot" style="left:54.5%">日</span><span class="slot ampm-v" style="left:69.5%"><label class="opt" style="padding:0"><input type="radio" name="unpackAmPm" value="AM">AM<span class="ring"></span></label><br>・<br><label class="opt" style="padding:0"><input type="radio" name="unpackAmPm" value="PM">PM<span class="ring"></span></label></span><input class="form-input ctr di" data-field="unpackHour" style="left:74%"><span class="slot" style="left:95%">時</span></span></div>
+  </div></section>
+
+  <section class="box sched-mid"><div class="grid">
+    <div class="c small">ス ペ ー ス</div><div class="c last-col"><input class="form-input mini" data-field="spaceSize"></div>
+    <div class="c small">作 業 量</div><div class="c ctr last-col"><span>～</span><input class="form-input mini" data-field="workLoad" style="width:8mm"></div>
+    <div class="c small">梱包・開包</div><div class="c ctr last-col"><span style="transform:rotate(-30deg)">／</span><input class="form-input mini" data-field="packOpenCar" style="width:8mm"></div>
+    <div class="c small bot">補助車輌</div><div class="c ctr bot last-col"><label class="opt"><input type="radio" name="helperCar" value="現">現<span class="ring"></span></label><span class="sep">・</span><label class="opt"><input type="radio" name="helperCar" value="行">行<span class="ring"></span></label></div>
+  </div></section>
+
+  <section class="box sched-fl"><div class="grid">
+    <div class="c small">引　越</div><div class="c last-col" style="position:relative"><span class="date-ph"><input class="form-input ctr di" data-field="moveFloorFrom" style="left:14%;width:4mm"><span class="slot" style="left:45%">F</span><input class="form-input ctr di" data-field="moveFloorTo" style="left:56%;width:4mm"><span class="slot" style="left:86%">F</span></span></div>
+    <div class="c small">ピアノ<span class="xs" style="line-height:1">U<br>G</span></div><div class="c last-col" style="position:relative"><span class="date-ph"><input class="form-input ctr di" data-field="pianoFloorFrom" style="left:14%;width:4mm"><span class="slot" style="left:45%">F</span><input class="form-input ctr di" data-field="pianoFloorTo" style="left:56%;width:4mm"><span class="slot" style="left:86%">F</span></span></div>
+    <div class="c small">&nbsp;</div><div class="c last-col"></div>
+    <div class="c small bot">距　離</div><div class="c bot last-col" style="position:relative"><span class="date-ph"><input class="form-input num di" data-field="distanceKm" style="left:18%;width:8mm"><span class="slot" style="left:92%">km</span></span></div>
+  </div></section>
+
+  <section class="box sched-send"><div class="grid">
+    <div class="c ctr bot hdr" style="grid-column:1/3;border-bottom:var(--line-w) solid var(--ink)">発 送 内 容</div>
+    <div class="c ctr small"><label class="opt"><input type="radio" name="sendType" value="直送一式">直送一式<span class="ring"></span></label></div>
+    <div class="c ctr small last-col"><label class="opt"><input type="radio" name="sendType" value="直送長距離">直送・長距離<span class="ring"></span></label></div>
+    <div class="c rt small"><label class="opt"><input type="radio" name="sendType" value="限定混載便">限定<span class="ring"></span></label></div>
+    <div class="c ctr small last-col"><label class="opt"><input type="radio" name="sendType" value="限定混載便2">混 載 便<span class="ring"></span></label></div>
+    <div class="c rt small bot"><label class="opt"><input type="radio" name="sendType" value="積切">積切<span class="ring"></span></label></div>
+    <div class="c bot last-col"></div>
+  </div></section>
+
+  <section class="box sched-est"><div class="grid">
+    <div class="c small">見積日</div><div class="c last-col" style="position:relative"><span class="date-ph"><input class="form-input mini di" data-field="estimateDate" style="left:4%;width:9mm"><span class="slot xs" style="left:52%">年</span><span class="slot xs" style="left:74%">月</span><span class="slot xs" style="left:92%">日</span></span></div>
+    <div class="c small">受付日</div><div class="c last-col" style="position:relative"><span class="date-ph"><input class="form-input mini di" data-field="requestDate" style="left:4%;width:9mm"><span class="slot xs" style="left:52%">年</span><span class="slot xs" style="left:74%">月</span><span class="slot xs" style="left:92%">日</span></span></div>
+    <div class="c small bot" style="line-height:1.1">見積者<br>氏　名</div><div class="c bot last-col"><input class="form-input mini" data-field="estimatorName"></div>
+  </div></section>
+  <section class="box front-box"><span class="flabel">フロント</span><input class="form-input mini" data-field="frontNote" style="padding-top:2.6mm"></section>
+
+  <!-- Block03 お名前 -->
+  <section class="box name-box"><div class="grid">
+    <div class="c bot thin-b" style="grid-column:1/4;border-bottom:var(--line-w) solid var(--ink)"><span class="xs" style="letter-spacing:1mm">フ リ ガ ナ</span><input class="form-input mini" data-field="customerFurigana"></div>
+    <div class="c ctr bot"><span class="just lbl" style="padding:0 1.2mm">お 名 前</span></div>
+    <div class="c bot last-col"><input class="form-input" data-field="customerName" name="customerName" id="customer-name" style="font-size:3.6mm;flex:1"><span class="sama" style="margin-right:1.2mm">様</span></div>
+  </div></section>
+  <div class="name-note">〇裏面の「確認書」をお読み下さい。<br>〇このお見積は、お客様のお荷物を、御指定日に御指<br>　定の場所へお運びするためのものです。お運びする方<br>　法（車輌・人数）は、おまかせ下さい。</div>
+
+  <!-- Block04 現住所[A] -->
+  <section class="box addr-box a"><div class="grid">
+    <div class="c" style="grid-column:1/3;border-bottom-width:0.18mm"><span class="xs" style="letter-spacing:1mm">フ リ ガ ナ</span><input class="form-input mini" data-field="currentFurigana"></div>
+    <div class="c ctr lbl bot addr-label-cell" style="grid-row:2/3">[A]<br>現住所</div>
+    <div class="c bot addr-main"><span class="postal">〒<input class="form-input mini" data-field="currentPostal" style="width:16mm">－</span><textarea class="form-area" data-field="currentAddress" id="current-address" name="currentAddress" style="padding-top:4.5mm"></textarea></div>
+    <div class="c ctr bot vtext" style="grid-row:1/3;font-size:2.6mm">電話</div>
+    <div class="c bot" style="grid-row:1/3;grid-column:4/6;padding:0">
+      <div style="display:grid;grid-template-columns:11.3mm 1fr;grid-template-rows:6.0mm 4.4mm 1fr;width:100%;height:100%">
+        <div class="c small">自　宅</div><div class="c last-col ctr"><input class="form-input ctr" data-field="curTelHome" placeholder="－　　－"></div>
+        <div class="c small">勤 務 先</div><div class="c last-col ctr"><input class="form-input ctr" data-field="curTelWork" placeholder="－　　－"></div>
+        <div class="c small bot">携帯電話</div><div class="c bot last-col ctr"><input class="form-input ctr" data-field="curTelMobile" placeholder="－　　－"></div>
+      </div>
+    </div>
+  </div></section>
+  <section class="box confirm-box"><div class="grid">
+    <div class="c ctr bot small" style="grid-column:1/3;border-bottom:var(--line-w) solid var(--ink);letter-spacing:0.8mm">確　認　日</div>
+    <div class="c small" style="grid-column:1/3;position:relative"><span class="date-ph"><input class="form-input mini di" data-field="confirmDate" style="left:4%;width:7mm"><span class="slot" style="left:30%">月</span><span class="slot" style="left:52%">日</span><span class="slot" style="left:72%">（</span><span class="slot" style="left:86%">）</span></span></div>
+    <div class="c bot vtext ctr xs" style="letter-spacing:0.2mm">確認者</div>
+    <div class="c bot last-col"><input class="form-input mini" data-field="confirmerName"></div>
+  </div></section>
+
+  <!-- Block05 転居先[B] -->
+  <section class="box addr-box b"><div class="grid">
+    <div class="c" style="grid-column:1/3;border-bottom-width:0.18mm"><span class="xs" style="letter-spacing:1mm">フ リ ガ ナ</span><input class="form-input mini" data-field="destFurigana"></div>
+    <div class="c ctr lbl bot" style="grid-row:2/3">[B]<br>転居先</div>
+    <div class="c bot addr-main"><span class="postal">〒<input class="form-input mini" data-field="destPostal" style="width:16mm">－</span><textarea class="form-area" data-field="destAddress" id="dest-address" name="destAddress" style="padding-top:4.5mm"></textarea></div>
+    <div class="c ctr bot vtext" style="grid-row:1/3;font-size:2.6mm">電話</div>
+    <div class="c bot" style="grid-row:1/3;grid-column:4/6;padding:0">
+      <div style="display:grid;grid-template-columns:11.3mm 1fr;grid-template-rows:6.0mm 4.4mm 1fr;width:100%;height:100%">
+        <div class="c small">自　宅</div><div class="c last-col ctr"><input class="form-input ctr" data-field="dstTelHome" placeholder="－　　－"></div>
+        <div class="c small">勤 務 先</div><div class="c last-col ctr"><input class="form-input ctr" data-field="dstTelWork" placeholder="－　　－"></div>
+        <div class="c small bot">携帯電話</div><div class="c bot last-col ctr"><input class="form-input ctr" data-field="dstTelMobile" placeholder="－　　－"></div>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- Block07 作業内容の確認／ピアノ／エアコン移設 -->
+  <section class="box workconf1"><div class="grid">
+    <div class="c ctr bot hdr small" style="grid-column:1/3;border-bottom:var(--line-w) solid var(--ink)">作 業 内 容 の 確 認</div>
+    <div class="c small">小 物 梱 包</div><div class="c last-col small"><label class="opt"><input type="radio" name="packSmallBy" value="お客様">お客様<span class="ring"></span></label>・<label class="opt"><input type="radio" name="packSmallBy" value="当社">当　社<span class="ring"></span></label><span class="xs">（ALL・Part）</span></div>
+    <div class="c small">家 具 梱 包</div><div class="c last-col small"><label class="opt"><input type="radio" name="packFurniBy" value="お客様">お客様<span class="ring"></span></label>・<label class="opt"><input type="radio" name="packFurniBy" value="当社">当　社<span class="ring"></span></label><span class="xs">（D・E）</span></div>
+    <div class="c small bot">開 梱 作 業</div><div class="c bot last-col small"><label class="opt"><input type="radio" name="packOpenBy" value="お客様">お客様<span class="ring"></span></label>・<label class="opt"><input type="radio" name="packOpenBy" value="当社">当　社<span class="ring"></span></label><span class="xs">（ALL・Part）</span></div>
+  </div></section>
+  <section class="box workconf2"><div class="grid">
+    <div class="c ctr bot hdr small" style="grid-column:1/4;border-bottom:var(--line-w) solid var(--ink)">ピアノU・G　エレクトーン作業</div>
+    <div class="c small">現住所<label class="opt"><input type="checkbox" name="pianoCur"><span style="font-size:3.4mm">〇</span><span class="ring"></span></label>　F</div><div class="arrow-cell"></div><div class="c last-col small" style="border-left:var(--line-w) solid var(--ink)">届先住所<label class="opt"><input type="checkbox" name="pianoDst"><span style="font-size:3.4mm">〇</span><span class="ring"></span></label>　F</div>
+    <div class="c small">階段・エレベーター</div><div class="arrow-cell"><span class="arrow-draw" style="width:2.2mm;height:1.0mm"></span></div><div class="c last-col small" style="border-left:var(--line-w) solid var(--ink)">階段・エレベーター</div>
+    <div class="c small bot">窓出し・機械</div><div class="arrow-cell bot"></div><div class="c bot last-col small" style="border-left:var(--line-w) solid var(--ink)">窓出し・機械</div>
+  </div></section>
+  <section class="box workconf3"><div class="grid">
+    <div class="c bot hdr small" style="grid-column:1/5;border-bottom:var(--line-w) solid var(--ink);justify-content:flex-start">エアコン移設（パイプ延長・ガス補充等別途）<span class="xs" style="font-weight:400">　くわしいことは係員までお問い合せ下さい</span></div>
+    <div class="c small">取 外 住 所<label class="opt"><input type="checkbox" name="airconRemove"><span style="font-size:3.4mm">〇</span><span class="ring"></span></label></div><div class="arrow-cell"></div><div class="c small">取 付 住 所<label class="opt"><input type="checkbox" name="airconInstall"><span style="font-size:3.4mm">〇</span><span class="ring"></span></label></div>
+    <div class="c last-col small opt-head" style="border-left:var(--line-w) solid var(--ink);border-bottom:0;justify-content:center;letter-spacing:0.8mm" >オ プ シ ョ ン 工 事</div>
+    <div class="c small">セパレート<span class="xs" style="line-height:1">S<br>M</span>　<input class="form-input ctr" data-field="airconSepFrom" style="width:4mm">台</div><div class="arrow-cell"><span class="arrow-draw"></span></div><div class="c small">セパレート<span class="xs" style="line-height:1">S<br>M</span>　<input class="form-input ctr" data-field="airconSepTo" style="width:4mm">台</div>
+    <div class="c last-col" style="border-left:var(--line-w) solid var(--ink);border-bottom:0"><input class="form-input mini" data-field="optionWork"></div>
+    <div class="c small bot">ウィンド<span class="xs" style="line-height:1">S<br>M</span>　<input class="form-input ctr" data-field="airconWinFrom" style="width:4mm">台</div><div class="arrow-cell bot"></div><div class="c small bot">ウィンド<span class="xs" style="line-height:1">S<br>M</span>　<input class="form-input ctr" data-field="airconWinTo" style="width:4mm">台</div>
+    <div class="c bot last-col" style="border-left:var(--line-w) solid var(--ink)"></div>
+  </div></section>
+
+  <!-- Block09 作業状況 -->
+  <section class="box workstat"><div class="grid">
+    <div class="c ctr bot vtext xs ws-label" style="grid-row:1/4;letter-spacing:0.1mm">作業状況</div>
+    <div class="c ctr bot hdr small ws-h2" style="grid-column:2/4;border-bottom:var(--line-w) solid var(--ink)">二 ヶ 所　　積 み ・ 降 し</div>
+    <div class="c ctr bot small" style="border-bottom:var(--line-w) solid var(--ink)">道　幅（横持ち作業）</div>
+    <div class="c ctr bot small" style="border-bottom:var(--line-w) solid var(--ink)">エレベーター作業</div>
+    <div class="c ctr bot small" style="border-bottom:var(--line-w) solid var(--ink)">窓吊上下作業</div>
+    <div class="c ctr bot small last-col" style="border-bottom:var(--line-w) solid var(--ink)">機械作業</div>
+    <div class="c ctr xs" style="line-height:1.1">[C]<br>現地</div>
+    <div class="c"><input class="form-input mini" data-field="twoPlaceC"></div>
+    <div class="c ctr xs">S（<input class="form-input ctr" data-field="roadSC" style="width:4mm"><span style="font-size:1.5mm">ｍ</span>）・M（<input class="form-input ctr" data-field="roadMC" style="width:4mm"><span style="font-size:1.5mm">ｍ</span>）・L（<input class="form-input ctr" data-field="roadLC" style="width:4mm"><span style="font-size:1.5mm">ｍ</span>）</div>
+    <div class="c ctr xs"><label class="opt"><input type="radio" name="elevC" value="有">人乗（<input class="form-input ctr" data-field="elevMC" style="width:3mm;pointer-events:auto"><span style="font-size:1.5mm">ｍ</span>）<span class="ring"></span></label>・<label class="opt"><input type="radio" name="elevC" value="無">無<span class="ring"></span></label></div>
+    <div class="c ctr xs"><label class="opt"><input type="radio" name="windowC" value="F">F<span class="ring"></span></label>・<label class="opt"><input type="radio" name="windowC" value="無">無<span class="ring"></span></label></div>
+    <div class="c ctr xs last-col"><label class="opt"><input type="radio" name="machineC" value="要">要<span class="ring"></span></label>・<label class="opt"><input type="radio" name="machineC" value="不要">不要<span class="ring"></span></label></div>
+    <div class="c ctr xs bot" style="line-height:1.1">[D]<br>行先</div>
+    <div class="c bot"><input class="form-input mini" data-field="twoPlaceD"></div>
+    <div class="c ctr xs bot">S（<input class="form-input ctr" data-field="roadSD" style="width:4mm"><span style="font-size:1.5mm">ｍ</span>）・M（<input class="form-input ctr" data-field="roadMD" style="width:4mm"><span style="font-size:1.5mm">ｍ</span>）・L（<input class="form-input ctr" data-field="roadLD" style="width:4mm"><span style="font-size:1.5mm">ｍ</span>）</div>
+    <div class="c ctr xs bot"><label class="opt"><input type="radio" name="elevD" value="有">人乗（<input class="form-input ctr" data-field="elevMD" style="width:3mm"><span style="font-size:1.5mm">ｍ</span>）<span class="ring"></span></label>・<label class="opt"><input type="radio" name="elevD" value="無">無<span class="ring"></span></label></div>
+    <div class="c ctr xs bot"><label class="opt"><input type="radio" name="windowD" value="F">F<span class="ring"></span></label>・<label class="opt"><input type="radio" name="windowD" value="無">無<span class="ring"></span></label></div>
+    <div class="c ctr xs bot last-col"><label class="opt"><input type="radio" name="machineD" value="要">要<span class="ring"></span></label>・<label class="opt"><input type="radio" name="machineD" value="不要">不要<span class="ring"></span></label></div>
+  </div></section>
+
+  <!-- Block10 家財表（app.js が生成） -->
+  <section class="kazai" id="kazai"></section>
+
+  <!-- Block12 請求先 -->
+  <section class="box billing"><div class="grid">
+    <div class="c small" style="line-height:1.15">請求先<br>会社名</div>
+    <div class="c last-col" style="padding:0">
+      <input class="form-input" data-field="billName" style="flex:1">
+      <div style="display:flex;height:100%;border-left:var(--line-w) solid var(--ink)">
+        <div class="c ctr small" style="width:7.8mm;border-bottom:0">確認</div>
+        <div style="display:flex;align-items:center;width:42.2mm;font-size:2.3mm;padding:0 1mm"><input class="form-input ctr" data-field="billConfirm" style="width:8mm">／　<span class="xs" style="line-height:1.1">AM<br>PM</span>　時　　様</div>
+      </div>
+    </div>
+    <div class="c small">住　所</div>
+    <div class="c last-col"><input class="form-input" data-field="billAddr"></div>
+    <div class="c bot last-col" style="grid-column:1/3;padding:0">
+      <div class="bill-r3" style="width:100%;height:100%">
+        <div class="c bot small ctr"><input class="form-input ctr" data-field="billClose" style="width:6mm">／　日〆</div>
+        <div class="c bot small ctr"><input class="form-input ctr" data-field="billPay" style="width:6mm">／　日払い</div>
+        <div class="c bot small">電話　<input class="form-input ctr" data-field="billTel" placeholder="－　　　－" style="flex:1"></div>
+        <div class="c bot small" style="position:relative"><span class="xs" style="position:absolute;top:0.2mm;left:0.6mm">担当者</span><input class="form-input mini" data-field="billStaff" style="padding-top:2mm">様</div>
+        <div class="c bot small" style="position:relative"><span class="xs" style="position:absolute;top:0.2mm;left:0.6mm">請求書発送</span><input class="form-input mini" data-field="billSend" style="padding-top:2mm"></div>
+        <div class="c bot last-col ctr"><span style="transform:rotate(-30deg)">／</span></div>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- お支払方法～その他の料金（行の一部は app.js が生成） -->
+  <section class="box pay" id="pay"></section>
+
+  <!-- Block13 お約束事項 -->
+  <section class="box promise"><div class="grid">
+    <div class="c bot vtext ctr small" style="letter-spacing:1.2mm">お約束事項</div>
+    <div class="c bot last-col" style="padding:0;flex-direction:column;align-items:stretch">
+      <textarea class="form-area" data-field="promiseText" style="flex:1"></textarea>
+      <div class="notes">
+        <div>注) 電気製品の内部の故障は、外傷がない限り一切補償いたしかねますので、御了承ください。</div>
+        <div>注) 貴重品、貴金属、現金等は必ずお客様の方で管理して下さい。</div>
+        <div>注) 当日当社作業員が梱包した場合、梱包料として1ケースにつき1,500円頂く場合があります。</div>
+        <div>注) 裏面の注意事項をよくお読み下さい。</div>
+      </div>
+    </div>
+  </div>
+  <div class="pay-note">お支払は、積込終了時にお願い致します。</div>
+  </section>
+
+  <!-- Block14 料金表（app.js が生成） -->
+  <section class="box fees-a" id="fees-a"></section>
+  <section class="box fees-b" id="fees-b"></section>
+  <section class="box fees-c" id="fees-c"></section>
+
+  <!-- Block16 フッター -->
+  <section class="box media-box">
+    <div class="m1" id="media-row"></div>
+  </section>
+  <section class="box refbox"><div class="grid">
+    <div class="c bot small" style="letter-spacing:0.5mm">ご 紹 介 先</div>
+    <div class="c bot last-col top"><textarea class="form-area" data-field="refName"></textarea></div>
+  </div></section>
+  <div class="company">
+    <div class="nm">株式会社トランスポーター</div>
+    <div class="ad">〒813-0036　福岡県福岡市東区若宮 4-3-29</div>
+    <div class="tel">☎ ０１２０－０７８－７８６</div>
+    <div class="fax">FAX　092-405-6215</div>
+  </div>
+  <section class="box biz-box">
+    <div class="b1">
+      <div><label class="opt"><input type="checkbox" name="bizMove">引　越<span class="ring"></span></label></div>
+      <div><label class="opt"><input type="checkbox" name="bizClean">片 付 け<span class="ring"></span></label></div>
+      <div><label class="opt"><input type="checkbox" name="bizReuse">リ ユ ー ス<span class="ring"></span></label></div>
+    </div>
+    <div class="b2">
+      <div class="c bot small ctr">そ　の　他</div>
+      <div class="c bot last-col"><input class="form-input mini" data-field="bizOther"></div>
+    </div>
+  </section>
+
+  <img class="reference-overlay" alt="" aria-hidden="true">
+</main>
+</div>
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

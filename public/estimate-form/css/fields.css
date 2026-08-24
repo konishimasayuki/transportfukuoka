@@ -1,0 +1,37 @@
+/* 入力欄：帳票の線と一体化させる。Webフォームの見た目は出さない */
+.form-input, .form-area {
+  appearance: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+  padding: 0 0.5mm;
+  width: 100%;
+  height: 100%;
+  font-family: inherit;
+  font-size: 2.8mm;
+  color: #14213d;
+}
+.form-area { resize: none; line-height: 1.4; padding-top: 0.6mm; }
+.form-input:focus, .form-area:focus, .opt:focus-within { background: rgba(0, 100, 255, 0.05); }
+.form-input.num { text-align: right; }
+.form-input.ctr { text-align: center; }
+.form-input.qty { text-align: center; font-weight: 700; font-size: 2.6mm; padding: 0; }
+.form-input.mini { font-size: 2.3mm; padding: 0 0.3mm; }
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+
+/* 丸で囲む選択肢（紙の「○で囲む」を label+input で再現） */
+.opt { position: relative; display: inline-flex; align-items: center; justify-content: center;
+       padding: 0 0.8mm; cursor: pointer; border-radius: 50%; }
+.opt input { position: absolute; opacity: 0; pointer-events: none; }
+.opt .ring { position: absolute; inset: -0.2mm; border: 0.45mm solid transparent; border-radius: 999px; }
+.opt input:checked ~ .ring { border-color: #b91c1c; }
+.sep { padding: 0 0.4mm; }
+.ph { color: inherit; }  /* 紙の下地文字（月 日 など）は原本どおり黒 */
+
+/* 計算値の表示セル */
+.calc { width: 100%; text-align: right; font-weight: 600; padding-right: 0.6mm; }
