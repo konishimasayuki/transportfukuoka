@@ -474,20 +474,7 @@ export default function Settings({ user }) {
 
           <StaffSettings isDemo={isDemo} />
 
-          <div className="card">
-            <div className="card-head"><h3>📞 架電設定（Twilio）</h3></div>
-            <div className="card-body">
-              <SettingRow label="自動架電" desc="新規顧客検知で自動発信"><Toggle defaultChecked /></SettingRow>
-              <SettingRow label="LINE通知も送信" desc="LINE Notifyで同時アラート"><Toggle defaultChecked /></SettingRow>
-              <SettingRow label="架電間隔">
-                <select className="setting-input"><option>30秒</option><option>1分</option><option>3分</option></select>
-              </SettingRow>
-              <SettingRow label="架電時間帯">
-                <select className="setting-input"><option>9:00〜18:00</option><option>8:00〜20:00</option><option>常時</option></select>
-              </SettingRow>
-              <CallTest />
-            </div>
-          </div>
+          {/* 架電設定は非表示（架電タブを止めているため） */}
 
           <div className="card">
             <div className="card-head"><h3>🔍 監視サイト</h3></div>
@@ -521,8 +508,8 @@ export default function Settings({ user }) {
           </div>
           )}
 
-          {/* デモでは非表示：CSVインポート */}
-          {!isDemo && (
+          {/* CSVインポートは非表示 */}
+          {false && (
           <div className="card">
             <div className="card-head"><h3>📊 CSVインポート</h3></div>
             <div className="card-body">
