@@ -252,6 +252,16 @@ const REQ_CHOICES = ['', '要', '不要']
 
 const TAX_RATE = 0.1
 
+// 見積書の作成タブ（押したタブの内容だけ表示し、保存で次のタブへ進む）
+const EST_STEPS = [
+  { id: 'basic',    label: '基本' },
+  { id: 'customer', label: '顧客' },
+  { id: 'work',     label: '作業' },
+  { id: 'kazai',    label: '家財' },
+  { id: 'fee',      label: '料金' },
+  { id: 'pay',      label: '支払・備考' },
+]
+
 // 空フォーム
 function emptyForm() {
   return {
@@ -273,6 +283,7 @@ function emptyForm() {
     twoPlace: '', roadWidth: '', elevator: '', windowLift: '', machine: '',
     // 家財数量
     items: {},
+    unmatchedKazai: [],   // リードから取り込めなかった家財（見積書の品目に該当なし）
     // 料金（すべて手入力）
     feeA: {}, feeB: {}, feeC: {}, feeD: {},
     // その他
@@ -401,18 +412,22 @@ export default function Estimate({ user, switchTab }) {
     if (p.moveAP) { f.moveAP = p.moveAP; f.deliverAP = p.moveAP }
     if (p.memo) f.memo = p.memo
     // 家財をリードから自動マッピング（語彙が異なるため対応表で変換）
+    // 対応表にない家財（椅子・ゴルフセット・自由入力など）は、黙って捨てずに控えておく
+    const unmatched = []
     if (Array.isArray(p.kazai)) {
       p.kazai.forEach(k => {
         const key = resolveKazaiKey(k.name)
         if (key) f.items[key] = (Number(f.items[key]) || 0) + (Number(k.qty) || 0)
+        else if (k.name) unmatched.push(`${k.name}${Number(k.qty) > 1 ? ` ×${k.qty}` : ''}`)
       })
     }
+    f.unmatchedKazai = unmatched
     if (p.boxCount) {
       // ダンボール（小）に割り当て
       const boxKey = ALL_ITEMS.find(it => it.name === 'ダンボール' && it.size === '小')?.key
       if (boxKey) f.items[boxKey] = Number(p.boxCount) || 0
     }
-    setForm(f); setEditId(null); setView('edit'); setPreview(false)
+    setForm(f); setEditId(null); setView('edit'); setPreview(false); setStep('basic')
     // 郵便番号が空なら住所から自動補完（Googleマップキーがある時のみ）
     if (GMAPS_KEY) {
       if (f.toAddress && !f.toZip) zipFromAddress(f.toAddress).then(r => { if (r.zip) setForm(prev => ({ ...prev, toZip: r.zip })) }).catch(() => {})
@@ -474,23 +489,24 @@ export default function Estimate({ user, switchTab }) {
     const f = emptyForm()
     f.estimateNo = nextNo()
     f.estimateDate = new Date().toISOString().slice(0, 10)
-    setForm(f); setEditId(null); setView('edit'); setPreview(false)
+    setForm(f); setEditId(null); setView('edit'); setPreview(false); setStep('basic')
   }
   const openEdit = (item) => {
     setForm({ ...emptyForm(), ...item, items: { ...(item.items || {}) },
       feeA: { ...(item.feeA || {}) }, feeB: { ...(item.feeB || {}) },
       feeC: { ...(item.feeC || {}) }, feeD: { ...(item.feeD || {}) } })
-    setEditId(item.id); setView('edit'); setPreview(false)
+    setEditId(item.id); setView('edit'); setPreview(false); setStep('basic')
   }
-  const backToList = () => { setView('list'); setPreview(false); setForm(emptyForm()); setEditId(null) }
+  const backToList = () => { setView('list'); setPreview(false); setForm(emptyForm()); setEditId(null); setStep('basic') }
 
   // フォーム更新ヘルパー
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   // 住所から郵便番号を取得（転居先／現住所）。Googleマップキーが必要。
   const [zipBusy, setZipBusy] = useState('') // 'from' | 'to' | ''
+  const [step, setStep] = useState('basic')                 // 表示中のタブ（押したタブの内容だけ出す）
   const [kazaiQuery, setKazaiQuery] = useState('')          // 家財の検索語
-  const [kazaiOnlyEntered, setKazaiOnlyEntered] = useState(false) // 入力済みのみ表示
+  const [kazaiOnlyEntered, setKazaiOnlyEntered] = useState(true) // 入力済みのみ表示（既定ON）
   const lookupZip = async (section) => {
     const addr = section === 'to' ? form.toAddress : form.fromAddress
     if (!addr || !addr.trim()) { showToast('先に住所を入力してください'); return }
@@ -500,6 +516,16 @@ export default function Estimate({ user, switchTab }) {
     setZipBusy('')
     if (r.zip) { set(section === 'to' ? 'toZip' : 'fromZip', r.zip); showToast('郵便番号を取得しました') }
     else showToast('郵便番号を取得できませんでした（住所をご確認ください）')
+  }
+  // 住所を入力し終えたら、郵便番号が空のときだけ自動で引く（手入力済みなら触らない）
+  const autoZip = async (section) => {
+    if (!GMAPS_KEY) return
+    const addr = section === 'to' ? form.toAddress : form.fromAddress
+    const zip = section === 'to' ? form.toZip : form.fromZip
+    if (!addr || !addr.trim() || (zip && zip.trim())) return
+    setZipBusy(section)
+    try { const r = await zipFromAddress(addr); if (r.zip) set(section === 'to' ? 'toZip' : 'fromZip', r.zip) } catch {}
+    setZipBusy('')
   }
   const setItemQty = (key, v) => setForm(p => ({ ...p, items: { ...p.items, [key]: v } }))
   const setFee = (block, key, v) => setForm(p => ({ ...p, [block]: { ...p[block], [key]: v } }))
@@ -523,27 +549,35 @@ export default function Estimate({ user, switchTab }) {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2200) }
 
-  const handleSave = async () => {
-    if (!form.name) { showToast('顧客名を入力してください'); return }
+  const handleSave = async ({ keepEditing = false } = {}) => {
+    if (!form.name) { showToast('顧客名を入力してください'); setStep('customer'); return false }
     setSaving(true)
-    const payload = {
-      ...form,
-      id: editId || Date.now().toString(),
-      total: totals.saikei,
-      points: totals.points,
-    }
+    const id = editId || Date.now().toString()
+    const payload = { ...form, id, total: totals.saikei, points: totals.points }
     if (isDemo) {
       if (editId) setItems(p => p.map(i => i.id === editId ? payload : i))
       else setItems(p => [payload, ...p])
-      setSaving(false); showToast('保存しました（デモ：ローカルのみ）'); backToList(); return
+      setSaving(false)
+      // 途中保存では一覧へ戻らず、以後は同じ見積として更新していく
+      if (keepEditing) { setEditId(id); showToast('保存しました（デモ：ローカルのみ）'); return true }
+      showToast('保存しました（デモ：ローカルのみ）'); backToList(); return true
     }
     try {
       const method = editId ? 'PUT' : 'POST'
       await fetch('/api/estimate', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       await fetchItems()
-      showToast('保存しました'); backToList()
-    } catch (e) { console.error(e); showToast('保存に失敗しました') }
-    setSaving(false)
+      setSaving(false)
+      if (keepEditing) { setEditId(id); showToast('保存しました'); return true }
+      showToast('保存しました'); backToList(); return true
+    } catch (e) { console.error(e); showToast('保存に失敗しました'); setSaving(false); return false }
+  }
+
+  // タブの「保存して次へ」。最後のタブだけ一覧へ戻る（途中は保存して次のタブを開く）
+  const stepIndex = EST_STEPS.findIndex(s => s.id === step)
+  const isLastStep = stepIndex === EST_STEPS.length - 1
+  const saveAndNext = async () => {
+    const ok = await handleSave({ keepEditing: !isLastStep })
+    if (ok && !isLastStep) setStep(EST_STEPS[stepIndex + 1].id)
   }
 
   const handleDelete = async (id) => {
@@ -600,11 +634,18 @@ export default function Estimate({ user, switchTab }) {
       f.contractId = c.id
       f.contractAmount = num(c.amount) // 参考表示用
       // 家財を成約から見積書の家財数量へ反映（リード→成約で引き継いだkazai/boxCount）
+      // 対応表にない家財は黙って捨てず、家財タブの警告に出す
+      const unmatched = []
       if (Array.isArray(c.kazai)) {
-        c.kazai.forEach(k => { const key = resolveKazaiKey(k.name); if (key) f.items[key] = (Number(f.items[key]) || 0) + (Number(k.qty) || 0) })
+        c.kazai.forEach(k => {
+          const key = resolveKazaiKey(k.name)
+          if (key) f.items[key] = (Number(f.items[key]) || 0) + (Number(k.qty) || 0)
+          else if (k.name) unmatched.push(`${k.name}${Number(k.qty) > 1 ? ` ×${k.qty}` : ''}`)
+        })
       }
+      f.unmatchedKazai = unmatched
       if (c.boxCount) { const boxKey = ALL_ITEMS.find(it => it.name === 'ダンボール' && it.size === '小')?.key; if (boxKey) f.items[boxKey] = Number(c.boxCount) || 0 }
-      setForm(f); setEditId(null); setView('edit'); setPreview(false)
+      setForm(f); setEditId(null); setView('edit'); setPreview(false); setStep('basic')
     }
 
     return (
@@ -711,21 +752,25 @@ export default function Estimate({ user, switchTab }) {
             <div style={{ fontSize: 17, fontWeight: 900, color: '#1E5FA8', lineHeight: 1.1 }}>{yen(totals.saikei)}</div>
           </div>
           <button className="btn btn-outline btn-sm" onClick={() => openPrintPreview(form)}>🖨 印刷プレビュー</button>
-          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving} style={{ opacity: saving ? .6 : 1 }}>
-            {saving ? '保存中...' : '保存する'}
+          <button className="btn btn-primary btn-sm" onClick={() => handleSave()} disabled={saving} style={{ opacity: saving ? .6 : 1 }}>
+            {saving ? '保存中...' : '保存して一覧へ'}
           </button>
         </div>
-        {/* セクションへジャンプ */}
+        {/* タブ：押した内容だけを表示する */}
         <div style={{ display: 'flex', gap: 6, marginTop: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          {[['sec-basic', '基本'], ['sec-customer', '顧客'], ['sec-work', '作業'], ['sec-kazai', '家財'], ['sec-fee', '料金'], ['sec-pay', '支払・備考']].map(([sid, lab]) => (
-            <button key={sid} type="button" className="btn btn-sm" onClick={() => document.getElementById(sid)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              style={{ background: '#fff', border: '1px solid #E2E8F0', color: '#475569', whiteSpace: 'nowrap', padding: '3px 10px', fontSize: 11 }}>{lab}</button>
+          {EST_STEPS.map((st, i) => (
+            <button key={st.id} type="button" className="btn btn-sm" onClick={() => setStep(st.id)}
+              style={step === st.id
+                ? { background: '#1E5FA8', color: '#fff', whiteSpace: 'nowrap', padding: '3px 12px', fontSize: 11, fontWeight: 800 }
+                : { background: '#fff', border: '1px solid #E2E8F0', color: '#475569', whiteSpace: 'nowrap', padding: '3px 12px', fontSize: 11 }}>
+              <span style={{ opacity: .65, marginRight: 4 }}>{i + 1}</span>{st.label}
+            </button>
           ))}
         </div>
       </div>
 
       {/* 基本情報 */}
-      <Section id="sec-basic" title="基本情報">
+      {step === 'basic' && <Section id="sec-basic" title="基本情報">
         <div className="three-col">
           <Field label="見積番号"><input style={inputStyle} value={form.estimateNo} onChange={e => set('estimateNo', e.target.value)} /></Field>
           <Field label="見積日"><input type="date" style={inputStyle} value={form.estimateDate} onChange={e => set('estimateDate', e.target.value)} /></Field>
@@ -755,10 +800,10 @@ export default function Estimate({ user, switchTab }) {
             </select>
           </Field>
         </div>
-      </Section>
+      </Section>}
 
       {/* 顧客情報 */}
-      <Section id="sec-customer" title="顧客情報">
+      {step === 'customer' && <Section id="sec-customer" title="顧客情報">
         <div className="two-col">
           <Field label="お名前 *"><input style={inputStyle} value={form.name} onChange={e => set('name', e.target.value)} placeholder="例：サンプル 太郎" /></Field>
           <Field label="フリガナ"><input style={inputStyle} value={form.kana} onChange={e => set('kana', e.target.value)} placeholder="例：サンプル タロウ" /></Field>
@@ -772,7 +817,7 @@ export default function Estimate({ user, switchTab }) {
               <button type="button" className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => lookupZip('from')} disabled={zipBusy === 'from'} title="住所から郵便番号を取得">{zipBusy === 'from' ? '…' : '住所から'}</button>
             </div>
           </Field>
-          <Field label="住所"><input style={inputStyle} value={form.fromAddress} onChange={e => set('fromAddress', e.target.value)} placeholder="福岡市南区…" /></Field>
+          <Field label="住所"><input style={inputStyle} value={form.fromAddress} onChange={e => set('fromAddress', e.target.value)} onBlur={() => autoZip('from')} placeholder="福岡市南区…" /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 6 }}>
           <Field label="電話（自宅）"><input style={inputStyle} inputMode="tel" value={form.fromTelHome} onChange={e => set('fromTelHome', e.target.value)} /></Field>
@@ -788,17 +833,17 @@ export default function Estimate({ user, switchTab }) {
               <button type="button" className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => lookupZip('to')} disabled={zipBusy === 'to'} title="転居先の住所から郵便番号を取得">{zipBusy === 'to' ? '…' : '住所から'}</button>
             </div>
           </Field>
-          <Field label="住所"><input style={inputStyle} value={form.toAddress} onChange={e => set('toAddress', e.target.value)} placeholder="福岡市南区…" /></Field>
+          <Field label="住所"><input style={inputStyle} value={form.toAddress} onChange={e => set('toAddress', e.target.value)} onBlur={() => autoZip('to')} placeholder="福岡市南区…" /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 6 }}>
           <Field label="電話（自宅）"><input style={inputStyle} inputMode="tel" value={form.toTelHome} onChange={e => set('toTelHome', e.target.value)} /></Field>
           <Field label="電話（勤務先）"><input style={inputStyle} inputMode="tel" value={form.toTelWork} onChange={e => set('toTelWork', e.target.value)} /></Field>
           <Field label="携帯電話"><input style={inputStyle} inputMode="tel" value={form.toTelMobile} onChange={e => set('toTelMobile', e.target.value)} /></Field>
         </div>
-      </Section>
+      </Section>}
 
       {/* 作業条件 */}
-      <Section id="sec-work" title="作業内容・作業状況">
+      {step === 'work' && <Section id="sec-work" title="作業内容・作業状況">
         <div className="three-col">
           <Field label="小物梱包"><Seg choices={PERSON_CHOICES} value={form.packSmallBy} onChange={v => set('packSmallBy', v)} /></Field>
           <Field label="家具梱包"><Seg choices={PERSON_CHOICES} value={form.packFurniBy} onChange={v => set('packFurniBy', v)} /></Field>
@@ -822,14 +867,30 @@ export default function Estimate({ user, switchTab }) {
           <Field label="機械作業"><select style={inputStyle} value={form.machine} onChange={e => set('machine', e.target.value)}>{REQ_CHOICES.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
           <div />
         </div>
-      </Section>
+      </Section>}
 
       {/* 家財リスト */}
-      <Section
+      {step === 'kazai' && <Section
         id="sec-kazai"
         title="家財リスト（数量を入力）"
         right={<span style={{ fontSize: 12, fontWeight: 800, color: '#1E5FA8' }}>ポイント合計 {totals.points.toLocaleString('ja-JP')} 才</span>}
       >
+        {/* リードから取り込めなかった家財（見積書の品目に該当なし）。捨てずにここで知らせる */}
+        {Array.isArray(form.unmatchedKazai) && form.unmatchedKazai.length > 0 && (
+          <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '9px 12px', marginBottom: 10, fontSize: 12, color: '#92400E' }}>
+            <b>⚠ 見積書の品目に無い家財がリードにありました</b>（数量は入っていません。近い品目に手入力するか、備考に記載してください）
+            <div style={{ marginTop: 5, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {form.unmatchedKazai.map((n, i) => (
+                <span key={i} style={{ background: '#fff', border: '1px solid #FDE68A', borderRadius: 999, padding: '2px 9px', fontWeight: 700 }}>{n}</span>
+              ))}
+            </div>
+            <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 7 }}
+              onClick={() => { set('memo', [form.memo, '【見積書に品目が無い家財】' + form.unmatchedKazai.join('、')].filter(Boolean).join('\n')); set('unmatchedKazai', []) }}>
+              備考に書き写して閉じる
+            </button>
+          </div>
+        )}
+
         {/* 検索と絞り込み */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
@@ -850,7 +911,8 @@ export default function Estimate({ user, switchTab }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
           {KAZAI_GROUPS.map(group => {
             const visible = group.items.filter(it => {
-              if (kazaiOnlyEntered && !(num(form.items[it.key]) > 0)) return false
+              // 検索中は「入力済みのみ」を一時的に無視する（そうしないと未入力の品目を探して追加できない）
+              if (kazaiOnlyEntered && !kazaiQuery && !(num(form.items[it.key]) > 0)) return false
               if (kazaiQuery && !(`${it.name}${it.size}`.includes(kazaiQuery))) return false
               return true
             })
@@ -895,16 +957,16 @@ export default function Estimate({ user, switchTab }) {
             )
           })}
         </div>
-        {kazaiOnlyEntered && !Object.values(form.items || {}).some(v => num(v) > 0) && (
+        {kazaiOnlyEntered && !kazaiQuery && !Object.values(form.items || {}).some(v => num(v) > 0) && (
           <div style={{ padding: 20, textAlign: 'center', color: '#94A3B8', fontSize: 12 }}>まだ数量が入力されていません。「入力済みのみ」をOFFにしてください。</div>
         )}
         <div style={{ marginTop: 10, fontSize: 11, color: '#94A3B8' }}>
           ※ ポイント（才数）は数量×単価の自動合計です。「(別途)」項目（ピアノ・TV等）はサイズ別のため合計に含めません。
         </div>
-      </Section>
+      </Section>}
 
       {/* 料金 */}
-      <Section id="sec-fee" title="料金（手入力）">
+      {step === 'fee' && <Section id="sec-fee" title="料金（手入力）">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
           <FeeBlock title="基本料金 (A)" list={FEE_A} obj={form.feeA} onChange={(k, v) => setFee('feeA', k, v)} subtotal={totals.a} />
           <FeeBlock title="附帯料金 (B)" list={FEE_B} obj={form.feeB} onChange={(k, v) => setFee('feeB', k, v)} subtotal={totals.b} />
@@ -924,10 +986,10 @@ export default function Estimate({ user, switchTab }) {
             <TotalLine label="再計（総額）" value={yen(totals.saikei)} big />
           </div>
         </div>
-      </Section>
+      </Section>}
 
       {/* お約束事項・支払 */}
-      <Section id="sec-pay" title="お約束事項・お支払い">
+      {step === 'pay' && <Section id="sec-pay" title="お約束事項・お支払い">
         <div className="two-col">
           <Field label="新居・お約束事項"><input style={inputStyle} value={form.requestTo} onChange={e => set('requestTo', e.target.value)} placeholder="例：新居（米曹屋郡笹栗町…）倍屋" /></Field>
           <Field label="お支払方法"><select style={inputStyle} value={form.payment} onChange={e => set('payment', e.target.value)}>{PAY_METHODS.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
@@ -936,7 +998,7 @@ export default function Estimate({ user, switchTab }) {
           <Field label="備考"><textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 60 }} value={form.memo} onChange={e => set('memo', e.target.value)} /></Field>
         </div>
         <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>お支払いは、積込終了時にお願い致します。</div>
-      </Section>
+      </Section>}
 
       {/* 下部固定サマリーバー（合計を見ながら保存・プレビューできる） */}
       <div className="no-print" style={{
@@ -951,8 +1013,13 @@ export default function Estimate({ user, switchTab }) {
         <div style={{ fontSize: 11, opacity: .85 }}>消費税<br /><b style={{ fontSize: 14 }}>{yen(totals.tax)}</b></div>
         <div style={{ fontSize: 12 }}>再計（税込）<br /><b style={{ fontSize: 20, color: '#7CC4FF' }}>{yen(totals.saikei)}</b></div>
         <div style={{ flex: 1 }} />
+        {stepIndex > 0 && (
+          <button className="btn btn-outline" style={{ background: '#fff' }} onClick={() => setStep(EST_STEPS[stepIndex - 1].id)}>← {EST_STEPS[stepIndex - 1].label}へ</button>
+        )}
         <button className="btn btn-outline" style={{ background: '#fff' }} onClick={() => openPrintPreview(form)}>🖨 印刷プレビュー</button>
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ opacity: saving ? .6 : 1 }}>{saving ? '保存中...' : '保存する'}</button>
+        <button className="btn btn-primary" onClick={saveAndNext} disabled={saving} style={{ opacity: saving ? .6 : 1 }}>
+          {saving ? '保存中...' : (isLastStep ? '保存して一覧へ' : `保存して ${EST_STEPS[stepIndex + 1].label} へ →`)}
+        </button>
       </div>
 
       {preview && <PreviewModal form={form} totals={totals} onClose={() => setPreview(false)} />}
