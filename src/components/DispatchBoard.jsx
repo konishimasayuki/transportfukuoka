@@ -457,8 +457,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
               <span><i style={{ background: '#FEF9C3', border: '1px solid #FDE047' }} />未手配</span>
               <span><i style={{ background: 'var(--red)' }} />時間重複</span>
             </div>
-            <button className="btn btn-outline btn-sm" onClick={() => { setVehTab('veh'); setShowVeh(true) }}>🚚 車両設定</button>
-            <button className="btn btn-outline btn-sm" onClick={() => { setVehTab('crew'); setShowVeh(true) }}>🧑‍✈️ ドライバー設定</button>
+            <button className="btn btn-outline btn-sm" onClick={() => { setVehTab('veh'); setShowVeh(true) }}>🚚 車両 / ドライバー設定</button>
           </div>
         </div>
 
@@ -1176,6 +1175,8 @@ function VehicleModal({ vehicles, jobs, crewList = [], initialTab = 'veh', onClo
   const bx = { background: '#fff', borderRadius: 14, width: '100%', maxWidth: 640, margin: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
   const ip = { padding: '7px 9px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff', color: '#1E293B', width: '100%' }
   const th = { fontSize: 10, fontWeight: 700, color: '#64748B', textAlign: 'left', padding: '0 6px 6px' }
+  // タブを切り替えても枠の大きさが変わらないよう、本文の高さを固定して中だけスクロールさせる
+  const paneStyle = { padding: '14px 18px', height: 'min(56vh, 420px)', overflowY: 'auto' }
 
   return (
     // 枠外クリックでは閉じない（入力中の内容が消えないように）
@@ -1191,7 +1192,7 @@ function VehicleModal({ vehicles, jobs, crewList = [], initialTab = 'veh', onClo
               style={tab === tk ? { background: '#1E5FA8', color: '#fff' } : { background: '#fff', color: '#64748B', border: '1px solid #E2E8F0' }}>{lb}</button>
           ))}
         </div>
-        <div style={{ padding: '14px 18px', maxHeight: '60vh', overflowY: 'auto', display: tab === 'crew' ? 'none' : 'block' }}>
+        <div style={{ ...paneStyle, display: tab === 'crew' ? 'none' : 'block' }}>
           <datalist id="db-cls-list">{TRUCK_CLASSES.map(c => <option key={c} value={c} />)}</datalist>
           <table style={{ width: '100%', minWidth: 0, borderCollapse: 'collapse' }}>
             <thead>
@@ -1222,8 +1223,8 @@ function VehicleModal({ vehicles, jobs, crewList = [], initialTab = 'veh', onClo
           <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={addRow}>＋ 車両を追加</button>
           <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 8, lineHeight: 1.5 }}>※ 削除した車両に配置済みの予定は「未手配案件」に戻ります。ロック中の予定がある車両は削除できません。</div>
         </div>
-        {/* 乗務員（運転手プルダウンの選択肢） */}
-        <div style={{ padding: '14px 18px', maxHeight: '60vh', overflowY: 'auto', display: tab === 'crew' ? 'block' : 'none' }}>
+        {/* ドライバー（運転手・助手プルダウンの選択肢） */}
+        <div style={{ ...paneStyle, display: tab === 'crew' ? 'block' : 'none' }}>
           {crew.map((c, i) => (
             <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
               <input style={ip} value={c} onChange={e => setCrewAt(i, e.target.value)} placeholder="例：山田 / A班" />
