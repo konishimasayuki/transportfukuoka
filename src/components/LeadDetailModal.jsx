@@ -220,8 +220,9 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
                     style={{ background: '#E2E8F0', color: '#64748B', fontWeight: 700, cursor: 'default' }}>✅ 成約済み</button>
                 : <button className="btn btn-sm" style={{ background: '#16A34A', color: '#fff', fontWeight: 700 }} onClick={() => onCreateContract(item)}>✅ 成約登録</button>
             )}
+            {/* 編集中の家財も渡す（保存前に追加した家財が消えないように） */}
             {!isNew && onCreateEstimate && (
-              <button className="btn btn-primary btn-sm" onClick={() => onCreateEstimate(item)}>📝 見積書を作成</button>
+              <button className="btn btn-primary btn-sm" onClick={() => onCreateEstimate({ ...item, kazai })}>📝 見積書を作成</button>
             )}
             <button className="btn btn-sm btn-outline" onClick={onClose}>閉じる</button>
           </div>
