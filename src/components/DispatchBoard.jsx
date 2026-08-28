@@ -1130,6 +1130,13 @@ function DispatchMap({ vehicles, jobs, show }) {
   const [open, setOpen] = useState(() => {
     try { return !(window.matchMedia && window.matchMedia('(max-width: 820px)').matches) } catch { return true }
   })
+  // 車両フィルタ（'' = すべて）。routes はその日に予定がある車両しか含まないので、そのまま候補になる。
+  const [vFilter, setVFilter] = useState('')
+  // 日付変更などで対象車両の予定が無くなったら「すべて」に戻す
+  useEffect(() => {
+    if (vFilter && !routes.some(r => r.v.key === vFilter)) setVFilter('')
+  }, [routes, vFilter])
+  const shownRoutes = vFilter ? routes.filter(r => r.v.key === vFilter) : routes
   return (
     <div className="card db-mapcard" style={{ marginBottom: 14 }}>
       <div className="card-head" onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
@@ -1143,7 +1150,31 @@ function DispatchMap({ vehicles, jobs, show }) {
         <div className="card-body" style={{ padding: 12 }}>
           {routes.length === 0
             ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
-            : (useGmap ? <GoogleRouteMap routes={routes} /> : <SchematicMap routes={routes} />)}
+            : (
+              <>
+                {useGmap ? <GoogleRouteMap routes={shownRoutes} /> : <SchematicMap routes={shownRoutes} />}
+                {/* 車両フィルタ：その日に予定がある車両だけボタンを出し、押すとその車両のルートだけ地図に描く */}
+                <div className="db-vfilter">
+                  <span className="db-vfilter-lb">車両で絞り込み</span>
+                  <button type="button" className={'db-vbtn' + (vFilter ? '' : ' on')} onClick={() => setVFilter('')}>
+                    すべて（{routes.length}台）
+                  </button>
+                  {routes.map(r => {
+                    const on = vFilter === r.v.key
+                    return (
+                      <button key={r.v.key} type="button" className={'db-vbtn' + (on ? ' on' : '')}
+                        onClick={() => setVFilter(on ? '' : r.v.key)}
+                        style={on ? { borderColor: r.color, background: r.color, color: '#fff' } : { borderColor: r.color }}
+                        title={r.stops.join(' → ')}>
+                        <span className="db-vdot" style={{ background: r.color }} />
+                        {r.v.ext ? '外注' : '#' + r.v.id}
+                        {r.v.cls && <span className="db-vcls">{r.v.cls}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
         </div>
       )}
     </div>
