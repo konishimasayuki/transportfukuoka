@@ -949,15 +949,17 @@ function loadGmaps(key) {
   return gmapsPromise
 }
 const dirCache = new Map() // 同一停車列の経路計算を使い回す（API呼び出し削減）
+const geoCache = new Map() // 住所→{lat,lng}。1地点だけの車両のジオコーディング結果を使い回す（API呼び出し削減）
 
 // 実地図モード（キーあり）：Directions API の実道路ルートを車両ごとに色分け描画
 // ・線をタップ → 区間／出発住所／到着住所／距離・時間を表示
 // ・高速道路／有料道路トグルで経路を再計算（ルート変更）
 // ・複数経路がある場合は詳細カードの「別ルートに変更」で切替
-function GoogleRouteMap({ routes }) {
+function GoogleRouteMap({ routes, visible = true }) {
   const mapRef = useRef(null)
   const mapObj = useRef(null)
   const overlays = useRef([])
+  const boundsRef = useRef(null) // 直近の描画範囲（再表示時の再フィット用）
   const resultRef = useRef({}) // 車両key -> { result, altCount }（別ルート切替用に最新結果を保持）
   const altRef = useRef({})    // 車両key -> 選択中の経路index
   const [status, setStatus] = useState('loading') // loading | ready | error
@@ -989,6 +991,7 @@ function GoogleRouteMap({ routes }) {
     const g = window.google, map = mapObj.current
     overlays.current.forEach(o => { try { o.setMap(null) } catch {} }); overlays.current = []
     const bounds = new g.maps.LatLngBounds()
+    boundsRef.current = bounds
     const svc = new g.maps.DirectionsService()
     let cancelled = false
 
@@ -1069,8 +1072,16 @@ function GoogleRouteMap({ routes }) {
       const cacheKey = names.join('>') + '|h' + (avoidHighways ? 1 : 0) + 't' + (avoidTolls ? 1 : 0)
       if (dirCache.has(cacheKey)) { place(dirCache.get(cacheKey)); return }
       if (names.length < 2) { // 単一地点：ジオコーディングして1ピン
-        new g.maps.Geocoder().geocode({ address: names[0] + ' 福岡' }, (res, st) => {
-          if (st === 'OK' && res[0]) { pin(res[0].geometry.location, r.color, 8); fitNicely(g, map, bounds) }
+        const addr = names[0] + ' 福岡'
+        const cached = geoCache.get(addr)
+        if (cached) { pin(cached, r.color, 8); fitNicely(g, map, bounds); resolve(); return }
+        new g.maps.Geocoder().geocode({ address: addr }, (res, st) => {
+          if (st === 'OK' && res[0]) {
+            const l = res[0].geometry.location
+            const pos = { lat: l.lat(), lng: l.lng() }
+            geoCache.set(addr, pos)
+            pin(pos, r.color, 8); fitNicely(g, map, bounds)
+          }
           resolve()
         })
         return
@@ -1093,6 +1104,15 @@ function GoogleRouteMap({ routes }) {
     ;(async () => { for (const r of routes) { if (cancelled) break; await draw(r) } })() // 逐次実行でレート超過を回避
     return () => { cancelled = true }
   }, [status, sig, avoidHighways, avoidTolls, redraw])
+
+  // 畳んでいる間は display:none で地図を残す（作り直すとマップロードが課金されるため）。
+  // 非表示中はコンテナのサイズが0になるので、再表示のたびにリサイズと範囲の再適用を行う。
+  useEffect(() => {
+    if (!visible || status !== 'ready' || !mapObj.current || !window.google) return
+    const g = window.google
+    try { g.maps.event.trigger(mapObj.current, 'resize') } catch {}
+    fitNicely(g, mapObj.current, boundsRef.current)
+  }, [visible, status])
 
   // 詳細カードの「別ルートに変更」：その車両の代替ルートindexを進めて再描画
   const reroute = () => {
@@ -1151,6 +1171,10 @@ function DispatchMap({ vehicles, jobs, show, vFilter = [], onToggle, onClear }) 
   })
   // 車両フィルタは親（配車ボード）が持つ。routes はその日に予定がある車両しか含まないので、そのまま候補になる。
   const shownRoutes = vFilter.length ? routes.filter(r => vFilter.includes(r.v.key)) : routes
+  // 一度開いたら、畳んでもDOMは残す（地図を作り直すとマップロードが課金されるため）。
+  // ただし最初から作ると高さ0で初期化されてしまうので、初回に開くまではマウントしない。
+  const [everOpen, setEverOpen] = useState(open)
+  useEffect(() => { if (open) setEverOpen(true) }, [open])
   return (
     <div className="card db-mapcard" style={{ marginBottom: 14 }}>
       <div className="card-head" onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
@@ -1159,14 +1183,14 @@ function DispatchMap({ vehicles, jobs, show, vFilter = [], onToggle, onClear }) 
           {!hasKey && <span className="c-sub">区の相対位置に基づく概略図</span>}
         </div>
       </div>
-      {/* OFF時（キーあり・トグルOFF）や、スマホで畳んでいるときは本文を出さない */}
-      {open && (
-        <div className="card-body" style={{ padding: 12 }}>
+      {/* 畳んでいるときは display:none。地図インスタンスを保持してマップロードの再課金を避ける */}
+      {everOpen && (
+        <div className="card-body" style={{ padding: 12, display: open ? 'block' : 'none' }}>
           {routes.length === 0
             ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
             : (
               <>
-                {useGmap ? <GoogleRouteMap routes={shownRoutes} /> : <SchematicMap routes={shownRoutes} />}
+                {useGmap ? <GoogleRouteMap routes={shownRoutes} visible={open} /> : <SchematicMap routes={shownRoutes} />}
                 {/* 車両フィルタ：その日に予定がある車両だけボタンを出す。複数選択でき、地図と配車表の両方に効く */}
                 <div className="db-vfilter">
                   <span className="db-vfilter-lb">車両で絞り込み<small>（複数可・配車表も連動）</small></span>
