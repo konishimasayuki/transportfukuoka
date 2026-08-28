@@ -966,11 +966,10 @@ const geoCache = new Map() // 住所→{lat,lng}。1地点だけの車両のジ�
 // ・線をタップ → 区間／出発住所／到着住所／距離・時間を表示
 // ・高速道路／有料道路トグルで経路を再計算（ルート変更）
 // ・複数経路がある場合は詳細カードの「別ルートに変更」で切替
-function GoogleRouteMap({ routes, visible = true }) {
+function GoogleRouteMap({ routes }) {
   const mapRef = useRef(null)
   const mapObj = useRef(null)
   const overlays = useRef([])
-  const boundsRef = useRef(null) // 直近の描画範囲（再表示時の再フィット用）
   const resultRef = useRef({}) // 車両key -> { result, altCount }（別ルート切替用に最新結果を保持）
   const altRef = useRef({})    // 車両key -> 選択中の経路index
   const [status, setStatus] = useState('loading') // loading | ready | error
@@ -1002,7 +1001,6 @@ function GoogleRouteMap({ routes, visible = true }) {
     const g = window.google, map = mapObj.current
     overlays.current.forEach(o => { try { o.setMap(null) } catch {} }); overlays.current = []
     const bounds = new g.maps.LatLngBounds()
-    boundsRef.current = bounds
     const svc = new g.maps.DirectionsService()
     let cancelled = false
 
@@ -1116,14 +1114,6 @@ function GoogleRouteMap({ routes, visible = true }) {
     return () => { cancelled = true }
   }, [status, sig, avoidHighways, avoidTolls, redraw])
 
-  // 畳んでいる間は display:none で地図を残す（作り直すとマップロードが課金されるため）。
-  // 非表示中はコンテナのサイズが0になるので、再表示のたびにリサイズと範囲の再適用を行う。
-  useEffect(() => {
-    if (!visible || status !== 'ready' || !mapObj.current || !window.google) return
-    const g = window.google
-    try { g.maps.event.trigger(mapObj.current, 'resize') } catch {}
-    fitNicely(g, mapObj.current, boundsRef.current)
-  }, [visible, status])
 
   // 詳細カードの「別ルートに変更」：その車両の代替ルートindexを進めて再描画
   const reroute = () => {
@@ -1176,28 +1166,18 @@ function DispatchMap({ vehicles, jobs, show, vFilter = [], onToggle, onClear, sh
   const routes = useMemo(() => computeVehicleRoutes(vehicles, jobs, show), [vehicles, jobs, show])
   const hasKey = !!GMAPS_KEY
   const useGmap = hasKey   // キーがあれば常にGoogleマップ（ON/OFFの切替ボタンは廃止）
-  // スマホでは配車表を先に見せたいので、地図は畳んでおく（見出しをタップで開閉）
-  const [open, setOpen] = useState(() => {
-    try { return !(window.matchMedia && window.matchMedia('(max-width: 820px)').matches) } catch { return true }
-  })
   // 車両フィルタは親（配車ボード）が持つ。routes はその日に予定がある車両しか含まないので、そのまま候補になる。
   const shownRoutes = vFilter.length ? routes.filter(r => vFilter.includes(r.v.key)) : routes
-  // 一度開いたら、畳んでもDOMは残す（地図を作り直すとマップロードが課金されるため）。
-  // ただし最初から作ると高さ0で初期化されてしまうので、初回に開くまではマウントしない。
-  const [everOpen, setEverOpen] = useState(open)
-  useEffect(() => { if (open) setEverOpen(true) }, [open])
   return (
     <div className="card db-mapcard" style={{ marginBottom: 14 }}>
-      <div className="card-head" onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
-        <h3><span className="db-mapfold">{open ? '▾' : '▸'}</span>🗺 配車ルートマップ <span className="c-sub">· 各車両の進行ルート</span></h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} onClick={e => e.stopPropagation()}>
+      <div className="card-head">
+        <h3>🗺 配車ルートマップ <span className="c-sub">· 各車両の進行ルート</span></h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {!shown && <span className="c-sub">未手配 {pendingUn} 件・割当待ち</span>}
           {!hasKey && <span className="c-sub db-schnote">区の相対位置に基づく概略図</span>}
         </div>
       </div>
-      {/* 畳んでいるときは display:none。地図インスタンスを保持してマップロードの再課金を避ける */}
-      {everOpen && (
-        <div className="card-body" style={{ padding: 12, display: open ? 'block' : 'none' }}>
+      <div className="card-body" style={{ padding: 12 }}>
           {/* 未手配が残っている間は地図を描かない。割当のたびに経路を計算し直すと、そのぶん課金されるため。 */}
           {!shown ? (
             <div className="db-mapgate">
@@ -1216,7 +1196,7 @@ function DispatchMap({ vehicles, jobs, show, vFilter = [], onToggle, onClear, sh
             ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
             : (
               <>
-                {useGmap ? <GoogleRouteMap routes={shownRoutes} visible={open} /> : <SchematicMap routes={shownRoutes} />}
+                {useGmap ? <GoogleRouteMap routes={shownRoutes} /> : <SchematicMap routes={shownRoutes} />}
                 {/* 車両フィルタ：その日に予定がある車両だけボタンを出す。複数選択でき、地図と配車表の両方に効く */}
                 <div className="db-vfilter">
                   <span className="db-vfilter-lb">車両で絞り込み<small>（複数可・配車表も連動）</small></span>
@@ -1243,8 +1223,7 @@ function DispatchMap({ vehicles, jobs, show, vFilter = [], onToggle, onClear, sh
                 </div>
               </>
             )}
-        </div>
-      )}
+      </div>
     </div>
   )
 }
