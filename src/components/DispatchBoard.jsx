@@ -93,10 +93,20 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const [sideH, setSideH] = useState(null)   // 未手配パネルの高さ（左ボードに合わせる）
   const [unDetail, setUnDetail] = useState(null) // 未手配カードから開く成約の詳細（contractId）
   const [unEdits, setUnEdits] = useState({})     // 未手配のまま書き込んだ内容 { カードキー: {tel,load,memoFrom,...} }
+  const [vFilter, setVFilter] = useState([])     // 車両で絞り込み（空配列＝すべて）。地図と配車表の両方に効く
   const toast = onToast || (() => {})
   const boardKey = ymd(boardDate)
   const show = (c) => !filter || filter[c] !== false // カテゴリチップの絞り込み
   const vehOf = (key) => vehicles.find(v => v.key === key)
+  // 車両フィルタ（複数選択）。空なら全表示。選んだ車両の予定が無くなったら自動で外す
+  const inFilter = (vKey) => vFilter.length === 0 || vFilter.includes(vKey)
+  const toggleVFilter = (vKey) => setVFilter(prev => prev.includes(vKey) ? prev.filter(k => k !== vKey) : [...prev, vKey])
+  useEffect(() => {
+    setVFilter(prev => {
+      const live = prev.filter(k => jobs.some(j => j.v === k && show(j.cat)))
+      return live.length === prev.length ? prev : live
+    })
+  }, [jobs, filter])
 
   // 未手配パネルの高さを左ボードに合わせる（2カラム時のみ。中身が多ければ内部スクロール）
   useEffect(() => {
@@ -446,13 +456,19 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
       </div>
 
       {/* ===== 配車ルートマップ ===== */}
-      <DispatchMap vehicles={vehicles} jobs={jobs} show={show} />
+      <DispatchMap vehicles={vehicles} jobs={jobs} show={show} vFilter={vFilter} onToggle={toggleVFilter} onClear={() => setVFilter([])} />
 
       {/* ===== 配車表（車格×案件） ===== */}
       <div className="db-wrap">
         <div className="db-head">
           <h3>配車表 <span>· {boardDate.getMonth() + 1}月{boardDate.getDate()}日（{['日','月','火','水','木','金','土'][boardDate.getDay()]}） · 自社{ownCount}台{k.extLanes ? ` ＋ 外注${k.extLanes}` : ''}</span></h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            {/* 地図を畳むとフィルタのボタンも隠れるので、解除手段をここにも置く */}
+            {vFilter.length > 0 && (
+              <button type="button" className="db-vclear" onClick={() => setVFilter([])} title="車両の絞り込みを解除">
+                🚚 {vFilter.length}台に絞り込み中 <span>✕ 解除</span>
+              </button>
+            )}
             <div className="db-legend">
               <span><i style={{ background: '#FEF9C3', border: '1px solid #FDE047' }} />未手配</span>
               <span><i style={{ background: 'var(--red)' }} />時間重複</span>
@@ -499,6 +515,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                 )
                 // 案件が入っている車両だけを行にする（空の車両行は出さない＝最初は未手配だけが並ぶ）
                 vehicles.forEach(v => {
+                  if (!inFilter(v.key)) return   // 車両フィルタで選ばれていない車両は出さない
                   const vjobs = jobs.filter(j => j.v === v.key && show(j.cat)).sort((a, b) => a.s - b.s)
                   if (!vjobs.length) return
                   const pairs = vjobs.length
@@ -570,7 +587,9 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                 })
 
                 // 未手配案件（薄黄色）：番号は配置済みの続き。車両と開始時刻を選んで割当
+                // 車両で絞り込んでいる間は、どの車両にも属さない未手配は隠す
                 unassigned.forEach((u, i) => {
+                  if (vFilter.length) return
                   if (!show(u.cat)) return
                   no++
                   rows.push(
@@ -1122,7 +1141,7 @@ function GoogleRouteMap({ routes }) {
 
 // ラッパー：APIキーがあれば実地図、無ければ概略図に自動フォールバック。
 // キーがある場合はトグルでGoogleマップAPIのON/OFFを切替可（OFFで概略図＝API呼び出し0）。
-function DispatchMap({ vehicles, jobs, show }) {
+function DispatchMap({ vehicles, jobs, show, vFilter = [], onToggle, onClear }) {
   const routes = useMemo(() => computeVehicleRoutes(vehicles, jobs, show), [vehicles, jobs, show])
   const hasKey = !!GMAPS_KEY
   const useGmap = hasKey   // キーがあれば常にGoogleマップ（ON/OFFの切替ボタンは廃止）
@@ -1130,6 +1149,8 @@ function DispatchMap({ vehicles, jobs, show }) {
   const [open, setOpen] = useState(() => {
     try { return !(window.matchMedia && window.matchMedia('(max-width: 820px)').matches) } catch { return true }
   })
+  // 車両フィルタは親（配車ボード）が持つ。routes はその日に予定がある車両しか含まないので、そのまま候補になる。
+  const shownRoutes = vFilter.length ? routes.filter(r => vFilter.includes(r.v.key)) : routes
   return (
     <div className="card db-mapcard" style={{ marginBottom: 14 }}>
       <div className="card-head" onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
@@ -1143,7 +1164,35 @@ function DispatchMap({ vehicles, jobs, show }) {
         <div className="card-body" style={{ padding: 12 }}>
           {routes.length === 0
             ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
-            : (useGmap ? <GoogleRouteMap routes={routes} /> : <SchematicMap routes={routes} />)}
+            : (
+              <>
+                {useGmap ? <GoogleRouteMap routes={shownRoutes} /> : <SchematicMap routes={shownRoutes} />}
+                {/* 車両フィルタ：その日に予定がある車両だけボタンを出す。複数選択でき、地図と配車表の両方に効く */}
+                <div className="db-vfilter">
+                  <span className="db-vfilter-lb">車両で絞り込み<small>（複数可・配車表も連動）</small></span>
+                  <button type="button" className={'db-vbtn' + (vFilter.length ? '' : ' on')} onClick={onClear}>
+                    すべて（{routes.length}台）
+                  </button>
+                  {routes.map(r => {
+                    const on = vFilter.includes(r.v.key)
+                    return (
+                      <button key={r.v.key} type="button" className={'db-vbtn' + (on ? ' on' : '')}
+                        onClick={() => onToggle(r.v.key)}
+                        style={on ? { borderColor: r.color, background: r.color, color: '#fff' } : { borderColor: r.color }}
+                        title={r.stops.join(' → ')}>
+                        <span className="db-vchk">{on ? '✓' : ''}</span>
+                        <span className="db-vdot" style={{ background: r.color }} />
+                        {r.v.ext ? '外注' : '#' + r.v.id}
+                        {r.v.cls && <span className="db-vcls">{r.v.cls}</span>}
+                      </button>
+                    )
+                  })}
+                  {vFilter.length > 0 && (
+                    <span className="db-vfilter-note">{vFilter.length}台に絞り込み中 · 未手配は非表示</span>
+                  )}
+                </div>
+              </>
+            )}
         </div>
       )}
     </div>
