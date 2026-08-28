@@ -94,6 +94,8 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const [unDetail, setUnDetail] = useState(null) // 未手配カードから開く成約の詳細（contractId）
   const [unEdits, setUnEdits] = useState({})     // 未手配のまま書き込んだ内容 { カードキー: {tel,load,memoFrom,...} }
   const [vFilter, setVFilter] = useState([])     // 車両で絞り込み（空配列＝すべて）。地図と配車表の両方に効く
+  const [readyDay, setReadyDay] = useState('')   // 読み込みが完了した日付（stateで持つ。地図の解禁判定に使う）
+  const [mapOpenDays, setMapOpenDays] = useState([]) // 地図の表示を解禁した日付の一覧。この中にある日だけ描く
   const toast = onToast || (() => {})
   const boardKey = ymd(boardDate)
   const show = (c) => !filter || filter[c] !== false // カテゴリチップの絞り込み
@@ -124,17 +126,25 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const contractCards = useMemo(() => (contracts || []).filter(c => isActiveContract(c) && c.date === boardKey).map(contractToCard), [contracts, boardKey])
   const contractCardsAvail = useMemo(() => { const a = new Set(jobs.map(j => j.contractId).filter(Boolean)); return contractCards.filter(cd => !a.has(cd.contractId)) }, [contractCards, jobs])
   const unassigned = useMemo(() => [...contractCardsAvail, ...manualUn], [contractCardsAvail, manualUn])
+  const readyKey = useRef('')   // 読み込みが完了した日付（この日付のあいだだけ保存・地図解禁を許す）
+  // 未手配の残数。ゼロになったらその日の地図を解禁する（それまでは経路計算をしない＝Googleマップの課金を抑える）。
+  // 解禁は日付単位で覚える。日付が変われば自動でまた伏せる（mapOpenDay と boardKey の一致で判定）。
+  const pendingUn = unassigned.filter(u => show(u.cat)).length
+  const mapShown = mapOpenDays.includes(boardKey)
+  useEffect(() => {
+    // その日の読み込みが終わるまでは判定しない（古い割当のまま解禁してしまうのを防ぐ）
+    if (readyDay === boardKey && pendingUn === 0 && !mapOpenDays.includes(boardKey)) setMapOpenDays(d => [...d, boardKey])
+  }, [readyDay, pendingUn, boardKey, mapOpenDays])
 
   // 日付別に保存済みの割当を読み込み（デモは日付ごとに空から）。読み込み完了前は保存しない（readyKeyで制御）。
-  const readyKey = useRef('')
   useEffect(() => {
-    setArmed(null)
+    setArmed(null); setReadyDay('')
     // 乗務員の初期割当（日付にまだ保存がない場合の既定値）＝フリートの既定乗務員。以後は日付別に独立。
     const seedCrew = (fleet) => Object.fromEntries((fleet || []).map(v => [v.key, v.crew || '']))
     if (isDemo) {
       setJobs([]); setManualUn([]); setCrewList(DEFAULT_CREW)
       setVehicles(DEFAULT_FLEET); setCrewMap(seedCrew(DEFAULT_FLEET)); setHelperMap({}); setUnEdits({})
-      readyKey.current = boardKey; return
+      readyKey.current = boardKey; setReadyDay(boardKey); return
     }
     let cancelled = false; readyKey.current = ''
     fetch('/api/dispatch').then(r => r.json()).then(d => {
@@ -155,8 +165,8 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
         while (a.length > 1 && !String(a[a.length - 1] || '').trim()) a.pop()
         return [kk, a.length ? a : ['']]
       })))
-      readyKey.current = boardKey
-    }).catch(() => { if (!cancelled) { setJobs([]); setManualUn([]); readyKey.current = boardKey } })
+      readyKey.current = boardKey; setReadyDay(boardKey)
+    }).catch(() => { if (!cancelled) { setJobs([]); setManualUn([]); readyKey.current = boardKey; setReadyDay(boardKey) } })
     return () => { cancelled = true }
   }, [boardKey, isDemo])
 
@@ -456,7 +466,8 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
       </div>
 
       {/* ===== 配車ルートマップ ===== */}
-      <DispatchMap vehicles={vehicles} jobs={jobs} show={show} vFilter={vFilter} onToggle={toggleVFilter} onClear={() => setVFilter([])} />
+      <DispatchMap vehicles={vehicles} jobs={jobs} show={show} vFilter={vFilter} onToggle={toggleVFilter} onClear={() => setVFilter([])}
+        shown={mapShown} pendingUn={pendingUn} onShow={() => setMapOpenDays(d => d.includes(boardKey) ? d : [...d, boardKey])} />
 
       {/* ===== 配車表（車格×案件） ===== */}
       <div className="db-wrap">
@@ -949,15 +960,17 @@ function loadGmaps(key) {
   return gmapsPromise
 }
 const dirCache = new Map() // 同一停車列の経路計算を使い回す（API呼び出し削減）
+const geoCache = new Map() // 住所→{lat,lng}。1地点だけの車両のジオコーディング結果を使い回す（API呼び出し削減）
 
 // 実地図モード（キーあり）：Directions API の実道路ルートを車両ごとに色分け描画
 // ・線をタップ → 区間／出発住所／到着住所／距離・時間を表示
 // ・高速道路／有料道路トグルで経路を再計算（ルート変更）
 // ・複数経路がある場合は詳細カードの「別ルートに変更」で切替
-function GoogleRouteMap({ routes }) {
+function GoogleRouteMap({ routes, visible = true }) {
   const mapRef = useRef(null)
   const mapObj = useRef(null)
   const overlays = useRef([])
+  const boundsRef = useRef(null) // 直近の描画範囲（再表示時の再フィット用）
   const resultRef = useRef({}) // 車両key -> { result, altCount }（別ルート切替用に最新結果を保持）
   const altRef = useRef({})    // 車両key -> 選択中の経路index
   const [status, setStatus] = useState('loading') // loading | ready | error
@@ -989,6 +1002,7 @@ function GoogleRouteMap({ routes }) {
     const g = window.google, map = mapObj.current
     overlays.current.forEach(o => { try { o.setMap(null) } catch {} }); overlays.current = []
     const bounds = new g.maps.LatLngBounds()
+    boundsRef.current = bounds
     const svc = new g.maps.DirectionsService()
     let cancelled = false
 
@@ -1069,8 +1083,16 @@ function GoogleRouteMap({ routes }) {
       const cacheKey = names.join('>') + '|h' + (avoidHighways ? 1 : 0) + 't' + (avoidTolls ? 1 : 0)
       if (dirCache.has(cacheKey)) { place(dirCache.get(cacheKey)); return }
       if (names.length < 2) { // 単一地点：ジオコーディングして1ピン
-        new g.maps.Geocoder().geocode({ address: names[0] + ' 福岡' }, (res, st) => {
-          if (st === 'OK' && res[0]) { pin(res[0].geometry.location, r.color, 8); fitNicely(g, map, bounds) }
+        const addr = names[0] + ' 福岡'
+        const cached = geoCache.get(addr)
+        if (cached) { pin(cached, r.color, 8); fitNicely(g, map, bounds); resolve(); return }
+        new g.maps.Geocoder().geocode({ address: addr }, (res, st) => {
+          if (st === 'OK' && res[0]) {
+            const l = res[0].geometry.location
+            const pos = { lat: l.lat(), lng: l.lng() }
+            geoCache.set(addr, pos)
+            pin(pos, r.color, 8); fitNicely(g, map, bounds)
+          }
           resolve()
         })
         return
@@ -1093,6 +1115,15 @@ function GoogleRouteMap({ routes }) {
     ;(async () => { for (const r of routes) { if (cancelled) break; await draw(r) } })() // 逐次実行でレート超過を回避
     return () => { cancelled = true }
   }, [status, sig, avoidHighways, avoidTolls, redraw])
+
+  // 畳んでいる間は display:none で地図を残す（作り直すとマップロードが課金されるため）。
+  // 非表示中はコンテナのサイズが0になるので、再表示のたびにリサイズと範囲の再適用を行う。
+  useEffect(() => {
+    if (!visible || status !== 'ready' || !mapObj.current || !window.google) return
+    const g = window.google
+    try { g.maps.event.trigger(mapObj.current, 'resize') } catch {}
+    fitNicely(g, mapObj.current, boundsRef.current)
+  }, [visible, status])
 
   // 詳細カードの「別ルートに変更」：その車両の代替ルートindexを進めて再描画
   const reroute = () => {
@@ -1141,7 +1172,7 @@ function GoogleRouteMap({ routes }) {
 
 // ラッパー：APIキーがあれば実地図、無ければ概略図に自動フォールバック。
 // キーがある場合はトグルでGoogleマップAPIのON/OFFを切替可（OFFで概略図＝API呼び出し0）。
-function DispatchMap({ vehicles, jobs, show, vFilter = [], onToggle, onClear }) {
+function DispatchMap({ vehicles, jobs, show, vFilter = [], onToggle, onClear, shown = true, pendingUn = 0, onShow }) {
   const routes = useMemo(() => computeVehicleRoutes(vehicles, jobs, show), [vehicles, jobs, show])
   const hasKey = !!GMAPS_KEY
   const useGmap = hasKey   // キーがあれば常にGoogleマップ（ON/OFFの切替ボタンは廃止）
@@ -1151,22 +1182,41 @@ function DispatchMap({ vehicles, jobs, show, vFilter = [], onToggle, onClear }) 
   })
   // 車両フィルタは親（配車ボード）が持つ。routes はその日に予定がある車両しか含まないので、そのまま候補になる。
   const shownRoutes = vFilter.length ? routes.filter(r => vFilter.includes(r.v.key)) : routes
+  // 一度開いたら、畳んでもDOMは残す（地図を作り直すとマップロードが課金されるため）。
+  // ただし最初から作ると高さ0で初期化されてしまうので、初回に開くまではマウントしない。
+  const [everOpen, setEverOpen] = useState(open)
+  useEffect(() => { if (open) setEverOpen(true) }, [open])
   return (
     <div className="card db-mapcard" style={{ marginBottom: 14 }}>
       <div className="card-head" onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
         <h3><span className="db-mapfold">{open ? '▾' : '▸'}</span>🗺 配車ルートマップ <span className="c-sub">· 各車両の進行ルート</span></h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} onClick={e => e.stopPropagation()}>
-          {!hasKey && <span className="c-sub">区の相対位置に基づく概略図</span>}
+          {!shown && <span className="c-sub">未手配 {pendingUn} 件・割当待ち</span>}
+          {!hasKey && <span className="c-sub db-schnote">区の相対位置に基づく概略図</span>}
         </div>
       </div>
-      {/* OFF時（キーあり・トグルOFF）や、スマホで畳んでいるときは本文を出さない */}
-      {open && (
-        <div className="card-body" style={{ padding: 12 }}>
-          {routes.length === 0
+      {/* 畳んでいるときは display:none。地図インスタンスを保持してマップロードの再課金を避ける */}
+      {everOpen && (
+        <div className="card-body" style={{ padding: 12, display: open ? 'block' : 'none' }}>
+          {/* 未手配が残っている間は地図を描かない。割当のたびに経路を計算し直すと、そのぶん課金されるため。 */}
+          {!shown ? (
+            <div className="db-mapgate">
+              <div className="db-mapgate-t">未手配が {pendingUn} 件あります</div>
+              <div className="db-mapgate-s">
+                すべて割り当てると自動でルートを表示します。<br />
+                割当のたびに経路を計算するとGoogleマップの料金がかさむため、それまでは計算しません。
+              </div>
+              <button type="button" className="btn btn-primary btn-sm" onClick={onShow} disabled={routes.length === 0}
+                title={routes.length === 0 ? '割り当て済みの案件がまだありません' : '今の割当状態でルートを計算して表示します'}>
+                🗺 今すぐ表示
+              </button>
+              {routes.length === 0 && <div className="db-mapgate-s">（割り当て済みの案件がまだありません）</div>}
+            </div>
+          ) : routes.length === 0
             ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>表示できるルートがありません</div>
             : (
               <>
-                {useGmap ? <GoogleRouteMap routes={shownRoutes} /> : <SchematicMap routes={shownRoutes} />}
+                {useGmap ? <GoogleRouteMap routes={shownRoutes} visible={open} /> : <SchematicMap routes={shownRoutes} />}
                 {/* 車両フィルタ：その日に予定がある車両だけボタンを出す。複数選択でき、地図と配車表の両方に効く */}
                 <div className="db-vfilter">
                   <span className="db-vfilter-lb">車両で絞り込み<small>（複数可・配車表も連動）</small></span>
