@@ -1182,10 +1182,7 @@ function DispatchMap({ vehicles, jobs, show, vFilter = [], onToggle, onClear, sh
           {!shown ? (
             <div className="db-mapgate">
               <div className="db-mapgate-t">未手配が {pendingUn} 件あります</div>
-              <div className="db-mapgate-s">
-                すべて割り当てると自動でルートを表示します。<br />
-                割当のたびに経路を計算するとGoogleマップの料金がかさむため、それまでは計算しません。
-              </div>
+              <div className="db-mapgate-s">すべて割り当てると自動でルートを表示します。</div>
               <button type="button" className="btn btn-primary btn-sm" onClick={onShow} disabled={routes.length === 0}
                 title={routes.length === 0 ? '割り当て済みの案件がまだありません' : '今の割当状態でルートを計算して表示します'}>
                 🗺 今すぐ表示
