@@ -619,7 +619,6 @@ button.db-week-cell:hover, label.db-week-cell:hover { border-color: var(--blueL)
   /* 助手は最大幅を抑える */
   .hp-grid { flex: 1 1 auto; max-width: 100%; }
 }
-.db-mapfold { display: inline-block; width: 15px; color: var(--muted); }
 /* 助手も人を選択（1枠のときは大きく） */
 .hp-sel { border: 0; background: transparent; padding: 4px 2px; text-align: center; font-size: 12px; }
 .hp-sel.big { font-size: 14px; font-weight: 700; padding: 7px 2px; }
