@@ -12,17 +12,28 @@ const calcIn = (name, extra = '') =>
   `<input class="form-input num calc" data-calc="${name}" inputmode="numeric" ${extra}>`
 
 /* ---------- 家財表 ---------- */
+// 原本の空き升（列4に1・列5に10）を自由記入行として使う。{ n: 通し番号, col: 列index }
+export const freeSlots = []
 function buildKazai() {
   const root = $('#kazai')
   const grid = el('div', 'kazai-cols')
   const rows = 23
+  let freeIdx = 0
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < 5; c++) {
       const it = KAZAI_COLS[c][r]
       const last = r === rows - 1
       if (!it) {
-        grid.append(el('div', 'kz name'), el('div', 'kz pt'), el('div', 'kz'), el('div', `kz${c === 4 ? ' mats-edge' : ''}`))
+        // 原本でも空欄になっている升。特殊家財を手書きするための自由記入行として使う
+        // （品名・点数・数量。点数を入れればポイント合計にも入る）
+        const n = ++freeIdx
+        const nm = el('div', 'kz name', `<input class="form-input" data-field="kzx${n}_name" style="width:100%;font-size:2.1mm;padding-left:0.5mm">`)
+        const ptc = el('div', 'kz pt', `<input class="form-input ctr" data-field="kzx${n}_pt" inputmode="numeric" style="width:100%">`)
+        const q1 = el('div', 'kz', inp('kzx' + n + '_qty'))
+        const q2 = el('div', `kz${c === 4 ? ' mats-edge' : ''}`, inp('kzx' + n + '_x'))
+        grid.append(nm, ptc, q1, q2)
         if (c === 2) grid.append(el('div', 'kz'))
+        freeSlots.push({ n, col: c })
         continue
       }
       const [key, name, size, pt] = it
@@ -182,6 +193,8 @@ function recalc() {
   KAZAI_COLS.forEach((col, ci) => {
     let colPt = 0
     col.forEach(([key, , , p]) => { if (typeof p === 'number') colPt += p * val('kz_' + key) })
+    // 自由記入行（点数×数量。どちらか空なら0）
+    freeSlots.filter(f => f.col === ci).forEach(f => { colPt += val('kzx' + f.n + '_pt') * val('kzx' + f.n + '_qty') })
     out['ptcol' + ci] = colPt; pt += colPt
   })
   out.pointTotal = pt
@@ -244,7 +257,7 @@ document.addEventListener('input', e => {
   if (t.matches && t.matches('[data-calc]')) {
     if (t.value.trim() === '') { delete t.dataset.manual } else { t.dataset.manual = '1' }
   }
-  if (t.matches && t.matches('.num, .qty, [data-field^="fee"], [data-field^="kz_"], [data-calc]')) recalc()
+  if (t.matches && t.matches('.num, .qty, [data-field^="fee"], [data-field^="kz_"], [data-field^="kzx"], [data-calc]')) recalc()
   if (t.matches && t.matches('.form-input, .form-area')) autoFit(t)
 })
 document.addEventListener('estimate:recalc', recalc)

@@ -246,6 +246,8 @@ const FEE_D = [
 const SEND_TYPES = ['', '直送一式', '直送長距離', '限定混載便', '積切']
 const PAY_METHODS = ['', '現金', '前受金', '会社請求', 'カード']
 // 帳票側の選択肢とそろえる
+// 帳票の家財表で原本から空欄になっている升の数（列4に1・列5に10）。ここに特殊家財を書ける
+const KZX_MAX = 11
 const MEDIA_ITEMS = ['電波', 'net', 'HP', '不動産', '電話帳', '法人名', 'DM', '再利用', 'チラシ', '紹介']
 const SECRET_ITEMS = ['車輌', '資材', '制服', '引越先']
 const GEAR_ITEMS = ['ロープ', 'ハシゴ', '工　具', '台　車', '養生資材']
@@ -306,7 +308,8 @@ function emptyForm() {
     moveFloorFrom: '', moveFloorTo: '', pianoFloorFrom: '', pianoFloorTo: '',
     // 家財数量
     items: {},
-    unmatchedKazai: [],   // リードから取り込めなかった家財（見積書の品目に該当なし）
+    extraKazai: [],       // 特殊家財（帳票の空き升に手書きする行）[{ name, pt, qty }]
+    unmatchedKazai: [],   // 自由記入行にも入りきらなかった家財（上限超過ぶん）
     // 荷造資材（数量：予定1／予定2／作業当日）と用具
     mats: {}, gear: [], createDate: '', delivDate: '', storageUntil: '',
     // 料金（すべて手入力）
@@ -426,6 +429,13 @@ function buildPrintData(form) {
   for (const f of FEE_B) put('feeB_' + f.key, form.feeB?.[f.key])
   for (const f of FEE_C) put('feeC_' + f.key + '_amt1', form.feeC?.[f.key])
   for (const f of FEE_D) put('feeD_' + f.key, form.feeD?.[f.key])
+  // 特殊家財（帳票の空き升への自由記入行）
+  ;(form.extraKazai || []).slice(0, KZX_MAX).forEach((r, i) => {
+    if (!r || (!r.name && !r.qty)) return
+    put('kzx' + (i + 1) + '_name', r.name)
+    put('kzx' + (i + 1) + '_pt', r.pt)
+    put('kzx' + (i + 1) + '_qty', r.qty)
+  })
   // 荷造資材（予定1／予定2／作業当日）と用具
   for (const [key] of MATERIAL_ROWS) {
     put('mat_' + key + '_d1', form.mats?.[key + '_d1'])
@@ -489,15 +499,20 @@ export default function Estimate({ user, switchTab }) {
     if (p.memo) f.memo = p.memo
     // 家財をリードから自動マッピング（語彙が異なるため対応表で変換）
     // 対応表にない家財（椅子・ゴルフセット・自由入力など）は、黙って捨てずに控えておく
-    const unmatched = []
+    const extra = [], over = []
     if (Array.isArray(p.kazai)) {
       p.kazai.forEach(k => {
         const key = resolveKazaiKey(k.name)
         if (key) f.items[key] = (Number(f.items[key]) || 0) + (Number(k.qty) || 0)
-        else if (k.name) unmatched.push(`${k.name}${Number(k.qty) > 1 ? ` ×${k.qty}` : ''}`)
+        else if (k.name) {
+          // 対応表に無い家財は、帳票の空き升へ書く「特殊家財」として持つ（点数は人が入れる）
+          if (extra.length < KZX_MAX) extra.push({ name: k.name, pt: '', qty: String(Number(k.qty) || 1) })
+          else over.push(`${k.name}${Number(k.qty) > 1 ? ` ×${k.qty}` : ''}`)
+        }
       })
     }
-    f.unmatchedKazai = unmatched
+    f.extraKazai = extra
+    f.unmatchedKazai = over
     if (p.boxCount) {
       // ダンボール（小）に割り当て
       const boxKey = ALL_ITEMS.find(it => it.name === 'ダンボール' && it.size === '小')?.key
@@ -604,6 +619,10 @@ export default function Estimate({ user, switchTab }) {
     setZipBusy('')
   }
   const setItemQty = (key, v) => setForm(p => ({ ...p, items: { ...p.items, [key]: v } }))
+  // 特殊家財（帳票の空き升に印刷する自由記入行）
+  const addExtra = () => setForm(p => (p.extraKazai || []).length >= KZX_MAX ? p : ({ ...p, extraKazai: [...(p.extraKazai || []), { name: '', pt: '', qty: '1' }] }))
+  const setExtra = (i, patch) => setForm(p => ({ ...p, extraKazai: (p.extraKazai || []).map((r, ix) => ix === i ? { ...r, ...patch } : r) }))
+  const removeExtra = (i) => setForm(p => ({ ...p, extraKazai: (p.extraKazai || []).filter((_, ix) => ix !== i) }))
   const setFee = (block, key, v) => setForm(p => ({ ...p, [block]: { ...p[block], [key]: v } }))
 
   // 集計
@@ -612,6 +631,7 @@ export default function Estimate({ user, switchTab }) {
       const q = num(form.items[it.key])
       return s + (it.pt ? q * it.pt : 0)
     }, 0)
+    const extraPt = (form.extraKazai || []).reduce((s, r) => s + num(r.pt) * num(r.qty), 0)
     const qtyTotal = ALL_ITEMS.reduce((s, it) => s + num(form.items[it.key]), 0)
     const a = sumFee(form.feeA, FEE_A)
     const b = sumFee(form.feeB, FEE_B)
@@ -620,7 +640,7 @@ export default function Estimate({ user, switchTab }) {
     const goukei = a + b + c + d
     const tax = Math.round(goukei * TAX_RATE)
     const saikei = goukei + tax
-    return { points, qtyTotal, a, b, c, d, goukei, tax, saikei }
+    return { points: points + extraPt, qtyTotal, a, b, c, d, goukei, tax, saikei }
   }, [form])
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2200) }
@@ -711,15 +731,19 @@ export default function Estimate({ user, switchTab }) {
       f.contractAmount = num(c.amount) // 参考表示用
       // 家財を成約から見積書の家財数量へ反映（リード→成約で引き継いだkazai/boxCount）
       // 対応表にない家財は黙って捨てず、家財タブの警告に出す
-      const unmatched = []
+      const extra = [], over = []
       if (Array.isArray(c.kazai)) {
         c.kazai.forEach(k => {
           const key = resolveKazaiKey(k.name)
           if (key) f.items[key] = (Number(f.items[key]) || 0) + (Number(k.qty) || 0)
-          else if (k.name) unmatched.push(`${k.name}${Number(k.qty) > 1 ? ` ×${k.qty}` : ''}`)
+          else if (k.name) {
+            if (extra.length < KZX_MAX) extra.push({ name: k.name, pt: '', qty: String(Number(k.qty) || 1) })
+            else over.push(`${k.name}${Number(k.qty) > 1 ? ` ×${k.qty}` : ''}`)
+          }
         })
       }
-      f.unmatchedKazai = unmatched
+      f.extraKazai = extra
+      f.unmatchedKazai = over
       if (c.boxCount) { const boxKey = ALL_ITEMS.find(it => it.name === 'ダンボール' && it.size === '小')?.key; if (boxKey) f.items[boxKey] = Number(c.boxCount) || 0 }
       setForm(f); setEditId(null); setView('edit'); setPreview(false); setStep('basic')
     }
@@ -1079,14 +1103,14 @@ export default function Estimate({ user, switchTab }) {
         {/* リードから取り込めなかった家財（見積書の品目に該当なし）。捨てずにここで知らせる */}
         {Array.isArray(form.unmatchedKazai) && form.unmatchedKazai.length > 0 && (
           <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '9px 12px', marginBottom: 10, fontSize: 12, color: '#92400E' }}>
-            <b>⚠ 見積書の品目に無い家財がリードにありました</b>（数量は入っていません。近い品目に手入力するか、備考に記載してください）
+            <b>⚠ 特殊家財の欄（{KZX_MAX}行）に入りきりませんでした</b>（備考に記載するか、近い品目に手入力してください）
             <div style={{ marginTop: 5, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {form.unmatchedKazai.map((n, i) => (
                 <span key={i} style={{ background: '#fff', border: '1px solid #FDE68A', borderRadius: 999, padding: '2px 9px', fontWeight: 700 }}>{n}</span>
               ))}
             </div>
             <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 7 }}
-              onClick={() => { set('memo', [form.memo, '【見積書に品目が無い家財】' + form.unmatchedKazai.join('、')].filter(Boolean).join('\n')); set('unmatchedKazai', []) }}>
+              onClick={() => { set('memo', [form.memo, '【家財表に入りきらない家財】' + form.unmatchedKazai.join('、')].filter(Boolean).join('\n')); set('unmatchedKazai', []) }}>
               備考に書き写して閉じる
             </button>
           </div>
@@ -1164,6 +1188,48 @@ export default function Estimate({ user, switchTab }) {
         <div style={{ marginTop: 10, fontSize: 11, color: '#94A3B8' }}>
           ※ ポイント（才数）は数量×単価の自動合計です。「(別途)」項目（ピアノ・TV等）はサイズ別のため合計に含めません。
         </div>
+
+        <SubHead>特殊家財（表に無い品目）</SubHead>
+        <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8, lineHeight: 1.6 }}>
+          家財表の空き欄（{KZX_MAX}行まで）に品名ごと印刷します。点数を入れるとポイント合計にも入ります。
+        </div>
+        {(form.extraKazai || []).length === 0 ? (
+          <div style={{ fontSize: 12, color: '#94A3B8', padding: '6px 0' }}>まだありません。</div>
+        ) : (
+          <div className="scroll-x">
+            <table style={{ minWidth: 420 }}>
+              <thead>
+                <tr><th>品名</th><th style={{ width: 110, textAlign: 'center' }}>点数（才）</th><th style={{ width: 90, textAlign: 'center' }}>数量</th><th style={{ width: 44 }}></th></tr>
+              </thead>
+              <tbody>
+                {form.extraKazai.map((r, i) => (
+                  <tr key={i}>
+                    <td style={{ padding: 4 }}>
+                      <input style={inputStyle} value={r.name || ''} placeholder="例：ゴルフセット"
+                        onChange={e => setExtra(i, { name: e.target.value })} />
+                    </td>
+                    <td style={{ padding: 4 }}>
+                      <input style={{ ...inputStyle, textAlign: 'center' }} value={r.pt || ''} placeholder="才"
+                        onChange={e => setExtra(i, { pt: e.target.value })} />
+                    </td>
+                    <td style={{ padding: 4 }}>
+                      <input style={{ ...inputStyle, textAlign: 'center' }} value={r.qty || ''} placeholder="1"
+                        onChange={e => setExtra(i, { qty: e.target.value })} />
+                    </td>
+                    <td style={{ padding: 4, textAlign: 'center' }}>
+                      <button type="button" title="この行を削除" onClick={() => removeExtra(i)}
+                        style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 7, width: 28, height: 28, cursor: 'pointer', fontSize: 13 }}>×</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 8 }}
+          onClick={addExtra} disabled={(form.extraKazai || []).length >= KZX_MAX}>
+          ＋ 特殊家財を追加{(form.extraKazai || []).length >= KZX_MAX ? `（上限${KZX_MAX}行）` : ''}
+        </button>
 
         <SubHead>荷造資材（枚数・個数）</SubHead>
         <div className="scroll-x">
