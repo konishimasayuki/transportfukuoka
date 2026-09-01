@@ -418,18 +418,12 @@ tr:hover td { background: var(--bg); }
   .db-timerow, .db-row { grid-template-columns: 76px repeat(11, 1fr); }
   .db-timerow .tc { font-size: 8px; }
 }
-/* ルートマップ：地図＋凡例。狭い画面（iPhone/iPad縦）では縦積みにして地図を潰さない */
-.db-maprow { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 12px; align-items: start; }
+/* ルートマップ：地図は横幅いっぱい（右の凡例パネルは廃止し、Googleマップのリンクは配車表の車格セルへ移動） */
+.db-maprow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
 /* 地図は固定高さのパネル（余白を作らず、凡例スクロールと高さを揃える） */
 .db-mapbox { height: 340px; background: #EAEDE4; border-radius: 10px; border: 1px solid var(--border); overflow: hidden; }
-/* 凡例カードは固定高さ＋縦スクロール（#218の下は隠してスクロールで見せる） */
-.db-legend-scroll { display: flex; flex-direction: column; gap: 7px; max-height: 300px; overflow-y: auto; padding-right: 2px; }
-.db-legend-scroll::-webkit-scrollbar { width: 8px; }
-.db-legend-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
 @media (max-width: 900px) {
-  .db-maprow { grid-template-columns: 1fr; }
   .db-mapbox { height: 300px; }
-  .db-legend-scroll { max-height: 260px; }
 }
 /* 車両フィルタ：その日に予定がある車両のボタン。押した車両のルートだけ地図に描く */
 .db-vfilter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
@@ -438,6 +432,13 @@ tr:hover td { background: var(--bg); }
 .db-vfilter-note { font-size: 10.5px; color: var(--blue); font-weight: 700; margin-left: 2px; }
 /* 選択中だけ出るチェック。未選択でも幅を確保してボタン幅が動かないようにする */
 .db-vchk { display: inline-block; width: 9px; font-size: 11px; line-height: 1; text-align: center; }
+/* 車格セル内：その車両の経路をGoogleマップで開くリンク。列が狭いので折り返す */
+.db-gmap {
+  display: block; margin-top: 5px; max-width: 100%;
+  font-size: 9.5px; font-weight: 700; color: var(--blue); text-decoration: none;
+  line-height: 1.3; white-space: normal; overflow-wrap: anywhere;
+}
+.db-gmap:hover { text-decoration: underline; }
 .db-vclear {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px;
   border: 1px solid var(--blue); background: #EAF2FB; color: var(--blue);
@@ -484,7 +485,7 @@ tr:hover td { background: var(--bg); }
 .db-table th, .db-table td { border: 1px solid #CBD5E1; padding: 4px 6px; text-align: center; vertical-align: middle; }
 .db-table thead th { background: #E9EEF5; font-weight: 800; color: #334155; font-size: 11px; padding: 6px 4px; }
 .db-table .c-no { width: 28px; background: #F1F5F9; font-weight: 800; color: #64748B; }
-.db-table .c-cls { width: 86px; }
+.db-table .c-cls { width: 96px; }
 .db-table .c-cls .cls-name { font-weight: 800; margin-top: 2px; }
 .db-table .c-driver { width: 92px; }
 .db-table .c-helper { width: 56px; }
