@@ -8,7 +8,7 @@
 // - 外注枠は初期非表示。「外注枠を追加」で必要なときだけ追加する。
 // データはダミー配列（後で /api/schedule 等の実データ・型に差し替え可能）。
 // 車両は内部キー(key)で参照し、号車番号(id)を変更してもジョブの紐付けが壊れない設計。
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { DEFAULT_FLEET, DEFAULT_CREW, TRUCK_CLASSES } from '../lib/fleet'
 import ContractDetailModal, { EMPTY_CONTRACT } from './ContractDetailModal'
 
@@ -100,6 +100,16 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
   const boardKey = ymd(boardDate)
   const show = (c) => !filter || filter[c] !== false // カテゴリチップの絞り込み
   const vehOf = (key) => vehicles.find(v => v.key === key)
+  // 地図のルートは配車表の積地／卸地と同じ値を使う（手入力 → 成約の住所 → カードの地名）
+  const jobAddr = useCallback((j) => {
+    const c = j.contractId ? (contracts || []).find(x => x.id === j.contractId) : null
+    const from = j.addrFrom ?? ((c && c.fromAddress) || j.from || '')
+    const to = j.addrTo ?? ((c && c.toAddress) || (j.to && j.to !== '—' ? j.to : ''))
+    return { from: String(from || '').trim(), to: String(to || '').trim() }
+  }, [contracts])
+  // 車両key → その日の停車地列。配車表の車格セルに出すGoogleマップリンクに使う（API呼び出しは発生しない）
+  const routeOfVehicle = {}
+  computeVehicleRoutes(vehicles, jobs, show, jobAddr).forEach(r => { routeOfVehicle[r.v.key] = r })
   // 車両フィルタ（複数選択）。空なら全表示。選んだ車両の予定が無くなったら自動で外す
   const inFilter = (vKey) => vFilter.length === 0 || vFilter.includes(vKey)
   const toggleVFilter = (vKey) => setVFilter(prev => prev.includes(vKey) ? prev.filter(k => k !== vKey) : [...prev, vKey])
@@ -466,7 +476,7 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
       </div>
 
       {/* ===== 配車ルートマップ ===== */}
-      <DispatchMap vehicles={vehicles} jobs={jobs} show={show} vFilter={vFilter} onToggle={toggleVFilter} onClear={() => setVFilter([])}
+      <DispatchMap vehicles={vehicles} jobs={jobs} show={show} addrOf={jobAddr} vFilter={vFilter} onToggle={toggleVFilter} onClear={() => setVFilter([])}
         shown={mapShown} pendingUn={pendingUn} onShow={() => setMapOpenDays(d => d.includes(boardKey) ? d : [...d, boardKey])} />
 
       {/* ===== 配車表（車格×案件） ===== */}
@@ -542,6 +552,11 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
                           <td className="c-cls" data-l="車格" rowSpan={pairs * 2}>
                             <span className="db-badge">{v.ext ? '外注' : '#' + v.id}</span>
                             <div className="cls-name">{v.cls}</div>
+                            {/* この車両の巡回をGoogleマップで開く（停車地は配車表の積地・卸地と同じ） */}
+                            {routeOfVehicle[v.key] && routeOfVehicle[v.key].stops.length > 0 && (
+                              <a className="db-gmap" href={gmapUrl(routeOfVehicle[v.key].stops)} target="_blank" rel="noreferrer"
+                                 title={routeOfVehicle[v.key].stops.join(' → ')}>🗺 Googleマップで開く</a>
+                            )}
                           </td>
                           <td className="c-driver" data-l="運転手" rowSpan={pairs * 2}>
                             <select className="db-cellsel" value={crewMap[v.key] || ''} onChange={e => chooseCrew(v.key, e.target.value)}>
@@ -742,8 +757,11 @@ const coordOf = (name) => {
 }
 // 車両ごとのルート色（画像イメージ：オレンジ／青／緑…）
 const ROUTE_COLORS = ['#f97316', '#2563eb', '#16a34a', '#7c3aed', '#e11d48', '#0891b2', '#ca8a04', '#0d9488']
+// ジオコーディング用の問い合わせ文字列。「早良区」のような地名だけのときに県名を補う。
+// 実住所（すでに福岡を含む）にはそのまま使う。
+const geoQuery = (name) => (String(name).includes('福岡') ? String(name) : String(name) + ' 福岡')
 const gmapUrl = (names) => {
-  const q = names.map(n => encodeURIComponent(n + ' 福岡'))
+  const q = names.map(n => encodeURIComponent(geoQuery(n)))
   if (q.length === 1) return 'https://www.google.com/maps/search/?api=1&query=' + q[0]
   const way = q.slice(1, -1).join('%7C')
   let u = 'https://www.google.com/maps/dir/?api=1&origin=' + q[0] + '&destination=' + q[q.length - 1]
@@ -753,44 +771,23 @@ const gmapUrl = (names) => {
 
 // 各車両の停車地列（from→to・時刻順、連続重複を除去）を作る。両モード共通。
 // stops: 停車地点の並び。legs: stops[i]→stops[i+1] の区間種別（'job'=案件の搬送区間・実線／'move'=手配間の移動区間・点線）
-function computeVehicleRoutes(vehicles, jobs, show) {
+// addrOf(j) は配車表と同じ住所解決（手入力 → 成約の住所 → カードの地名）。
+// 地図と表で別の値を見ていると、卸地が落ちて S/G が片方しか出ないなどのズレが起きる。
+function computeVehicleRoutes(vehicles, jobs, show, addrOf) {
+  const resolve = addrOf || (j => ({ from: j.from || '', to: (j.to && j.to !== '—') ? j.to : '' }))
   return vehicles.map((v, idx) => {
     const vj = jobs.filter(j => j.v === v.key && show(j.cat)).sort((a, b) => a.s - b.s)
     const stops = []
     const legs = []
     vj.forEach(j => {
-      const from = j.from
-      const to = (j.to && j.to !== '—') ? j.to : null
+      const { from, to } = resolve(j)
+      if (!from) return
       if (stops.length === 0) stops.push(from)
       else if (stops[stops.length - 1] !== from) { legs.push('move'); stops.push(from) }
       if (to && to !== stops[stops.length - 1]) { legs.push('job'); stops.push(to) }
     })
     return { v, color: ROUTE_COLORS[idx % ROUTE_COLORS.length], stops, legs }
   }).filter(r => r.stops.length > 0)
-}
-
-// 凡例（車両→色＋経路＋Googleマップリンク）。両モード共通。
-// カード群は固定高さ＋縦スクロール（地図と高さを揃え、下部の余白を作らない）。注記はスクロール外に常時表示。
-function RouteLegend({ routes, note }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-      <div className="db-legend-scroll">
-        {routes.map((r, ri) => (
-          <div key={ri} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ width: 14, height: 4, borderRadius: 2, background: r.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 12, fontWeight: 700 }}>{r.v.ext ? '外注' : '#' + r.v.id}</span>
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>{r.v.cls}</span>
-            </div>
-            <div style={{ fontSize: 10.5, color: 'var(--sub)', margin: '5px 0 6px', lineHeight: 1.4 }}>{r.stops.join(' → ')}</div>
-            <a href={gmapUrl(r.stops)} target="_blank" rel="noreferrer"
-              style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', textDecoration: 'none' }}>🗺 Googleマップで開く ›</a>
-          </div>
-        ))}
-      </div>
-      {note && <div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.5, marginTop: 2 }}>{note}</div>}
-    </div>
-  )
 }
 
 // ルート詳細カード（線をタップで表示：区間・出発住所・到着住所・距離/時間）。
@@ -933,7 +930,6 @@ function SchematicMap({ routes }) {
           </svg>
         ) : <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: 24 }}>地図に表示できる地名がありません</div>}
       </div>
-      <RouteLegend routes={routes} note={'※ 概略図は区の相対位置ベース。実際の道路経路は「Googleマップで開く」で確認できます。Google Mapsキーを設定すると実地図に切り替わります。'} />
     </div>
   )
 }
@@ -1081,7 +1077,7 @@ function GoogleRouteMap({ routes }) {
       const cacheKey = names.join('>') + '|h' + (avoidHighways ? 1 : 0) + 't' + (avoidTolls ? 1 : 0)
       if (dirCache.has(cacheKey)) { place(dirCache.get(cacheKey)); return }
       if (names.length < 2) { // 単一地点：ジオコーディングして1ピン
-        const addr = names[0] + ' 福岡'
+        const addr = geoQuery(names[0])
         const cached = geoCache.get(addr)
         if (cached) { pin(cached, r.color, 8); fitNicely(g, map, bounds); resolve(); return }
         new g.maps.Geocoder().geocode({ address: addr }, (res, st) => {
@@ -1097,8 +1093,8 @@ function GoogleRouteMap({ routes }) {
       }
       const hasWaypoints = names.length > 2
       svc.route({
-        origin: names[0] + ' 福岡', destination: names[names.length - 1] + ' 福岡',
-        waypoints: names.slice(1, -1).map(n => ({ location: n + ' 福岡', stopover: true })),
+        origin: geoQuery(names[0]), destination: geoQuery(names[names.length - 1]),
+        waypoints: names.slice(1, -1).map(n => ({ location: geoQuery(n), stopover: true })),
         // 巡回順は最適化しない。停車地はジョブの開始時刻順＝実際の作業順に並べてあり、
         // Google側で組み替えられると配車と違う線になる。
         // 併せて、最適化は Directions Advanced（無料枠5,000回/月・$10/1,000）を発生させるSKU条件のひとつで、
@@ -1158,7 +1154,6 @@ function GoogleRouteMap({ routes }) {
           <RouteDetailCard detail={detail} onClose={() => setDetail(null)} onReroute={reroute}
             note={detail && detail.altCount > 1 ? '「別ルートに変更」で代替経路に切り替えられます。' : '高速/有料の設定を変えると経路が再計算されます。'} />
         </div>
-        <RouteLegend routes={routes} note={'※ 巡回順は自動最適化。線は実際の道路に沿った経路です。線をタップで詳細、上部トグルで高速/有料を切替できます。'} />
       </div>
     </div>
   )
@@ -1166,8 +1161,8 @@ function GoogleRouteMap({ routes }) {
 
 // ラッパー：APIキーがあれば実地図、無ければ概略図に自動フォールバック。
 // キーがある場合はトグルでGoogleマップAPIのON/OFFを切替可（OFFで概略図＝API呼び出し0）。
-function DispatchMap({ vehicles, jobs, show, vFilter = [], onToggle, onClear, shown = true, pendingUn = 0, onShow }) {
-  const routes = useMemo(() => computeVehicleRoutes(vehicles, jobs, show), [vehicles, jobs, show])
+function DispatchMap({ vehicles, jobs, show, addrOf, vFilter = [], onToggle, onClear, shown = true, pendingUn = 0, onShow }) {
+  const routes = useMemo(() => computeVehicleRoutes(vehicles, jobs, show, addrOf), [vehicles, jobs, show, addrOf])
   const hasKey = !!GMAPS_KEY
   const useGmap = hasKey   // キーがあれば常にGoogleマップ（ON/OFFの切替ボタンは廃止）
   // 車両フィルタは親（配車ボード）が持つ。routes はその日に予定がある車両しか含まないので、そのまま候補になる。
