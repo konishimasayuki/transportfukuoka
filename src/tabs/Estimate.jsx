@@ -357,6 +357,9 @@ function splitDate(ymd) {
   return m ? { month: String(Number(m[2])), day: String(Number(m[3])) } : { month: '', day: '' }
 }
 // 帳票の狭い欄向けの整形。「2026-09-01」→「26.9.1」／「9」（月日欄用）
+const DOW = ['日', '月', '火', '水', '木', '金', '土']
+const dowOf = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); if (!m) return ''
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])); return isNaN(d) ? '' : DOW[d.getDay()] }
 const ymdToShort = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return m ? `${m[1].slice(2)}.${Number(m[2])}.${Number(m[3])}` : (v || '') }
 function buildPrintData(form) {
   const d = {}
@@ -385,7 +388,9 @@ function buildPrintData(form) {
   put('frontNote', form.frontNote)
   put('spaceSize', form.spaceSize); put('workLoad', form.workLoad); put('packOpenCar', form.packOpenCar)
   put('helperCar', form.helperCar)
-  put('confirmDate', form.confirmDate); put('confirmerName', form.confirmerName)
+  const cf = splitDate(form.confirmDate)
+  put('confirmMonth', cf.month); put('confirmDay', cf.day); put('confirmDow', dowOf(form.confirmDate))
+  put('confirmerName', form.confirmerName)
   put('refName', form.refName)
   if (form.bizMove) d.bizMove = true
   if (form.bizClean) d.bizClean = true
@@ -923,7 +928,7 @@ export default function Estimate({ user, switchTab }) {
         </div>
         <div className="three-col" style={{ marginTop: 10 }}>
           <Field label="フロント"><input style={inputStyle} value={form.frontNote} onChange={e => set('frontNote', e.target.value)} /></Field>
-          <Field label="確認日"><input style={inputStyle} value={form.confirmDate} onChange={e => set('confirmDate', e.target.value)} placeholder="例：9/1（火）" /></Field>
+          <Field label="確認日"><input type="date" style={inputStyle} value={form.confirmDate} onChange={e => set('confirmDate', e.target.value)} /></Field>
           <Field label="確認者"><input style={inputStyle} value={form.confirmerName} onChange={e => set('confirmerName', e.target.value)} /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 10 }}>
