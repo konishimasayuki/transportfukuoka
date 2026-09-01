@@ -1099,7 +1099,11 @@ function GoogleRouteMap({ routes }) {
       svc.route({
         origin: names[0] + ' 福岡', destination: names[names.length - 1] + ' 福岡',
         waypoints: names.slice(1, -1).map(n => ({ location: n + ' 福岡', stopover: true })),
-        optimizeWaypoints: hasWaypoints,
+        // 巡回順は最適化しない。停車地はジョブの開始時刻順＝実際の作業順に並べてあり、
+        // Google側で組み替えられると配車と違う線になる。
+        // 併せて、最適化は Directions Advanced（無料枠5,000回/月・$10/1,000）を発生させるSKU条件のひとつで、
+        // 外すと Directions Essentials（無料枠10,000回/月・$5/1,000）になる。
+        optimizeWaypoints: false,
         provideRouteAlternatives: !hasWaypoints, // 経由地なしのときだけ代替ルートを取得
         avoidHighways, avoidTolls,
         travelMode: g.maps.TravelMode.DRIVING,
