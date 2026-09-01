@@ -245,6 +245,15 @@ const FEE_D = [
 
 const SEND_TYPES = ['', '直送一式', '直送長距離', '限定混載便', '積切']
 const PAY_METHODS = ['', '現金', '前受金', '会社請求', 'カード']
+// 帳票側の選択肢とそろえる
+const MEDIA_ITEMS = ['電波', 'net', 'HP', '不動産', '電話帳', '法人名', 'DM', '再利用', 'チラシ', '紹介']
+const SECRET_ITEMS = ['車輌', '資材', '制服', '引越先']
+const GEAR_ITEMS = ['ロープ', 'ハシゴ', '工　具', '台　車', '養生資材']
+// 荷造資材（帳票の「荷造資材」ブロック。列は 予定1／予定2／作業当日）
+const MATERIAL_ROWS = [
+  ['mtSmall', '小'], ['mtMid', '中'], ['mtWa', '和'], ['tape', 'ガムテープ'], ['futon', 'ふとん袋'],
+  ['hbox', 'ハンガーボックス'], ['lightron', 'ライトロンクレープ紙'], ['aircap', 'エアーキャップ'],
+]
 const PERSON_CHOICES = ['お客様', '当社']
 const ROAD_CHOICES = ['', 'S', 'M', 'L']
 const YN = ['', '有', '無']
@@ -274,18 +283,37 @@ function emptyForm() {
     sendType: '', distanceKm: '',
     // 顧客
     name: '', kana: '',
-    fromZip: '', fromAddress: '', fromTelHome: '', fromTelWork: '', fromTelMobile: '',
-    toZip: '', toAddress: '', toTelHome: '', toTelWork: '', toTelMobile: '',
+    fromZip: '', fromAddress: '', fromFurigana: '', fromTelHome: '', fromTelWork: '', fromTelMobile: '',
+    toZip: '', toAddress: '', toFurigana: '', toTelHome: '', toTelWork: '', toTelMobile: '',
+    // 受付・伝票（帳票の左上まわり）
+    reception1: '', reception2: '', requestDate: '', frontNote: '',
+    spaceSize: '', workLoad: '', packOpenCar: '', helperCar: '',
+    confirmDate: '', confirmerName: '', refName: '',
+    bizMove: false, bizClean: false, bizReuse: false, bizOther: '',
+    media: [], mediaReuseCount: '',      // 媒体（複数選択）
+    secret: [],                          // シークレット（複数選択）
+    // 時刻（各日程）
+    moveHour: '', packHour: '', deliverHour: '', unpackHour: '',
+    packAP: '', unpackAP: '',
     // 作業内容の確認
     packSmallBy: 'お客様', packFurniBy: '当社', packOpenBy: 'お客様',
     pianoWork: '', airconSep: '', airconWindow: '', optionWork: '',
-    // 作業状況
+    pianoCur: false, pianoDst: false, airconRemove: false, airconInstall: false,
+    // 作業状況：現地[C]／行先[D] を別々に持つ（帳票が2段のため）
     twoPlace: '', roadWidth: '', elevator: '', windowLift: '', machine: '',
+    roadWidthM: '', elevatorM: '',
+    twoPlaceD: '', roadWidthD: '', roadWidthDM: '', elevatorD: '', elevatorDM: '', windowLiftD: '', machineD: '',
+    moveFloorFrom: '', moveFloorTo: '', pianoFloorFrom: '', pianoFloorTo: '',
     // 家財数量
     items: {},
     unmatchedKazai: [],   // リードから取り込めなかった家財（見積書の品目に該当なし）
+    // 荷造資材（数量：予定1／予定2／作業当日）と用具
+    mats: {}, gear: [], createDate: '', delivDate: '', storageUntil: '',
     // 料金（すべて手入力）
     feeA: {}, feeB: {}, feeC: {}, feeD: {},
+    // 請求先
+    billName: '', billConfirm: '', billAddr: '', billClose: '', billPay: '',
+    billTel: '', billStaff: '', billSend: '',
     // その他
     memo: '', requestTo: '', payment: '',
     status: '作成中',
@@ -325,6 +353,8 @@ function splitDate(ymd) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || '')
   return m ? { month: String(Number(m[2])), day: String(Number(m[3])) } : { month: '', day: '' }
 }
+// 帳票の狭い欄向けの整形。「2026-09-01」→「26.9.1」／「9」（月日欄用）
+const ymdToShort = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return m ? `${m[1].slice(2)}.${Number(m[2])}.${Number(m[3])}` : (v || '') }
 function buildPrintData(form) {
   const d = {}
   const put = (k, v) => { if (v !== undefined && v !== null && v !== '') d[k] = v }
@@ -334,25 +364,59 @@ function buildPrintData(form) {
   put('curTelHome', form.fromTelHome); put('curTelWork', form.fromTelWork); put('curTelMobile', form.fromTelMobile)
   put('destPostal', form.toZip); put('destAddress', form.toAddress)
   put('dstTelHome', form.toTelHome); put('dstTelWork', form.toTelWork); put('dstTelMobile', form.toTelMobile)
-  // 日程
-  const mv = splitDate(form.moveDate); put('moveMonth', mv.month); put('moveDay', mv.day); put('moveAmPm', form.moveAP)
-  const dv = splitDate(form.deliverDate); put('deliverMonth', dv.month); put('deliverDay', dv.day); put('deliverAmPm', form.deliverAP)
-  const pk = splitDate(form.packDate); put('packMonth', pk.month); put('packDay', pk.day)
-  const op = splitDate(form.openDate); put('unpackMonth', op.month); put('unpackDay', op.day)
+  put('customerFurigana', form.kana)
+  put('currentFurigana', form.fromFurigana); put('destFurigana', form.toFurigana)
+  // 日程（時刻・AM/PMも）
+  const mv = splitDate(form.moveDate); put('moveMonth', mv.month); put('moveDay', mv.day); put('moveAmPm', form.moveAP); put('moveHour', form.moveHour)
+  const dv = splitDate(form.deliverDate); put('deliverMonth', dv.month); put('deliverDay', dv.day); put('deliverAmPm', form.deliverAP); put('deliverHour', form.deliverHour)
+  const pk = splitDate(form.packDate); put('packMonth', pk.month); put('packDay', pk.day); put('packAmPm', form.packAP); put('packHour', form.packHour)
+  const op = splitDate(form.openDate); put('unpackMonth', op.month); put('unpackDay', op.day); put('unpackAmPm', form.unpackAP); put('unpackHour', form.unpackHour)
   // 見積日は欄が狭いので YY.M.D に整形して渡す
   const ed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(form.estimateDate || '')
   put('estimateDate', ed ? `${ed[1].slice(2)}.${Number(ed[2])}.${Number(ed[3])}` : form.estimateDate)
   put('estimatorName', form.estimator)
   put('sendType', form.sendType); put('distanceKm', form.distanceKm)
+  // 受付・伝票まわり
+  put('reception1', form.reception1); put('reception2', form.reception2)
+  put('requestDate', ymdToShort(form.requestDate))
+  put('frontNote', form.frontNote)
+  put('spaceSize', form.spaceSize); put('workLoad', form.workLoad); put('packOpenCar', form.packOpenCar)
+  put('helperCar', form.helperCar)
+  put('confirmDate', form.confirmDate); put('confirmerName', form.confirmerName)
+  put('refName', form.refName)
+  if (form.bizMove) d.bizMove = true
+  if (form.bizClean) d.bizClean = true
+  if (form.bizReuse) d.bizReuse = true
+  put('bizOther', form.bizOther)
+  ;(form.media || []).forEach(v => { d['media_' + v] = true })
+  put('mediaReuseCount', form.mediaReuseCount)
+  ;(form.secret || []).forEach(v => { d['secret_' + v] = true })
   // 作業内容の確認・作業状況
   put('packSmallBy', form.packSmallBy); put('packFurniBy', form.packFurniBy); put('packOpenBy', form.packOpenBy)
   put('airconSepFrom', form.airconSep); put('airconSepTo', form.airconSep)
   put('airconWinFrom', form.airconWindow); put('airconWinTo', form.airconWindow)
   put('optionWork', form.optionWork)
+  if (form.pianoCur) d.pianoCur = true
+  if (form.pianoDst) d.pianoDst = true
+  if (form.airconRemove) d.airconRemove = true
+  if (form.airconInstall) d.airconInstall = true
+  // 階数
+  put('moveFloorFrom', form.moveFloorFrom); put('moveFloorTo', form.moveFloorTo)
+  put('pianoFloorFrom', form.pianoFloorFrom); put('pianoFloorTo', form.pianoFloorTo)
+  // 作業状況 [C]現地
   put('twoPlaceC', form.twoPlace)
+  if (form.roadWidth) put('road' + form.roadWidth + 'C', form.roadWidthM || '')
   if (form.elevator) put('elevC', form.elevator)
+  put('elevMC', form.elevatorM)
   if (form.windowLift) put('windowC', form.windowLift === 'F' || form.windowLift === '有' ? 'F' : '無')
   if (form.machine) put('machineC', form.machine)
+  // 作業状況 [D]行先
+  put('twoPlaceD', form.twoPlaceD)
+  if (form.roadWidthD) put('road' + form.roadWidthD + 'D', form.roadWidthDM || '')
+  if (form.elevatorD) put('elevD', form.elevatorD)
+  put('elevMD', form.elevatorDM)
+  if (form.windowLiftD) put('windowD', form.windowLiftD === 'F' || form.windowLiftD === '有' ? 'F' : '無')
+  if (form.machineD) put('machineD', form.machineD)
   // 家財数量
   for (const [k, v] of Object.entries(form.items || {})) {
     if (num(v) > 0) d['kz_' + (PRINT_KEY_MAP[k] || k)] = v
@@ -362,6 +426,18 @@ function buildPrintData(form) {
   for (const f of FEE_B) put('feeB_' + f.key, form.feeB?.[f.key])
   for (const f of FEE_C) put('feeC_' + f.key + '_amt1', form.feeC?.[f.key])
   for (const f of FEE_D) put('feeD_' + f.key, form.feeD?.[f.key])
+  // 荷造資材（予定1／予定2／作業当日）と用具
+  for (const [key] of MATERIAL_ROWS) {
+    put('mat_' + key + '_d1', form.mats?.[key + '_d1'])
+    put('mat_' + key + '_d2', form.mats?.[key + '_d2'])
+    put('mat_' + key + '_day', form.mats?.[key + '_day'])
+  }
+  ;(form.gear || []).forEach(g => { d['gear_' + g.replace(/\s/g, '')] = true })
+  put('createDate', form.createDate); put('delivDate', form.delivDate); put('storageUntil', form.storageUntil)
+  // 請求先
+  put('billName', form.billName); put('billConfirm', form.billConfirm); put('billAddr', form.billAddr)
+  put('billClose', form.billClose); put('billPay', form.billPay); put('billTel', form.billTel)
+  put('billStaff', form.billStaff); put('billSend', form.billSend)
   // 支払・備考
   put('payMethod', form.payment)
   put('promiseText', form.memo)
@@ -781,24 +857,81 @@ export default function Estimate({ user, switchTab }) {
             <div style={{ display: 'flex', gap: 6 }}>
               <input type="date" style={inputStyle} value={form.moveDate} onChange={e => set('moveDate', e.target.value)} />
               <select style={{ ...inputStyle, width: 70 }} value={form.moveAP} onChange={e => set('moveAP', e.target.value)}><option>AM</option><option>PM</option></select>
+              <input style={{ ...inputStyle, width: 58, textAlign: 'center' }} value={form.moveHour} onChange={e => set('moveHour', e.target.value)} placeholder="時" />
             </div>
           </Field>
           <Field label="お届日">
             <div style={{ display: 'flex', gap: 6 }}>
               <input type="date" style={inputStyle} value={form.deliverDate} onChange={e => set('deliverDate', e.target.value)} />
               <select style={{ ...inputStyle, width: 70 }} value={form.deliverAP} onChange={e => set('deliverAP', e.target.value)}><option>AM</option><option>PM</option></select>
+              <input style={{ ...inputStyle, width: 58, textAlign: 'center' }} value={form.deliverHour} onChange={e => set('deliverHour', e.target.value)} placeholder="時" />
             </div>
           </Field>
           <Field label="距離（km）"><input type="number" style={inputStyle} value={form.distanceKm} onChange={e => set('distanceKm', e.target.value)} placeholder="例：12" /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 10 }}>
-          <Field label="梱包日"><input type="date" style={inputStyle} value={form.packDate} onChange={e => set('packDate', e.target.value)} /></Field>
-          <Field label="開梱日"><input type="date" style={inputStyle} value={form.openDate} onChange={e => set('openDate', e.target.value)} /></Field>
+          <Field label="梱包日">
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input type="date" style={inputStyle} value={form.packDate} onChange={e => set('packDate', e.target.value)} />
+              <select style={{ ...inputStyle, width: 70 }} value={form.packAP} onChange={e => set('packAP', e.target.value)}><option value="">—</option><option>AM</option><option>PM</option></select>
+              <input style={{ ...inputStyle, width: 58, textAlign: 'center' }} value={form.packHour} onChange={e => set('packHour', e.target.value)} placeholder="時" />
+            </div>
+          </Field>
+          <Field label="開梱日">
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input type="date" style={inputStyle} value={form.openDate} onChange={e => set('openDate', e.target.value)} />
+              <select style={{ ...inputStyle, width: 70 }} value={form.unpackAP} onChange={e => set('unpackAP', e.target.value)}><option value="">—</option><option>AM</option><option>PM</option></select>
+              <input style={{ ...inputStyle, width: 58, textAlign: 'center' }} value={form.unpackHour} onChange={e => set('unpackHour', e.target.value)} placeholder="時" />
+            </div>
+          </Field>
           <Field label="発送内容">
             <select style={inputStyle} value={form.sendType} onChange={e => set('sendType', e.target.value)}>
               {SEND_TYPES.map(s => <option key={s} value={s}>{s || '—'}</option>)}
             </select>
           </Field>
+        </div>
+
+        <SubHead>受付・伝票</SubHead>
+        <div className="three-col">
+          <Field label="受付(1)"><input style={inputStyle} value={form.reception1} onChange={e => set('reception1', e.target.value)} /></Field>
+          <Field label="受付(2)"><input style={inputStyle} value={form.reception2} onChange={e => set('reception2', e.target.value)} /></Field>
+          <Field label="受付日"><input type="date" style={inputStyle} value={form.requestDate} onChange={e => set('requestDate', e.target.value)} /></Field>
+        </div>
+        <div className="three-col" style={{ marginTop: 10 }}>
+          <Field label="フロント"><input style={inputStyle} value={form.frontNote} onChange={e => set('frontNote', e.target.value)} /></Field>
+          <Field label="確認日"><input style={inputStyle} value={form.confirmDate} onChange={e => set('confirmDate', e.target.value)} placeholder="例：9/1（火）" /></Field>
+          <Field label="確認者"><input style={inputStyle} value={form.confirmerName} onChange={e => set('confirmerName', e.target.value)} /></Field>
+        </div>
+        <div className="three-col" style={{ marginTop: 10 }}>
+          <Field label="スペース"><input style={inputStyle} value={form.spaceSize} onChange={e => set('spaceSize', e.target.value)} /></Field>
+          <Field label="作業量"><input style={inputStyle} value={form.workLoad} onChange={e => set('workLoad', e.target.value)} /></Field>
+          <Field label="梱包・開包（車）"><input style={inputStyle} value={form.packOpenCar} onChange={e => set('packOpenCar', e.target.value)} /></Field>
+        </div>
+        <div className="three-col" style={{ marginTop: 10 }}>
+          <Field label="補助車輌">
+            <select style={inputStyle} value={form.helperCar} onChange={e => set('helperCar', e.target.value)}>
+              <option value="">—</option><option value="現">現</option><option value="行">行</option>
+            </select>
+          </Field>
+          <Field label="その他（事業内容）"><input style={inputStyle} value={form.bizOther} onChange={e => set('bizOther', e.target.value)} /></Field>
+          <Field label="再利用の回数"><input style={inputStyle} value={form.mediaReuseCount} onChange={e => set('mediaReuseCount', e.target.value)} placeholder="例：2" /></Field>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Field label="事業内容">
+            <ChkRow items={['引越', '片付け', 'リユース']}
+              on={[form.bizMove && '引越', form.bizClean && '片付け', form.bizReuse && 'リユース'].filter(Boolean)}
+              onToggle={v => set(v === '引越' ? 'bizMove' : v === '片付け' ? 'bizClean' : 'bizReuse',
+                !(v === '引越' ? form.bizMove : v === '片付け' ? form.bizClean : form.bizReuse))} />
+          </Field>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Field label="媒体"><ChkRow items={MEDIA_ITEMS} on={form.media} onToggle={v => set('media', toggleIn(form.media, v))} /></Field>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Field label="シークレット"><ChkRow items={SECRET_ITEMS} on={form.secret} onToggle={v => set('secret', toggleIn(form.secret, v))} /></Field>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Field label="ご紹介先"><textarea rows={2} style={{ ...inputStyle, resize: 'vertical' }} value={form.refName} onChange={e => set('refName', e.target.value)} /></Field>
         </div>
       </Section>}
 
@@ -819,6 +952,9 @@ export default function Estimate({ user, switchTab }) {
           </Field>
           <Field label="住所"><input style={inputStyle} value={form.fromAddress} onChange={e => set('fromAddress', e.target.value)} onBlur={() => autoZip('from')} placeholder="福岡市南区…" /></Field>
         </div>
+        <div style={{ marginTop: 6 }}>
+          <Field label="住所フリガナ"><input style={inputStyle} value={form.fromFurigana} onChange={e => set('fromFurigana', e.target.value)} placeholder="フクオカシミナミク…" /></Field>
+        </div>
         <div className="three-col" style={{ marginTop: 6 }}>
           <Field label="電話（自宅）"><input style={inputStyle} inputMode="tel" value={form.fromTelHome} onChange={e => set('fromTelHome', e.target.value)} /></Field>
           <Field label="電話（勤務先）"><input style={inputStyle} inputMode="tel" value={form.fromTelWork} onChange={e => set('fromTelWork', e.target.value)} /></Field>
@@ -834,6 +970,9 @@ export default function Estimate({ user, switchTab }) {
             </div>
           </Field>
           <Field label="住所"><input style={inputStyle} value={form.toAddress} onChange={e => set('toAddress', e.target.value)} onBlur={() => autoZip('to')} placeholder="福岡市南区…" /></Field>
+        </div>
+        <div style={{ marginTop: 6 }}>
+          <Field label="住所フリガナ"><input style={inputStyle} value={form.toFurigana} onChange={e => set('toFurigana', e.target.value)} placeholder="フクオカシミナミク…" /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 6 }}>
           <Field label="電話（自宅）"><input style={inputStyle} inputMode="tel" value={form.toTelHome} onChange={e => set('toTelHome', e.target.value)} /></Field>
@@ -857,14 +996,76 @@ export default function Estimate({ user, switchTab }) {
         <div style={{ marginTop: 10 }}>
           <Field label="オプション工事"><input style={inputStyle} value={form.optionWork} onChange={e => set('optionWork', e.target.value)} placeholder="内容を記入" /></Field>
         </div>
-        <div className="three-col" style={{ marginTop: 10 }}>
-          <Field label="二ヶ所積み・降し"><input style={inputStyle} value={form.twoPlace} onChange={e => set('twoPlace', e.target.value)} placeholder="現地・行先 等" /></Field>
-          <Field label="道幅"><select style={inputStyle} value={form.roadWidth} onChange={e => set('roadWidth', e.target.value)}>{ROAD_CHOICES.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
-          <Field label="エレベーター作業"><select style={inputStyle} value={form.elevator} onChange={e => set('elevator', e.target.value)}>{YN.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
+
+        <SubHead>階数・ピアノ / エアコンの〇印</SubHead>
+        <div className="three-col">
+          <Field label="引越（現 F → 先 F）">
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input style={{ ...inputStyle, textAlign: 'center' }} value={form.moveFloorFrom} onChange={e => set('moveFloorFrom', e.target.value)} placeholder="3" />
+              <span style={{ fontSize: 12, color: '#94A3B8', whiteSpace: 'nowrap' }}>F →</span>
+              <input style={{ ...inputStyle, textAlign: 'center' }} value={form.moveFloorTo} onChange={e => set('moveFloorTo', e.target.value)} placeholder="1" />
+              <span style={{ fontSize: 12, color: '#94A3B8', whiteSpace: 'nowrap' }}>F</span>
+            </div>
+          </Field>
+          <Field label="ピアノ（現 F → 先 F）">
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input style={{ ...inputStyle, textAlign: 'center' }} value={form.pianoFloorFrom} onChange={e => set('pianoFloorFrom', e.target.value)} />
+              <span style={{ fontSize: 12, color: '#94A3B8', whiteSpace: 'nowrap' }}>F →</span>
+              <input style={{ ...inputStyle, textAlign: 'center' }} value={form.pianoFloorTo} onChange={e => set('pianoFloorTo', e.target.value)} />
+              <span style={{ fontSize: 12, color: '#94A3B8', whiteSpace: 'nowrap' }}>F</span>
+            </div>
+          </Field>
+          <Field label="〇を付ける欄">
+            <ChkRow items={['ピアノ現住所', 'ピアノ届先', 'エアコン取外', 'エアコン取付']}
+              on={[form.pianoCur && 'ピアノ現住所', form.pianoDst && 'ピアノ届先', form.airconRemove && 'エアコン取外', form.airconInstall && 'エアコン取付'].filter(Boolean)}
+              onToggle={v => {
+                const k = v === 'ピアノ現住所' ? 'pianoCur' : v === 'ピアノ届先' ? 'pianoDst' : v === 'エアコン取外' ? 'airconRemove' : 'airconInstall'
+                set(k, !form[k])
+              }} />
+          </Field>
+        </div>
+
+        <SubHead>作業状況［C］現地</SubHead>
+        <div className="three-col">
+          <Field label="二ヶ所積み・降し"><input style={inputStyle} value={form.twoPlace} onChange={e => set('twoPlace', e.target.value)} placeholder="現地の内容" /></Field>
+          <Field label="道幅（横持ち作業）">
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select style={inputStyle} value={form.roadWidth} onChange={e => set('roadWidth', e.target.value)}>{ROAD_CHOICES.map(x => <option key={x} value={x}>{x || '—'}</option>)}</select>
+              <input style={{ ...inputStyle, width: 86, textAlign: 'center' }} value={form.roadWidthM} onChange={e => set('roadWidthM', e.target.value)} placeholder="m" />
+            </div>
+          </Field>
+          <Field label="エレベーター作業">
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select style={inputStyle} value={form.elevator} onChange={e => set('elevator', e.target.value)}>{YN.map(x => <option key={x} value={x}>{x || '—'}</option>)}</select>
+              <input style={{ ...inputStyle, width: 86, textAlign: 'center' }} value={form.elevatorM} onChange={e => set('elevatorM', e.target.value)} placeholder="人乗 m" />
+            </div>
+          </Field>
         </div>
         <div className="three-col" style={{ marginTop: 10 }}>
-          <Field label="窓吊り上下作業"><select style={inputStyle} value={form.windowLift} onChange={e => set('windowLift', e.target.value)}>{YN.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
-          <Field label="機械作業"><select style={inputStyle} value={form.machine} onChange={e => set('machine', e.target.value)}>{REQ_CHOICES.map(s => <option key={s} value={s}>{s || '—'}</option>)}</select></Field>
+          <Field label="窓吊り上下作業"><select style={inputStyle} value={form.windowLift} onChange={e => set('windowLift', e.target.value)}>{YN.map(x => <option key={x} value={x}>{x || '—'}</option>)}</select></Field>
+          <Field label="機械作業"><select style={inputStyle} value={form.machine} onChange={e => set('machine', e.target.value)}>{REQ_CHOICES.map(x => <option key={x} value={x}>{x || '—'}</option>)}</select></Field>
+          <div />
+        </div>
+
+        <SubHead>作業状況［D］行先</SubHead>
+        <div className="three-col">
+          <Field label="二ヶ所積み・降し"><input style={inputStyle} value={form.twoPlaceD} onChange={e => set('twoPlaceD', e.target.value)} placeholder="行先の内容" /></Field>
+          <Field label="道幅（横持ち作業）">
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select style={inputStyle} value={form.roadWidthD} onChange={e => set('roadWidthD', e.target.value)}>{ROAD_CHOICES.map(x => <option key={x} value={x}>{x || '—'}</option>)}</select>
+              <input style={{ ...inputStyle, width: 86, textAlign: 'center' }} value={form.roadWidthDM} onChange={e => set('roadWidthDM', e.target.value)} placeholder="m" />
+            </div>
+          </Field>
+          <Field label="エレベーター作業">
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select style={inputStyle} value={form.elevatorD} onChange={e => set('elevatorD', e.target.value)}>{YN.map(x => <option key={x} value={x}>{x || '—'}</option>)}</select>
+              <input style={{ ...inputStyle, width: 86, textAlign: 'center' }} value={form.elevatorDM} onChange={e => set('elevatorDM', e.target.value)} placeholder="人乗 m" />
+            </div>
+          </Field>
+        </div>
+        <div className="three-col" style={{ marginTop: 10 }}>
+          <Field label="窓吊り上下作業"><select style={inputStyle} value={form.windowLiftD} onChange={e => set('windowLiftD', e.target.value)}>{YN.map(x => <option key={x} value={x}>{x || '—'}</option>)}</select></Field>
+          <Field label="機械作業"><select style={inputStyle} value={form.machineD} onChange={e => set('machineD', e.target.value)}>{REQ_CHOICES.map(x => <option key={x} value={x}>{x || '—'}</option>)}</select></Field>
           <div />
         </div>
       </Section>}
@@ -963,6 +1164,40 @@ export default function Estimate({ user, switchTab }) {
         <div style={{ marginTop: 10, fontSize: 11, color: '#94A3B8' }}>
           ※ ポイント（才数）は数量×単価の自動合計です。「(別途)」項目（ピアノ・TV等）はサイズ別のため合計に含めません。
         </div>
+
+        <SubHead>荷造資材（枚数・個数）</SubHead>
+        <div className="scroll-x">
+          <table style={{ minWidth: 420 }}>
+            <thead>
+              <tr>
+                <th style={{ width: 150 }}>品名</th><th style={{ textAlign: 'center' }}>予定 ①</th>
+                <th style={{ textAlign: 'center' }}>予定 ②</th><th style={{ textAlign: 'center' }}>作業当日</th>
+              </tr>
+            </thead>
+            <tbody>
+              {MATERIAL_ROWS.map(([key, label]) => (
+                <tr key={key}>
+                  <td style={{ fontWeight: 700 }}>{label}</td>
+                  {['_d1', '_d2', '_day'].map(sfx => (
+                    <td key={sfx} style={{ padding: 4 }}>
+                      <input style={{ ...inputStyle, textAlign: 'center', padding: '6px 4px' }}
+                        value={form.mats?.[key + sfx] || ''}
+                        onChange={e => setForm(pr => ({ ...pr, mats: { ...pr.mats, [key + sfx]: e.target.value } }))} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="three-col" style={{ marginTop: 10 }}>
+          <Field label="作成日"><input style={inputStyle} value={form.createDate} onChange={e => set('createDate', e.target.value)} placeholder="例：9/1" /></Field>
+          <Field label="配達日"><input style={inputStyle} value={form.delivDate} onChange={e => set('delivDate', e.target.value)} placeholder="例：9/3" /></Field>
+          <Field label="保管（〜迄）"><input style={inputStyle} value={form.storageUntil} onChange={e => set('storageUntil', e.target.value)} placeholder="例：2026　10　31" /></Field>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Field label="用具"><ChkRow items={GEAR_ITEMS} on={form.gear} onToggle={v => set('gear', toggleIn(form.gear, v))} /></Field>
+        </div>
       </Section>}
 
       {/* 料金 */}
@@ -998,6 +1233,24 @@ export default function Estimate({ user, switchTab }) {
           <Field label="備考"><textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 60 }} value={form.memo} onChange={e => set('memo', e.target.value)} /></Field>
         </div>
         <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>お支払いは、積込終了時にお願い致します。</div>
+
+        <SubHead>請求先（会社請求のとき）</SubHead>
+        <div className="two-col">
+          <Field label="請求先 会社名"><input style={inputStyle} value={form.billName} onChange={e => set('billName', e.target.value)} /></Field>
+          <Field label="確認（時刻／様）"><input style={inputStyle} value={form.billConfirm} onChange={e => set('billConfirm', e.target.value)} placeholder="例：14" /></Field>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Field label="住所"><input style={inputStyle} value={form.billAddr} onChange={e => set('billAddr', e.target.value)} /></Field>
+        </div>
+        <div className="three-col" style={{ marginTop: 10 }}>
+          <Field label="〆日"><input style={inputStyle} value={form.billClose} onChange={e => set('billClose', e.target.value)} placeholder="例：20" /></Field>
+          <Field label="支払日"><input style={inputStyle} value={form.billPay} onChange={e => set('billPay', e.target.value)} placeholder="例：末" /></Field>
+          <Field label="電話"><input style={inputStyle} inputMode="tel" value={form.billTel} onChange={e => set('billTel', e.target.value)} /></Field>
+        </div>
+        <div className="two-col" style={{ marginTop: 10 }}>
+          <Field label="担当者"><input style={inputStyle} value={form.billStaff} onChange={e => set('billStaff', e.target.value)} /></Field>
+          <Field label="請求書発送"><input style={inputStyle} value={form.billSend} onChange={e => set('billSend', e.target.value)} placeholder="例：郵送 / メール" /></Field>
+        </div>
       </Section>}
 
       {/* 下部固定サマリーバー（合計を見ながら保存・プレビューできる） */}
@@ -1041,6 +1294,34 @@ function Section({ title, right, children, id, defaultOpen = true }) {
     </div>
   )
 }
+// セクション内の小見出し（受付・請求先など、ブロックの区切り）
+function SubHead({ children }) {
+  return (
+    <div style={{ margin: '16px 0 8px', paddingBottom: 5, borderBottom: '1px solid #E2E8F0',
+      fontSize: 11, fontWeight: 800, color: '#1E5FA8', letterSpacing: '.04em' }}>{children}</div>
+  )
+}
+// 複数選択のチップ列（帳票の〇印に対応）
+function ChkRow({ items, on = [], onToggle }) {
+  const set = new Set(on || [])
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {items.map(v => {
+        const active = set.has(v)
+        return (
+          <button key={v} type="button" onClick={() => onToggle(v)}
+            style={{
+              padding: '5px 11px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+              border: `1px solid ${active ? '#1E5FA8' : '#E2E8F0'}`,
+              background: active ? '#1E5FA8' : '#fff', color: active ? '#fff' : '#64748B',
+            }}>{active ? '✓ ' : ''}{v}</button>
+        )
+      })}
+    </div>
+  )
+}
+const toggleIn = (arr, v) => (Array.isArray(arr) && arr.includes(v) ? arr.filter(x => x !== v) : [...(arr || []), v])
+
 function Field({ label, children }) {
   return <div><label style={labelStyle}>{label}</label>{children}</div>
 }
