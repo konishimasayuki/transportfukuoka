@@ -83,13 +83,17 @@
 .confirm-box .grid { grid-template-columns: 4.5mm 1fr; grid-template-rows: 4.31mm 4.66mm 1fr; }
 
 /* ---- Block07 作業内容の確認・ピアノ・エアコン ---- */
-.workconf1 { left: 5.5mm; top: 85.3mm; width: 49.1mm; height: 15.95mm; }
-.workconf1 .grid { padding-bottom: 0.62mm; grid-template-columns: 14.1mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
+.workconf1 { left: 5.5mm; top: 85.3mm; width: 49.1mm; height: 15.70mm; }
+.workconf1 .grid { padding-bottom: 0.34mm; grid-template-columns: 14.1mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
+/* 原本は選択肢の左右に余白が無いので、丸だけ外側に広げて余白を消す */
+.workconf1 .opt { padding: 0; }
+.workconf1 .opt .ring { inset: -0.9mm; }
 /* 原本実測の縦罫線: 55.84 / 79.08 / 82.51 / 105.61mm */
-.workconf2 { left: 55.51mm; top: 85.3mm; width: 50.33mm; height: 15.95mm; }
-.workconf2 .grid { padding-bottom: 0.62mm; grid-template-columns: 23.37mm 3.13mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
-.workconf3 { left: 106.8mm; top: 85.3mm; width: 97.1mm; height: 15.95mm; }
-.workconf3 .grid { padding-bottom: 0.62mm; grid-template-columns: 22.84mm 3.4mm 23.0mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
+.workconf2 { left: 55.51mm; top: 85.3mm; width: 50.33mm; height: 15.70mm; }
+.workconf2 .grid { padding-bottom: 0.34mm; grid-template-columns: 23.37mm 3.13mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
+.workconf3 { left: 106.8mm; top: 85.3mm; width: 97.1mm; height: 15.70mm; }
+/* 原本実測の縦罫線: 106.82 / 129.92 / 133.41 / 156.46 / 203.75mm */
+.workconf3 .grid { padding-bottom: 0.34mm; grid-template-columns: 23.03mm 3.23mm 23.36mm 1fr; grid-template-rows: 3.55mm 3.68mm 3.66mm 1fr; }
 .arrow-cell { display: flex; align-items: center; justify-content: center; border-bottom: 0; font-size: 3mm; }
 .arrow-draw { display: inline-block; position: relative; width: 2.6mm; height: 1.15mm; background: var(--ink); }
 .arrow-draw::after { content: ''; position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
