@@ -45,8 +45,11 @@
 .date-ph .di { position: absolute; top: 0; height: 100%; width: 5mm; }
 .ampm-v { font-size: 1.55mm; line-height: 1.12; text-align: center; }
 .ampm { font-size: 1.7mm; line-height: 1.05; text-align: center; }
-.front-box { left: 172.9mm; top: 39.9mm; width: 30.8mm; height: 7.6mm; }
-.front-box .flabel { position: absolute; top: 0.4mm; left: 1.4mm; font-size: 2.7mm; letter-spacing: 0.8mm; }
+/* 原本実測の縦罫線: 172.94 / 181.58 / 203.54mm。ラベル側は独立したセル */
+.front-box { left: 173.09mm; top: 39.9mm; width: 30.67mm; height: 7.84mm; }
+.front-box .grid { grid-template-columns: 8.49mm 1fr; }
+.front-box .flabel { font-size: 2.62mm; letter-spacing: 0; display: inline-block; position: relative; top: 0.12mm;
+  transform: scaleX(0.714); transform-origin: left center; }
 
 /* ---- Block03 お名前 ---- */
 .name-box { left: 5.5mm; top: 40.7mm; width: 97.5mm; height: 11.3mm; }
