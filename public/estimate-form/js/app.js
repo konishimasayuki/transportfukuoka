@@ -132,7 +132,7 @@ function feeRow(label, field, last) {
 }
 function buildFees() {
   const a = $('#fees-a'); a.append(el('div', 'fee-hd', '基　本　料　金'))
-  FEE_A.forEach(([key, label]) => a.append(feeRow(label, key ? { name: 'feeA_' + key, lw: 19 } : null)))
+  FEE_A.forEach(([key, label]) => a.append(feeRow(label, key ? { name: 'feeA_' + key, lw: 18.73 } : null)))
   const sa = feeRow('小 計 （A）', null); sa.querySelector('.fv').innerHTML = '<span class="yen">¥</span>' + calcIn('subA'); a.append(sa)
 
   const b = $('#fees-b'); b.append(el('div', 'fee-hd', '附　帯　料　金'))
@@ -142,13 +142,13 @@ function buildFees() {
   const c = $('#fees-c'); c.append(el('div', 'fee-hd', '資　材　の　料　金'))
   FEE_C.forEach(([key, label, unit]) => {
     const r = el('div', 'fee-row',
-      `<div class="fl" style="width:18.4mm;justify-content:space-between"><span class="${label.includes('|') ? 'xs' : 'small'}" style="line-height:1.05">${label.replace('|', '<br>')}</span><span class="xs">${inp('feeC_' + key + '_qty1', 'form-input qty mini', 'style="width:4.5mm"')}${unit}</span></div>` +
-      `<div class="fv" style="flex:0 0 14.5mm;border-right:var(--line-w) solid var(--ink)"><span class="yen">¥</span>${inp('feeC_' + key + '_amt1', 'form-input num mini')}</div>` +
-      `<div class="fl" style="width:9.2mm;justify-content:flex-end"><span class="xs">${inp('feeC_' + key + '_qty2', 'form-input qty mini', 'style="width:4.5mm"')}${unit}</span></div>` +
+      `<div class="fl" style="width:17.72mm;justify-content:space-between"><span class="${label.includes('|') ? 'xs' : 'small'}" style="line-height:1.05">${label.replace('|', '<br>')}</span><span class="xs">${inp('feeC_' + key + '_qty1', 'form-input qty mini', 'style="width:4.5mm"')}${unit}</span></div>` +
+      `<div class="fv" style="flex:0 0 14.22mm;border-right:var(--line-w) solid var(--ink)"><span class="yen">¥</span>${inp('feeC_' + key + '_amt1', 'form-input num mini')}</div>` +
+      `<div class="fl" style="width:9.08mm;justify-content:flex-end"><span class="xs">${inp('feeC_' + key + '_qty2', 'form-input qty mini', 'style="width:4.5mm"')}${unit}</span></div>` +
       `<div class="fv"><span class="yen">¥</span>${inp('feeC_' + key + '_amt2', 'form-input num mini')}</div>`)
     c.append(r)
   })
-  c.append(el('div', 'fee-row', '<div class="fl" style="width:18.4mm"></div><div class="fv" style="flex:0 0 14.5mm;border-right:var(--line-w) solid var(--ink)"></div><div class="fl" style="width:8.9mm"></div><div class="fv"></div>'))
+  c.append(el('div', 'fee-row', '<div class="fl" style="width:17.72mm"></div><div class="fv" style="flex:0 0 14.22mm;border-right:var(--line-w) solid var(--ink)"></div><div class="fl" style="width:9.08mm"></div><div class="fv"></div>'))
   const sc = el('div', 'fee-row', '<div class="fl" style="width:32.9mm"><span class="just small">小 計 （C）</span></div><div class="fv"><span class="yen">¥</span>' + calcIn('subC') + '</div>')
   c.append(sc)
 }
