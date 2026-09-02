@@ -150,11 +150,12 @@
 .company .ad { font-size: 2.6mm; margin-top: 0.4mm; }
 .company .tel { font-size: 4.9mm; font-weight: 800; letter-spacing: 0.8mm; margin-top: 0.2mm; }
 .company .fax { font-size: 2.8mm; margin-top: 0.2mm; }
-.biz-box { left: 154.3mm; top: 275.4mm; width: 49.6mm; height: 15.4mm; }
-.biz-box .b1 { display: grid; grid-template-columns: 17.2mm 16.4mm 1fr; height: 7.7mm; border-bottom: var(--line-w) solid var(--ink); }
+/* 原本実測：枠 155.17〜204.31mm、上段の仕切り 171.55／187.93、下段の仕切り 169.52 */
+.biz-box { left: 155.17mm; top: 275.4mm; width: 49.14mm; height: 15.4mm; }
+.biz-box .b1 { display: grid; grid-template-columns: 16.38mm 16.38mm 1fr; height: 7.7mm; border-bottom: var(--line-w) solid var(--ink); }
 .biz-box .b1 > div { border-right: var(--line-w) solid var(--ink); display: flex; align-items: center; justify-content: center; font-size: 2.6mm; letter-spacing: 0.5mm; }
 .biz-box .b1 > div:last-child { border-right: 0; }
-.biz-box .b2 { display: grid; grid-template-columns: 15.2mm 1fr; height: calc(100% - 9.2mm); }
+.biz-box .b2 { display: grid; grid-template-columns: 14.35mm 1fr; height: calc(100% - 9.2mm); }
 
 /* 作業内容3ボックスは最終行の下線を引く（枠線との間に紙と同じ0.6mmの隙間） */
 .workconf1 .c.bot, .workconf2 .c.bot, .workconf3 .c.bot, .workconf2 .arrow-cell.bot { border-bottom: var(--line-w) solid var(--ink); }

@@ -52,7 +52,9 @@ def geo(gr, gc):
 
 def main():
     gr = to_gray(load(os.path.join(D, 'reference-normalized.png')))
-    gc = to_gray(load(os.path.join(D, 'render-current.png')))
+    # compare.py を通さずに済むよう、生レンダを原本サイズへ正規化して使う
+    raw = Image.open(os.path.join(D, 'render-raw.png')).convert('RGB').resize((1654, 2339), Image.LANCZOS)
+    gc = to_gray(np.asarray(raw).astype(np.float64))
     rows = []
     for name, x, y, w, h in BLOCKS:
         a, b = crop(gr, x, y, w, h), crop(gc, x, y, w, h)
