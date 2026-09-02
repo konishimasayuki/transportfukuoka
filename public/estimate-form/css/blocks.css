@@ -74,8 +74,9 @@
 .addr-box.a .tel-r { grid-template-rows: 6.0mm 4.4mm 1fr; }
 .addr-box.b .tel-l, .addr-box.b .tel-r { grid-template-rows: 6.0mm 4.4mm 1fr; }
 .postal { position: absolute; top: 0.8mm; left: 1.6mm; font-size: 2.9mm; letter-spacing: 0.6mm; }
-.confirm-box { left: 182.9mm; top: 52.0mm; width: 20.9mm; height: 22.2mm; }
-.confirm-box .grid { grid-template-columns: 4.5mm 1fr; grid-template-rows: 4.5mm 4.4mm 1fr; }
+/* 原本実測: 縦罫線 182.98 / 187.49 / 203.67mm、横罫線 52.21 / 56.59 / 60.97 / 74.23mm */
+.confirm-box { left: 182.9mm; top: 52.0mm; width: 20.89mm; height: 22.31mm; }
+.confirm-box .grid { grid-template-columns: 4.5mm 1fr; grid-template-rows: 4.31mm 4.66mm 1fr; }
 
 /* ---- Block07 作業内容の確認・ピアノ・エアコン ---- */
 .workconf1 { left: 5.5mm; top: 85.3mm; width: 49.1mm; height: 15.95mm; }
