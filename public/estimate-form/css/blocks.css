@@ -52,10 +52,11 @@
   transform: scaleX(0.714); transform-origin: left center; }
 
 /* ---- Block03 お名前 ---- */
-.name-box { left: 5.5mm; top: 40.7mm; width: 97.5mm; height: 11.3mm; }
-.name-box .grid { grid-template-columns: 17.3mm 1fr; grid-template-rows: 2.4mm 1fr; }
+/* 原本実測の縦罫線: 5.39 / 22.78 / 103.28mm、横罫線: 40.75 / 43.16 / 52.12mm */
+.name-box { left: 5.18mm; top: 40.7mm; width: 98.39mm; height: 11.3mm; }
+.name-box .grid { grid-template-columns: 17.55mm 1fr; grid-template-rows: 2.4mm 1fr; }
 .name-note { position: absolute; left: 110.7mm; top: 40.9mm; width: 62.5mm; font-size: 2.5mm; line-height: 1.32; letter-spacing: 0.05mm; }
-.sama { font-size: 3.6mm; font-weight: 700; }
+.sama { font-size: 5.06mm; font-weight: 700; }
 
 /* ---- Block04/05 現住所・転居先 ---- */
 .addr-box { left: 5.5mm; width: 176.3mm; }
