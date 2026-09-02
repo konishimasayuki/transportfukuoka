@@ -45,3 +45,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    手入力中（data-manual="1"）は文字色を少し変えて区別。空にすると自動計算に戻る */
 .form-input.calc { text-align: right; font-weight: 600; padding-right: 0.6mm; }
 .form-input.calc[data-manual="1"] { color: #7C2D12; }
+.fl-mid { display: flex; align-items: center; }
+
+/* 原本の長い斜線（グリフの／では細く短いので実寸で描く） */
+.diag { display: inline-block; position: relative; }
+.diag::before { content: ''; position: absolute; inset: 0;
+  background: linear-gradient(to top left, transparent calc(50% - 0.09mm), var(--ink) calc(50% - 0.09mm),
+    var(--ink) calc(50% + 0.09mm), transparent calc(50% + 0.09mm)); }
