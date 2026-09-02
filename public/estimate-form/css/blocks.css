@@ -114,14 +114,16 @@
 .bill-r3 { display: grid; grid-template-columns: 22.2mm 21.9mm 48.8mm 25.0mm 16.4mm 1fr; }
 
 /* ---- お支払方法・その他の料金 ---- */
-.pay { left: 154.9mm; top: 180.2mm; width: 49.3mm; height: 93.7mm; }
-.pay .p-row { position: absolute; left: 0; right: 0; border-bottom: var(--line-w) solid var(--ink); display: flex; align-items: center; padding: 0 1mm; overflow: hidden; }
+/* 原本ではお支払方法とその他の料金が別枠（角丸が切れている）ので2つに分ける */
+.pay  { left: 154.9mm; top: 180.2mm;  width: 49.3mm; height: 18.67mm; }
+.pay2 { left: 154.9mm; top: 199.59mm; width: 49.3mm; height: 74.31mm; }
+.pay .p-row, .pay2 .p-row { position: absolute; left: 0; right: 0; border-bottom: var(--line-w) solid var(--ink); display: flex; align-items: center; padding: 0 1mm; overflow: hidden; }
 
 /* ---- Block13 お約束事項 ---- */
 .promise { left: 5.6mm; top: 199.6mm; width: 148.7mm; height: 31.27mm; }
 .promise .grid { grid-template-columns: 6.3mm 1fr; }
 .notes { font-size: 2.25mm; line-height: 1.5; padding: 0 1mm 1.3mm 1mm; display: flex; flex-direction: column; justify-content: flex-end; }
-.pay-note { position: absolute; left: 91.9mm; top: 27.0mm; width: 57.7mm; height: 3.5mm; background: #111; color: #fff;
+.pay-note { position: absolute; left: 91.9mm; top: 27.0mm; width: 56.76mm; height: 3.5mm; background: #111; color: #fff;
   display: flex; align-items: center; justify-content: center; font-size: 2.5mm; letter-spacing: 0.4mm; border-radius: 0.3mm; }
 
 /* ---- Block14 料金表（行は app.js が生成） ---- */
@@ -139,7 +141,9 @@
 .media-box { left: 5.5mm; top: 275.4mm; width: 62.7mm; height: 4.05mm; }
 .refbox { left: 5.5mm; top: 279.62mm; width: 62.7mm; height: 10.88mm; }
 .refbox .grid { grid-template-columns: 14.1mm 1fr; }
-.media-box .m1 { height: 100%; display: flex; align-items: center; padding: 0 0.8mm; font-size: 1.95mm; }
+.media-box .m1 { height: 100%; display: flex; align-items: center; padding: 0 0.6mm; font-size: 1.5mm; letter-spacing: 0; white-space: nowrap; }
+/* 1行に収める（幅が足りないと1文字ずつ折り返して下が切れるため） */
+.media-box .m1 .opt { white-space: nowrap; flex: 0 0 auto; padding: 0 0.25mm; }
 
 .company { position: absolute; left: 68.2mm; top: 275.0mm; width: 86mm; text-align: center; }
 .company .nm { font-size: 5.0mm; font-weight: 800; letter-spacing: 0.7mm; }
