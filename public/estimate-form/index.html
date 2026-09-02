@@ -54,17 +54,17 @@
 
   <section class="box sched-send"><div class="grid">
     <div class="c ctr bot hdr" style="grid-column:1/3;border-bottom:var(--line-w) solid var(--ink)">発 送 内 容</div>
-    <div class="c ctr small"><label class="opt"><input type="radio" name="sendType" value="直送一式">直送一式<span class="ring"></span></label></div>
-    <div class="c ctr small last-col"><label class="opt"><input type="radio" name="sendType" value="直送長距離">直送・長距離<span class="ring"></span></label></div>
-    <div class="c rt small"><label class="opt"><input type="radio" name="sendType" value="限定混載便">限定<span class="ring"></span></label></div>
-    <div class="c ctr small last-col"><label class="opt"><input type="checkbox" class="opt-mirror" data-mirror-name="sendType" data-mirror-value="限定混載便">混 載 便<span class="ring"></span></label></div>
-    <div class="c rt small bot"><label class="opt"><input type="radio" name="sendType" value="積切">積切<span class="ring"></span></label></div>
+    <div class="c ctr small"><label class="opt"><input type="checkbox" name="send_直送一式" value="1">直送一式<span class="ring"></span></label></div>
+    <div class="c ctr small last-col"><label class="opt"><input type="checkbox" name="send_直送長距離" value="1">直送・長距離<span class="ring"></span></label></div>
+    <div class="c rt small"><label class="opt"><input type="checkbox" name="send_限定" value="1">限定<span class="ring"></span></label></div>
+    <div class="c ctr small last-col"><label class="opt"><input type="checkbox" name="send_混載便" value="1">混 載 便<span class="ring"></span></label></div>
+    <div class="c rt small bot"><label class="opt"><input type="checkbox" name="send_積切" value="1">積切<span class="ring"></span></label></div>
     <div class="c bot last-col"></div>
   </div></section>
 
   <section class="box sched-est"><div class="grid">
-    <div class="c small">見積日</div><div class="c last-col" style="position:relative"><span class="date-ph"><input class="form-input mini di" data-field="estimateDate" style="left:4%;width:9mm"><span class="slot xs" style="left:54%">年</span><span class="slot xs" style="left:76%">月</span><span class="slot xs" style="left:94%">日</span></span></div>
-    <div class="c small">受付日</div><div class="c last-col" style="position:relative"><span class="date-ph"><input class="form-input mini di" data-field="requestDate" style="left:4%;width:9mm"><span class="slot xs" style="left:54%">年</span><span class="slot xs" style="left:76%">月</span><span class="slot xs" style="left:94%">日</span></span></div>
+    <div class="c small">見積日</div><div class="c last-col" style="position:relative"><span class="date-ph"><input class="form-input ctr di" data-field="estimateYear" style="left:0.6mm;width:5.1mm"><span class="slot xs" style="left:31.8%">年</span><input class="form-input ctr di" data-field="estimateMonth" style="left:7.9mm;width:4.7mm"><span class="slot xs" style="left:63%">月</span><input class="form-input ctr di" data-field="estimateDay" style="left:14.4mm;width:5mm"><span class="slot xs" style="left:94.8%">日</span></span></div>
+    <div class="c small">受付日</div><div class="c last-col" style="position:relative"><span class="date-ph"><input class="form-input ctr di" data-field="requestYear" style="left:0.6mm;width:5.1mm"><span class="slot xs" style="left:31.8%">年</span><input class="form-input ctr di" data-field="requestMonth" style="left:7.9mm;width:4.7mm"><span class="slot xs" style="left:63%">月</span><input class="form-input ctr di" data-field="requestDay" style="left:14.4mm;width:5mm"><span class="slot xs" style="left:94.8%">日</span></span></div>
     <div class="c small bot" style="line-height:1.1">見積者<br>氏　名</div><div class="c bot last-col"><input class="form-input mini" data-field="estimatorName"></div>
   </div></section>
   <section class="box front-box"><span class="flabel">フロント</span><input class="form-input mini" data-field="frontNote" style="padding-top:2.6mm"></section>
@@ -116,23 +116,23 @@
   <!-- Block07 作業内容の確認／ピアノ／エアコン移設 -->
   <section class="box workconf1"><div class="grid">
     <div class="c ctr bot hdr small" style="grid-column:1/3;border-bottom:var(--line-w) solid var(--ink)">作 業 内 容 の 確 認</div>
-    <div class="c small">小 物 梱 包</div><div class="c last-col small"><label class="opt"><input type="radio" name="packSmallBy" value="お客様">お客様<span class="ring"></span></label>・<label class="opt"><input type="radio" name="packSmallBy" value="当社">当　社<span class="ring"></span></label><span class="xs">（ALL・Part）</span></div>
-    <div class="c small">家 具 梱 包</div><div class="c last-col small"><label class="opt"><input type="radio" name="packFurniBy" value="お客様">お客様<span class="ring"></span></label>・<label class="opt"><input type="radio" name="packFurniBy" value="当社">当　社<span class="ring"></span></label><span class="xs">（D・E）</span></div>
-    <div class="c small bot">開 梱 作 業</div><div class="c bot last-col small"><label class="opt"><input type="radio" name="packOpenBy" value="お客様">お客様<span class="ring"></span></label>・<label class="opt"><input type="radio" name="packOpenBy" value="当社">当　社<span class="ring"></span></label><span class="xs">（ALL・Part）</span></div>
+    <div class="c small">小 物 梱 包</div><div class="c last-col small"><label class="opt"><input type="radio" name="packSmallBy" value="お客様">お客様<span class="ring"></span></label>・<label class="opt"><input type="radio" name="packSmallBy" value="当社">当　社<span class="ring"></span></label><span class="xs">（<label class="opt"><input type="checkbox" name="small_ALL" value="1">ALL<span class="ring"></span></label>・<label class="opt"><input type="checkbox" name="small_Part" value="1">Part<span class="ring"></span></label>）</span></div>
+    <div class="c small">家 具 梱 包</div><div class="c last-col small"><label class="opt"><input type="radio" name="packFurniBy" value="お客様">お客様<span class="ring"></span></label>・<label class="opt"><input type="radio" name="packFurniBy" value="当社">当　社<span class="ring"></span></label><span class="xs">（<label class="opt"><input type="checkbox" name="furni_D" value="1">D<span class="ring"></span></label>・<label class="opt"><input type="checkbox" name="furni_E" value="1">E<span class="ring"></span></label>）</span></div>
+    <div class="c small bot">開 梱 作 業</div><div class="c bot last-col small"><label class="opt"><input type="radio" name="packOpenBy" value="お客様">お客様<span class="ring"></span></label>・<label class="opt"><input type="radio" name="packOpenBy" value="当社">当　社<span class="ring"></span></label><span class="xs">（<label class="opt"><input type="checkbox" name="open_ALL" value="1">ALL<span class="ring"></span></label>・<label class="opt"><input type="checkbox" name="open_Part" value="1">Part<span class="ring"></span></label>）</span></div>
   </div></section>
   <section class="box workconf2"><div class="grid">
     <div class="c ctr bot hdr small" style="grid-column:1/4;border-bottom:var(--line-w) solid var(--ink)">ピアノU・G　エレクトーン作業</div>
-    <div class="c small">現住所<label class="opt"><input type="checkbox" name="pianoCur"><span style="font-size:3.4mm">〇</span><span class="ring"></span></label>　F</div><div class="arrow-cell"></div><div class="c last-col small" style="border-left:var(--line-w) solid var(--ink)">届先住所<label class="opt"><input type="checkbox" name="pianoDst"><span style="font-size:3.4mm">〇</span><span class="ring"></span></label>　F</div>
-    <div class="c small">階段・エレベーター</div><div class="arrow-cell"><span class="arrow-draw" style="width:2.2mm;height:1.0mm"></span></div><div class="c last-col small" style="border-left:var(--line-w) solid var(--ink)">階段・エレベーター</div>
-    <div class="c small bot">窓出し・機械</div><div class="arrow-cell bot"></div><div class="c bot last-col small" style="border-left:var(--line-w) solid var(--ink)">窓出し・機械</div>
+    <div class="c small">現住所<label class="opt circ"><input type="checkbox" name="pianoCur"><span style="font-size:3.4mm">〇</span><span class="tick">✓</span></label>　F</div><div class="arrow-cell"></div><div class="c last-col small" style="border-left:var(--line-w) solid var(--ink)">届先住所<label class="opt circ"><input type="checkbox" name="pianoDst"><span style="font-size:3.4mm">〇</span><span class="tick">✓</span></label>　F</div>
+    <div class="c small"><label class="opt"><input type="checkbox" name="stepCur" value="1">階段<span class="ring"></span></label>・<label class="opt"><input type="checkbox" name="elevCur" value="1">エレベーター<span class="ring"></span></label></div><div class="arrow-cell"><span class="arrow-draw" style="width:2.2mm;height:1.0mm"></span></div><div class="c last-col small" style="border-left:var(--line-w) solid var(--ink)"><label class="opt"><input type="checkbox" name="stepDst" value="1">階段<span class="ring"></span></label>・<label class="opt"><input type="checkbox" name="elevDst" value="1">エレベーター<span class="ring"></span></label></div>
+    <div class="c small bot"><label class="opt"><input type="checkbox" name="winCur" value="1">窓出し<span class="ring"></span></label>・<label class="opt"><input type="checkbox" name="machCur" value="1">機械<span class="ring"></span></label></div><div class="arrow-cell bot"></div><div class="c bot last-col small" style="border-left:var(--line-w) solid var(--ink)"><label class="opt"><input type="checkbox" name="winDst" value="1">窓出し<span class="ring"></span></label>・<label class="opt"><input type="checkbox" name="machDst" value="1">機械<span class="ring"></span></label></div>
   </div></section>
   <section class="box workconf3"><div class="grid">
     <div class="c bot hdr small" style="grid-column:1/5;border-bottom:var(--line-w) solid var(--ink);justify-content:flex-start">エアコン移設（パイプ延長・ガス補充等別途）<span class="xs" style="font-weight:400;letter-spacing:0">　くわしいことは係員までお問い合せ下さい</span></div>
-    <div class="c small">取 外 住 所<label class="opt"><input type="checkbox" name="airconRemove"><span style="font-size:3.4mm">〇</span><span class="ring"></span></label></div><div class="arrow-cell"></div><div class="c small">取 付 住 所<label class="opt"><input type="checkbox" name="airconInstall"><span style="font-size:3.4mm">〇</span><span class="ring"></span></label></div>
+    <div class="c small">取 外 住 所<label class="opt circ"><input type="checkbox" name="airconRemove"><span style="font-size:3.4mm">〇</span><span class="tick">✓</span></label></div><div class="arrow-cell"></div><div class="c small">取 付 住 所<label class="opt circ"><input type="checkbox" name="airconInstall"><span style="font-size:3.4mm">〇</span><span class="tick">✓</span></label></div>
     <div class="c last-col small opt-head" style="border-left:var(--line-w) solid var(--ink);border-bottom:0;justify-content:center;letter-spacing:0.8mm" >オ プ シ ョ ン 工 事</div>
-    <div class="c small">セパレート<span class="xs" style="line-height:1">S<br>M</span>　<input class="form-input ctr" data-field="airconSepFrom" style="width:4mm">台</div><div class="arrow-cell"><span class="arrow-draw"></span></div><div class="c small">セパレート<span class="xs" style="line-height:1">S<br>M</span>　<input class="form-input ctr" data-field="airconSepTo" style="width:4mm">台</div>
+    <div class="c small">セパレート<span class="xs sm-pick" style="line-height:1"><label class="opt"><input type="checkbox" name="SepFrom_S" value="1">S<span class="ring"></span></label><br><label class="opt"><input type="checkbox" name="SepFrom_M" value="1">M<span class="ring"></span></label></span>　<input class="form-input ctr" data-field="airconSepFrom" style="width:4mm">台</div><div class="arrow-cell"><span class="arrow-draw"></span></div><div class="c small">セパレート<span class="xs sm-pick" style="line-height:1"><label class="opt"><input type="checkbox" name="SepTo_S" value="1">S<span class="ring"></span></label><br><label class="opt"><input type="checkbox" name="SepTo_M" value="1">M<span class="ring"></span></label></span>　<input class="form-input ctr" data-field="airconSepTo" style="width:4mm">台</div>
     <div class="c last-col" style="border-left:var(--line-w) solid var(--ink);border-bottom:0"><input class="form-input mini" data-field="optionWork"></div>
-    <div class="c small bot">ウィンド<span class="xs" style="line-height:1">S<br>M</span>　<input class="form-input ctr" data-field="airconWinFrom" style="width:4mm">台</div><div class="arrow-cell bot"></div><div class="c small bot">ウィンド<span class="xs" style="line-height:1">S<br>M</span>　<input class="form-input ctr" data-field="airconWinTo" style="width:4mm">台</div>
+    <div class="c small bot">ウィンド<span class="xs sm-pick" style="line-height:1"><label class="opt"><input type="checkbox" name="WinFrom_S" value="1">S<span class="ring"></span></label><br><label class="opt"><input type="checkbox" name="WinFrom_M" value="1">M<span class="ring"></span></label></span>　<input class="form-input ctr" data-field="airconWinFrom" style="width:4mm">台</div><div class="arrow-cell bot"></div><div class="c small bot">ウィンド<span class="xs sm-pick" style="line-height:1"><label class="opt"><input type="checkbox" name="WinTo_S" value="1">S<span class="ring"></span></label><br><label class="opt"><input type="checkbox" name="WinTo_M" value="1">M<span class="ring"></span></label></span>　<input class="form-input ctr" data-field="airconWinTo" style="width:4mm">台</div>
     <div class="c bot last-col" style="border-left:var(--line-w) solid var(--ink)"></div>
   </div></section>
 
@@ -168,19 +168,19 @@
       <input class="form-input" data-field="billName" style="flex:1">
       <div style="display:flex;height:100%;border-left:var(--line-w) solid var(--ink)">
         <div class="c ctr small" style="width:7.8mm;border-bottom:0">確認</div>
-        <div style="display:flex;align-items:center;width:42.2mm;font-size:2.3mm;padding:0 1mm"><input class="form-input ctr" data-field="billConfirm" style="width:8mm">／　<span class="xs" style="line-height:1.1">AM<br>PM</span>　時　　様</div>
+        <div style="display:flex;align-items:center;width:42.2mm;font-size:2.3mm;padding:0 1mm"><input class="form-input ctr" data-field="billConfirm" style="width:12mm">／　<span class="xs" style="line-height:1.1">AM<br>PM</span>　時　　様</div>
       </div>
     </div>
     <div class="c small">住　所</div>
     <div class="c last-col"><input class="form-input" data-field="billAddr"></div>
     <div class="c bot last-col" style="grid-column:1/3;padding:0">
       <div class="bill-r3" style="width:100%;height:100%">
-        <div class="c bot small ctr"><input class="form-input ctr" data-field="billClose" style="width:6mm">／　日〆</div>
-        <div class="c bot small ctr"><input class="form-input ctr" data-field="billPay" style="width:6mm">／　日払い</div>
+        <div class="c bot small"><input class="form-input ctr" data-field="billClose" style="width:9.5mm">／　日〆</div>
+        <div class="c bot small"><input class="form-input ctr" data-field="billPay" style="width:8.3mm">／　日払い</div>
         <div class="c bot small">電話　<input class="form-input ctr" data-field="billTel" placeholder="－　　　－" style="flex:1"></div>
         <div class="c bot small" style="position:relative"><span class="xs" style="position:absolute;top:0.2mm;left:0.6mm">担当者</span><input class="form-input mini" data-field="billStaff" style="padding-top:2mm">様</div>
         <div class="c bot small" style="position:relative"><span class="xs" style="position:absolute;top:0.2mm;left:0.6mm">請求書発送</span><input class="form-input mini" data-field="billSend" style="padding-top:2mm"></div>
-        <div class="c bot last-col ctr"><span style="transform:rotate(-30deg)">／</span></div>
+        <div class="c bot last-col" style="padding-left:1.1mm"><span style="transform:rotate(-30deg)">／</span></div>
       </div>
     </div>
   </div></section>

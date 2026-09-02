@@ -243,11 +243,14 @@ const FEE_D = [
   { key: 'washer',     label: '洗濯機（ドラム・全自動）' },
 ]
 
-const SEND_TYPES = ['', '直送一式', '直送長距離', '限定混載便', '積切']
 const PAY_METHODS = ['', '現金', '前受金', '会社請求', 'カード']
 // 帳票側の選択肢とそろえる
 // 帳票の家財表で原本から空欄になっている升の数（列4に1・列5に10）。ここに特殊家財を書ける
 const KZX_MAX = 11
+const SEND_ITEMS = ['直送一式', '直送長距離', '限定', '混載便', '積切']
+const SEND_LABEL = { 直送一式: '直送一式', 直送長距離: '直送・長距離', 限定: '限定', 混載便: '混載便', 積切: '積切' }
+const PIANO_OPTS = ['階段', 'エレベーター', '窓出し', '機械']
+const SM_OPTS = ['S', 'M']
 const MEDIA_ITEMS = ['電波', 'net', 'HP', '不動産', '電話帳', '法人名', 'DM', '再利用', 'チラシ', '紹介']
 const SECRET_ITEMS = ['車輌', '資材', '制服', '引越先']
 const GEAR_ITEMS = ['ロープ', 'ハシゴ', '工　具', '台　車', '養生資材']
@@ -282,7 +285,7 @@ function emptyForm() {
     moveDate: '', moveAP: 'AM',
     deliverDate: '', deliverAP: 'AM',
     packDate: '', openDate: '',
-    sendType: '', distanceKm: '',
+    sendTypes: [], distanceKm: '',
     // 顧客
     name: '', kana: '',
     fromZip: '', fromAddress: '', fromFurigana: '', fromTelHome: '', fromTelWork: '', fromTelMobile: '',
@@ -299,6 +302,10 @@ function emptyForm() {
     packAP: '', unpackAP: '',
     // 作業内容の確認
     packSmallBy: 'お客様', packFurniBy: '当社', packOpenBy: 'お客様',
+    packSmallOpt: [], packFurniOpt: [], packOpenOpt: [],   // （ALL・Part）（D・E）
+    pianoCurOpt: [], pianoDstOpt: [],                      // 階段／エレベーター／窓出し／機械
+    acSepFrom: [], acSepTo: [], acWinFrom: [], acWinTo: [],// エアコンの S・M
+    antennaOpt: [], washerOpt: [],                         // アンテナ（脱・着）／洗濯機付（ドラム・全自動）
     pianoWork: '', airconSep: '', airconWindow: '', optionWork: '',
     pianoCur: false, pianoDst: false, airconRemove: false, airconInstall: false,
     // 作業状況：現地[C]／行先[D] を別々に持つ（帳票が2段のため）
@@ -354,13 +361,12 @@ const PRINT_KEY_MAP = {
 }
 function splitDate(ymd) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || '')
-  return m ? { month: String(Number(m[2])), day: String(Number(m[3])) } : { month: '', day: '' }
+  return m ? { year: m[1].slice(2), month: String(Number(m[2])), day: String(Number(m[3])) } : { year: '', month: '', day: '' }
 }
 // 帳票の狭い欄向けの整形。「2026-09-01」→「26.9.1」／「9」（月日欄用）
 const DOW = ['日', '月', '火', '水', '木', '金', '土']
 const dowOf = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); if (!m) return ''
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])); return isNaN(d) ? '' : DOW[d.getDay()] }
-const ymdToShort = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return m ? `${m[1].slice(2)}.${Number(m[2])}.${Number(m[3])}` : (v || '') }
 function buildPrintData(form) {
   const d = {}
   const put = (k, v) => { if (v !== undefined && v !== null && v !== '') d[k] = v }
@@ -377,14 +383,16 @@ function buildPrintData(form) {
   const dv = splitDate(form.deliverDate); put('deliverMonth', dv.month); put('deliverDay', dv.day); put('deliverAmPm', form.deliverAP); put('deliverHour', form.deliverHour)
   const pk = splitDate(form.packDate); put('packMonth', pk.month); put('packDay', pk.day); put('packAmPm', form.packAP); put('packHour', form.packHour)
   const op = splitDate(form.openDate); put('unpackMonth', op.month); put('unpackDay', op.day); put('unpackAmPm', form.unpackAP); put('unpackHour', form.unpackHour)
-  // 見積日は欄が狭いので YY.M.D に整形して渡す
-  const ed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(form.estimateDate || '')
-  put('estimateDate', ed ? `${ed[1].slice(2)}.${Number(ed[2])}.${Number(ed[3])}` : form.estimateDate)
+  // 見積日・受付日は年／月／日の3枠に分けて渡す（年は下2桁）
+  const ed = splitDate(form.estimateDate)
+  put('estimateYear', ed.year); put('estimateMonth', ed.month); put('estimateDay', ed.day)
+  const rd = splitDate(form.requestDate)
+  put('requestYear', rd.year); put('requestMonth', rd.month); put('requestDay', rd.day)
   put('estimatorName', form.estimator)
-  put('sendType', form.sendType); put('distanceKm', form.distanceKm)
+  ;(form.sendTypes || []).forEach(v => { d['send_' + v] = true })
+  put('distanceKm', form.distanceKm)
   // 受付・伝票まわり
   put('reception1', form.reception1); put('reception2', form.reception2)
-  put('requestDate', ymdToShort(form.requestDate))
   put('frontNote', form.frontNote)
   put('spaceSize', form.spaceSize); put('workLoad', form.workLoad); put('packOpenCar', form.packOpenCar)
   put('helperCar', form.helperCar)
@@ -401,6 +409,20 @@ function buildPrintData(form) {
   ;(form.secret || []).forEach(v => { d['secret_' + v] = true })
   // 作業内容の確認・作業状況
   put('packSmallBy', form.packSmallBy); put('packFurniBy', form.packFurniBy); put('packOpenBy', form.packOpenBy)
+  ;(form.packSmallOpt || []).forEach(v => { d['small_' + v] = true })
+  ;(form.packFurniOpt || []).forEach(v => { d['furni_' + v] = true })
+  ;(form.packOpenOpt || []).forEach(v => { d['open_' + v] = true })
+  // ピアノ行の 階段／エレベーター／窓出し／機械（現住所側・届先側）
+  const PMAP = { 階段: 'step', エレベーター: 'elev', 窓出し: 'win', 機械: 'mach' }
+  ;(form.pianoCurOpt || []).forEach(v => { if (PMAP[v]) d[PMAP[v] + 'Cur'] = true })
+  ;(form.pianoDstOpt || []).forEach(v => { if (PMAP[v]) d[PMAP[v] + 'Dst'] = true })
+  // エアコンの S・M
+  ;(form.acSepFrom || []).forEach(v => { d['SepFrom_' + v] = true })
+  ;(form.acSepTo   || []).forEach(v => { d['SepTo_' + v] = true })
+  ;(form.acWinFrom || []).forEach(v => { d['WinFrom_' + v] = true })
+  ;(form.acWinTo   || []).forEach(v => { d['WinTo_' + v] = true })
+  ;(form.antennaOpt || []).forEach(v => { d['antenna_' + v] = true })
+  ;(form.washerOpt  || []).forEach(v => { d['washer_' + v] = true })
   put('airconSepFrom', form.airconSep); put('airconSepTo', form.airconSep)
   put('airconWinFrom', form.airconWindow); put('airconWinTo', form.airconWindow)
   put('optionWork', form.optionWork)
@@ -913,10 +935,9 @@ export default function Estimate({ user, switchTab }) {
               <input style={{ ...inputStyle, width: 58, textAlign: 'center' }} value={form.unpackHour} onChange={e => set('unpackHour', e.target.value)} placeholder="時" />
             </div>
           </Field>
-          <Field label="発送内容">
-            <select style={inputStyle} value={form.sendType} onChange={e => set('sendType', e.target.value)}>
-              {SEND_TYPES.map(s => <option key={s} value={s}>{s || '—'}</option>)}
-            </select>
+          <Field label="発送内容（複数可）">
+            <ChkRow items={SEND_ITEMS} labelOf={v => SEND_LABEL[v]} on={form.sendTypes}
+              onToggle={v => set('sendTypes', toggleIn(form.sendTypes, v))} />
           </Field>
         </div>
 
@@ -1013,13 +1034,38 @@ export default function Estimate({ user, switchTab }) {
       {/* 作業条件 */}
       {step === 'work' && <Section id="sec-work" title="作業内容・作業状況">
         <div className="three-col">
-          <Field label="小物梱包"><Seg choices={PERSON_CHOICES} value={form.packSmallBy} onChange={v => set('packSmallBy', v)} /></Field>
-          <Field label="家具梱包"><Seg choices={PERSON_CHOICES} value={form.packFurniBy} onChange={v => set('packFurniBy', v)} /></Field>
-          <Field label="開梱作業"><Seg choices={PERSON_CHOICES} value={form.packOpenBy} onChange={v => set('packOpenBy', v)} /></Field>
+          <Field label="小物梱包">
+            <Seg choices={PERSON_CHOICES} value={form.packSmallBy} onChange={v => set('packSmallBy', v)} />
+            <div style={{ marginTop: 6 }}><ChkRow items={['ALL', 'Part']} on={form.packSmallOpt} onToggle={v => set('packSmallOpt', toggleIn(form.packSmallOpt, v))} /></div>
+          </Field>
+          <Field label="家具梱包">
+            <Seg choices={PERSON_CHOICES} value={form.packFurniBy} onChange={v => set('packFurniBy', v)} />
+            <div style={{ marginTop: 6 }}><ChkRow items={['D', 'E']} on={form.packFurniOpt} onToggle={v => set('packFurniOpt', toggleIn(form.packFurniOpt, v))} /></div>
+          </Field>
+          <Field label="開梱作業">
+            <Seg choices={PERSON_CHOICES} value={form.packOpenBy} onChange={v => set('packOpenBy', v)} />
+            <div style={{ marginTop: 6 }}><ChkRow items={['ALL', 'Part']} on={form.packOpenOpt} onToggle={v => set('packOpenOpt', toggleIn(form.packOpenOpt, v))} /></div>
+          </Field>
         </div>
         <div className="three-col" style={{ marginTop: 10 }}>
-          <Field label="エアコン セパレート（台）"><input type="number" style={inputStyle} value={form.airconSep} onChange={e => set('airconSep', e.target.value)} /></Field>
-          <Field label="エアコン ウィンド（台）"><input type="number" style={inputStyle} value={form.airconWindow} onChange={e => set('airconWindow', e.target.value)} /></Field>
+          <Field label="エアコン セパレート（台）">
+            <input type="number" style={inputStyle} value={form.airconSep} onChange={e => set('airconSep', e.target.value)} />
+            <div style={{ marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, color: '#94A3B8', alignSelf: 'center' }}>取外</span>
+              <ChkRow items={SM_OPTS} on={form.acSepFrom} onToggle={v => set('acSepFrom', toggleIn(form.acSepFrom, v))} />
+              <span style={{ fontSize: 10, color: '#94A3B8', alignSelf: 'center' }}>取付</span>
+              <ChkRow items={SM_OPTS} on={form.acSepTo} onToggle={v => set('acSepTo', toggleIn(form.acSepTo, v))} />
+            </div>
+          </Field>
+          <Field label="エアコン ウィンド（台）">
+            <input type="number" style={inputStyle} value={form.airconWindow} onChange={e => set('airconWindow', e.target.value)} />
+            <div style={{ marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, color: '#94A3B8', alignSelf: 'center' }}>取外</span>
+              <ChkRow items={SM_OPTS} on={form.acWinFrom} onToggle={v => set('acWinFrom', toggleIn(form.acWinFrom, v))} />
+              <span style={{ fontSize: 10, color: '#94A3B8', alignSelf: 'center' }}>取付</span>
+              <ChkRow items={SM_OPTS} on={form.acWinTo} onToggle={v => set('acWinTo', toggleIn(form.acWinTo, v))} />
+            </div>
+          </Field>
           <Field label="ピアノ・エレクトーン作業"><input style={inputStyle} value={form.pianoWork} onChange={e => set('pianoWork', e.target.value)} placeholder="有無・備考" /></Field>
         </div>
         <div style={{ marginTop: 10 }}>
@@ -1044,6 +1090,10 @@ export default function Estimate({ user, switchTab }) {
               <span style={{ fontSize: 12, color: '#94A3B8', whiteSpace: 'nowrap' }}>F</span>
             </div>
           </Field>
+          <Field label="ピアノ 現住所の〇"><ChkRow items={PIANO_OPTS} on={form.pianoCurOpt} onToggle={v => set('pianoCurOpt', toggleIn(form.pianoCurOpt, v))} /></Field>
+          <Field label="ピアノ 届先住所の〇"><ChkRow items={PIANO_OPTS} on={form.pianoDstOpt} onToggle={v => set('pianoDstOpt', toggleIn(form.pianoDstOpt, v))} /></Field>
+        </div>
+        <div className="three-col" style={{ marginTop: 10 }}>
           <Field label="〇を付ける欄">
             <ChkRow items={['ピアノ現住所', 'ピアノ届先', 'エアコン取外', 'エアコン取付']}
               on={[form.pianoCur && 'ピアノ現住所', form.pianoDst && 'ピアノ届先', form.airconRemove && 'エアコン取外', form.airconInstall && 'エアコン取付'].filter(Boolean)}
@@ -1279,6 +1329,11 @@ export default function Estimate({ user, switchTab }) {
           <FeeBlock title="資材の料金 (C)" list={FEE_C} obj={form.feeC} onChange={(k, v) => setFee('feeC', k, v)} subtotal={totals.c} />
           <FeeBlock title="その他の料金 (D)" list={FEE_D} obj={form.feeD} onChange={(k, v) => setFee('feeD', k, v)} subtotal={totals.d} />
         </div>
+        <SubHead>その他の料金の〇印</SubHead>
+        <div className="two-col">
+          <Field label="アンテナ"><ChkRow items={['脱', '着']} on={form.antennaOpt} onToggle={v => set('antennaOpt', toggleIn(form.antennaOpt, v))} /></Field>
+          <Field label="洗濯機付"><ChkRow items={['ドラム', '全自動']} on={form.washerOpt} onToggle={v => set('washerOpt', toggleIn(form.washerOpt, v))} /></Field>
+        </div>
 
         {/* 合計 */}
         <div style={{ marginTop: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: 16 }}>
@@ -1373,7 +1428,7 @@ function SubHead({ children }) {
   )
 }
 // 複数選択のチップ列（帳票の〇印に対応）
-function ChkRow({ items, on = [], onToggle }) {
+function ChkRow({ items, on = [], onToggle, labelOf }) {
   const set = new Set(on || [])
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -1385,7 +1440,7 @@ function ChkRow({ items, on = [], onToggle }) {
               padding: '5px 11px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
               border: `1px solid ${active ? '#1E5FA8' : '#E2E8F0'}`,
               background: active ? '#1E5FA8' : '#fff', color: active ? '#fff' : '#64748B',
-            }}>{active ? '✓ ' : ''}{v}</button>
+            }}>{active ? '✓ ' : ''}{labelOf ? labelOf(v) : v}</button>
         )
       })}
     </div>
