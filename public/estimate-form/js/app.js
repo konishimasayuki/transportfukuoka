@@ -99,6 +99,29 @@ function buildMats() {
   return m
 }
 
+// ラベル内の「（脱・着）」のような選択肢を〇付けできるようにする
+const PICKS = {
+  'アンテナ（脱・着）': ['antenna', ['脱', '着']],
+  '洗濯機付(ドラム・全自動)': ['washer', ['ドラム', '全自動']],
+}
+function pickLabel(label) {
+  const hit = PICKS[label]
+  if (!hit) return label
+  const [key, opts] = hit
+  let out = label
+  opts.forEach(o => {
+    out = out.replace(o, `<label class="opt"><input type="checkbox" name="${key}_${o}" value="1">${o}<span class="ring"></span></label>`)
+  })
+  return out
+}
+
+// ラベルが枠幅に収まる文字サイズ(mm)を返す。全角=1em、半角=0.5em で概算する。
+function fitLabel(label, wmm, base = 2.1) {
+  const em = [...String(label)].reduce((n, ch) => n + (/[\x20-\x7E]/.test(ch) ? 0.5 : 1), 0)
+  if (em <= 0) return base
+  return Math.min(base, +((wmm - 0.2) / em).toFixed(2))
+}
+
 /* ---------- 料金表（A・B・C） ---------- */
 const fmt = n => n.toLocaleString('ja-JP')
 function feeRow(label, field, last) {
@@ -132,24 +155,32 @@ function buildFees() {
 
 /* ---------- お支払方法・その他の料金 ---------- */
 function buildPay() {
-  const p = $('#pay')
-  const row = (top, h, html, cls = '') => {
+  const p = $('#pay'), p2 = $('#pay2')
+  // 原本はお支払方法とその他の料金が別枠（側の罫線が 198〜200mm で切れている）
+  const SPLIT = 19.39
+  const mk = (host, off) => (top, h, html, cls = '') => {
     const r = el('div', 'p-row ' + cls, html)
-    r.style.top = top + 'mm'; r.style.height = h + 'mm'
-    p.append(r); return r
+    r.style.top = +(top - off).toFixed(2) + 'mm'; r.style.height = h + 'mm'
+    host.append(r); return r
   }
+  const rowA = mk(p, 0), rowB = mk(p2, SPLIT)
+  const row = (top, h, html, cls = '') => (top < SPLIT ? rowA : rowB)(top, h, html, cls)
   row(0, 5.3, '<div style="flex:1;text-align:center;font-weight:400;letter-spacing:1.9mm">お支払方法</div>')
   row(5.3, 4.4, '<div style="flex:1;display:flex;justify-content:space-between;padding:0 1.2mm" class="small">' +
     ['現 金', '前 受 金', '会 社 請 求'].map(v => `<label class="opt"><input type="radio" name="payMethod" value="${v.replace(/\s/g, '')}">${v}<span class="ring"></span></label>`).join('<span class="sep">・</span>') + '</div>')
-  row(9.7, 4.5, `<div class="small" style="display:flex;align-items:center;width:100%;letter-spacing:0.5mm"><label class="opt"><input type="radio" name="payMethod" value="カード">カ ー ド<span class="ring"></span></label>　（<input class="form-input mini" data-field="cardNote" style="width:16mm">）</div>`)
-  row(14.2, 5.2, `<div class="small" style="display:flex;align-items:center;width:100%"><span class="small">領収書宛先名</span><input class="form-input mini" data-field="receiptName" style="flex:1"></div>`)
+  // 原本の実測：カ 157.02／ド末 168.70／（ 173.39／） 202.22（mm）
+  row(9.7, 4.5, `<div class="small" style="display:flex;align-items:center;width:100%;letter-spacing:0.12mm"><label class="opt"><input type="radio" name="payMethod" value="カード">カ ー ド<span class="ring"></span></label><span style="display:inline-block;width:6.9mm"></span>（<input class="form-input mini" data-field="cardNote" style="width:29mm">）</div>`)
+  row(14.22, 4.45, `<div class="small" style="display:flex;align-items:center;width:100%"><span class="small">領収書宛先名</span><input class="form-input mini" data-field="receiptName" style="flex:1"></div>`)
   row(19.4, 4.11, '<div style="flex:1;text-align:center;font-weight:400;letter-spacing:1.5mm">その他の料金</div>')
   const tops = [23.51, 27.64, 31.70, 35.77, 39.90, 44.02, 48.08, 52.16, 56.34, 60.40]
   FEE_D.forEach(([key, label, note], i) => {
     const lw = 24.63
     const noteHtml = note ? `<span class="xs" style="line-height:1.02;margin-left:0.3mm">${note.split('|').join('<br>')}</span>` : ''
+    const wLab = note ? 17.5 : 22.5
+    // 長いラベルは折り返さず、枠に収まるまで字を詰める（原本も1行）
+    const fs = fitLabel(label, wLab)
     row(tops[i], tops[i + 1] - tops[i],
-      `<div style="width:${lw}mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just small" style="width:${note ? 17.5 : 22.5}mm">${label}</span>${noteHtml}</div>` +
+      `<div style="width:${lw}mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just small" style="width:${wLab}mm;white-space:nowrap;font-size:${fs}mm">${pickLabel(label)}</span>${noteHtml}</div>` +
       `<div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span>${key ? inp('feeD_' + key, 'form-input num mini') : ''}</div>`).style.padding = '0'
   })
   row(60.40, 4.13, '<div style="width:24.63mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just small" style="width:17mm">小　計 (D)</span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span>' + calcIn('subD') + '</div>').style.padding = '0'
@@ -206,23 +237,6 @@ function recalc() {
     else e.textContent = v > 0 ? fmt(v) : ''
   }
 }
-
-/* ---------- 「限定 混載便」の連動丸 ----------
-   紙では2語で1つの選択肢。どちらを押しても sendType=限定混載便 になり、丸は両方に付く */
-function syncMirrors() {
-  document.querySelectorAll('input.opt-mirror').forEach(m => {
-    const r = document.querySelector(`input[name="${m.dataset.mirrorName}"][value="${m.dataset.mirrorValue}"]`)
-    if (r) m.checked = r.checked
-  })
-}
-document.addEventListener('change', e => {
-  const t = e.target
-  if (t.matches && t.matches('input.opt-mirror')) {
-    const r = document.querySelector(`input[name="${t.dataset.mirrorName}"][value="${t.dataset.mirrorValue}"]`)
-    if (r) r.checked = t.checked
-  } else if (t.name === 'sendType') { /* 本体側の変更 */ }
-  syncMirrors()
-})
 
 /* ---------- はみ出し防止：欄に収まるまで文字を自動縮小 ---------- */
 function autoFit(el) {
@@ -286,8 +300,7 @@ document.addEventListener('focusout', e => {
 })
 // フォント読込後に、流し込んだ値のはみ出しを一括補正
 formatMoneyInputs()
-syncMirrors()
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => autoFitAll())
 else autoFitAll()
-document.addEventListener('estimate:recalc', () => { autoFitAll(); syncMirrors() })
+document.addEventListener('estimate:recalc', () => { autoFitAll() })
 window.estimateForm = { applyFormData, readFormData, recalc, autoFitAll }

@@ -30,6 +30,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .opt input { position: absolute; opacity: 0; pointer-events: none; }
 .opt .ring { position: absolute; inset: -0.2mm; border: 0.45mm solid transparent; border-radius: 999px; }
 .opt input:checked ~ .ring { border-color: #b91c1c; }
+/* 原本に〇が印字されている欄は、〇を囲まずに中へ✓を入れる */
+.opt.circ .ring { display: none; }
+.opt.circ .tick { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #b91c1c; font-size: 2.6mm; font-weight: 700; line-height: 1; visibility: hidden; }
+.opt.circ input:checked ~ .tick { visibility: visible; }
 .sep { padding: 0 0.4mm; }
 .ph { color: inherit; }  /* 紙の下地文字（月 日 など）は原本どおり黒 */
 
