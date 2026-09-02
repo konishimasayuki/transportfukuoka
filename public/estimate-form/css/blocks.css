@@ -29,8 +29,12 @@
 .uketsuke2 .grid { grid-template-columns: 11.49mm 1fr; }
 
 /* ---- Block02 日程・スペース・引越・発送内容・見積日 ---- */
-.sched-date { left: 5.4mm; top: 24.7mm; width: 77.8mm; height: 15.45mm; }
+/* 原本実測: 縦罫線 5.39 / 14.47 / 44.49 / 53.64 / 83.85mm */
+.sched-date { left: 5.4mm; top: 24.7mm; width: 78.75mm; height: 15.45mm; }
 .sched-date .grid { grid-template-columns: 8.9mm 30.1mm 9.2mm 1fr; grid-template-rows: 7.53mm 1fr; }
+/* 原本の文字は 2.1mm 相当（実装の 2.7mm より小さい） */
+.sched-date .c.lbl { font-size: 2.10mm; letter-spacing: 0.28mm; }
+.sched-date .date-ph { font-size: 2.1mm; }
 .sched-mid { left: 84.9mm; top: 24.7mm; width: 31.8mm; height: 15.45mm; }
 /* 原本実測：ラベルと値の仕切りは 96.94mm（枠左 84.94mm から 12.00mm） */
 .sched-mid .grid { grid-template-columns: 12.0mm 1fr; grid-template-rows: 3.9mm 3.78mm 3.82mm 1fr; }
