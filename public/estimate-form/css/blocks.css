@@ -118,9 +118,12 @@
 .mats .m-row { position: absolute; left: 0; right: 0; border-bottom: var(--line-w) solid var(--ink); display: flex; }
 
 /* ---- Block12 請求先 ---- */
-.billing { left: 5.6mm; top: 181.0mm; width: 148.7mm; height: 18.2mm; }
-.billing .grid { grid-template-columns: 15.9mm 1fr; grid-template-rows: 5.9mm 5.9mm 1fr; }
-.bill-r3 { display: grid; grid-template-columns: 22.2mm 21.9mm 48.8mm 25.0mm 16.4mm 1fr; }
+/* 原本実測: 横罫線 181.08 / 187.05 / 192.95 / 198.92mm */
+.billing { left: 5.6mm; top: 181.0mm; width: 148.7mm; height: 18.05mm; }
+.billing .grid { grid-template-columns: 15.9mm 1fr; grid-template-rows: 6.09mm 5.86mm 1fr; }
+/* 原本実測の縦罫線: 5.63 / 27.85 / 49.95 / 98.76 / 123.33 / 154.06mm。
+   原本には請求書発送と／の間に仕切りが無いので1セルにまとめる */
+.bill-r3 { display: grid; grid-template-columns: 22.2mm 22.10mm 48.81mm 24.57mm 1fr; }
 
 /* ---- お支払方法・その他の料金 ---- */
 /* 原本ではお支払方法とその他の料金が別枠（角丸が切れている）ので2つに分ける */
