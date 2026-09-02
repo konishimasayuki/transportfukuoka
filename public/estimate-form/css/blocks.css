@@ -32,7 +32,8 @@
 .sched-date { left: 5.4mm; top: 24.7mm; width: 77.8mm; height: 15.45mm; }
 .sched-date .grid { grid-template-columns: 8.9mm 30.1mm 9.2mm 1fr; grid-template-rows: 7.53mm 1fr; }
 .sched-mid { left: 84.9mm; top: 24.7mm; width: 31.8mm; height: 15.45mm; }
-.sched-mid .grid { grid-template-columns: 13.6mm 1fr; grid-template-rows: 3.9mm 3.78mm 3.82mm 1fr; }
+/* 原本実測：ラベルと値の仕切りは 96.94mm（枠左 84.94mm から 12.00mm） */
+.sched-mid .grid { grid-template-columns: 12.0mm 1fr; grid-template-rows: 3.9mm 3.78mm 3.82mm 1fr; }
 .sched-fl { left: 118.1mm; top: 24.7mm; width: 27.4mm; height: 15.45mm; }
 .sched-fl .grid { grid-template-columns: 11.9mm 1fr; grid-template-rows: 3.9mm 3.78mm 3.82mm 1fr; }
 .sched-send { left: 146.8mm; top: 24.7mm; width: 24.9mm; height: 15.45mm; }
