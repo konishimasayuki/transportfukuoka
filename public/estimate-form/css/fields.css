@@ -84,3 +84,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* 品名の（　）の中の書き込み欄（TVブラなど）は行の高さを増やさない */
 .kz.name .form-input { height: 2.2mm; line-height: 1; vertical-align: middle; }
+
+/* S/M・U/G のように字が小さく隣と近い選択肢は、輪を字の大きさに合わせる
+   （輪が大きいと隣の字に重なって、字が動いたように見えるため） */
+.sm-pick .opt .ring, .ug .opt .ring { inset: -0.05mm; border-width: 0.28mm; }
+/* お支払方法の最終行の下罫線は枠線と重なって二重線になるので引かない */
+.pay .p-row:last-child { border-bottom: 0; }
