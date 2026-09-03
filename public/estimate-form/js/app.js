@@ -102,7 +102,7 @@ function buildMats() {
 // ラベル内の「（脱・着）」のような選択肢を〇付けできるようにする
 const PICKS = {
   'アンテナ（脱・着）': ['antenna', ['脱', '着']],
-  '洗濯機付(ドラム・全自動)': ['washer', ['ドラム', '全自動']],
+  '洗濯機付(ドラム・全自動)': ['washer', ['付', 'ドラム', '全自動']],
 }
 function pickLabel(label) {
   const hit = PICKS[label]
@@ -112,7 +112,6 @@ function pickLabel(label) {
   opts.forEach(o => {
     out = out.replace(o, `<label class="opt"><input type="checkbox" name="${key}_${o}" value="1">${o}<span class="ring"></span></label>`)
   })
-  if (key === 'washer') out = out.replace('洗濯機付', '洗濯機<span class="pcirc">付</span>')
   return out
 }
 
@@ -178,7 +177,10 @@ function buildPay() {
   const tops = [23.51, 27.64, 31.70, 35.77, 39.90, 44.02, 48.08, 52.16, 56.34, 60.40]
   FEE_D.forEach(([key, label, note], i) => {
     const lw = 24.63
-    const noteHtml = note ? `<span class="xs" style="line-height:1.02;margin-left:0.3mm">${note.split('|').join('<br>')}</span>` : ''
+    // 「外し」「付け」は原本でそれぞれ〇を付ける
+    const noteHtml = note ? `<span class="xs" style="line-height:1.02;margin-left:0.3mm">${note.split('|')
+      .map(t => key ? `<label class="opt" style="padding:0 0.2mm"><input type="checkbox" name="${key}_${t}" value="1">${t}<span class="ring"></span></label>` : t)
+      .join('<br>')}</span>` : ''
     const wLab = note ? 17.5 : 22.5
     // 長いラベルは折り返さず、枠に収まるまで字を詰める（原本も1行）
     const fs = fitLabel(label, wLab - (PICKS[label] ? 1.2 : 0))
@@ -188,10 +190,10 @@ function buildPay() {
   })
   row(60.40, 4.13, '<div style="width:24.63mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just small" style="width:17mm">小　計 (D)</span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span>' + calcIn('subD') + '</div>').style.padding = '0'
   // 合計（ラベルが2段の¥をまたぐ）
-  const g = row(64.53, 8.77, '', ''); g.style.padding = '0'
+  const g = row(64.53, 9.90, '', ''); g.style.padding = '0'
   g.innerHTML = `<div style="width:20.56mm;height:100%;display:flex;flex-direction:column;justify-content:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just small" style="width:15mm">合　　計</span><span class="xs">(A)+(B)+(C)+(D)</span></div>` +
-    `<div style="flex:1;display:flex;flex-direction:column"><div style="height:4.30mm;display:flex;align-items:center;border-bottom:var(--line-w) solid var(--ink);padding:0 0.5mm"><span class="yen">¥</span>${calcIn('total')}</div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span></div></div>`
-  const t3 = [[73.30, 7.56, '総　合　計', 'grand'], [80.86, 6.45, '消 費 税', 'tax'], [87.31, 6.39, '再　　計', 'final']]
+    `<div style="flex:1;height:100%;display:flex;flex-direction:column"><div style="height:5.02mm;display:flex;align-items:center;border-bottom:var(--line-w) solid var(--ink);padding:0 0.5mm"><span class="yen">¥</span>${calcIn('total')}</div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span></div></div>`
+  const t3 = [[74.43, 6.43, '総　合　計', 'grand'], [80.86, 6.45, '消 費 税', 'tax'], [87.31, 6.39, '再　　計', 'final']]
   t3.forEach(([top, h, label, calc], i) => {
     const r = row(top, h, `<div style="width:20.56mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:1.7mm"><span class="just" style="width:15mm;font-weight:${calc === 'final' ? 700 : 400}">${label}</span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span>${calcIn(calc)}</div>`)
     r.style.padding = '0'

@@ -411,7 +411,10 @@ function buildPrintData(form) {
   // 受付・伝票まわり
   put('reception1', form.reception1); put('reception2', form.reception2)
   put('frontNote', form.frontNote)
-  put('spaceSize', form.spaceSize); put('workLoad', form.workLoad); put('packOpenCar', form.packOpenCar)
+  put('spaceSize', form.spaceSize)
+  // 紙は「?〜?」「?／?」の2枠なので分けて渡す
+  { const [a, b] = String(form.workLoad || '').split(/[~〜～]/); put('workLoadFrom', b == null ? '' : a); put('workLoad', b == null ? a : b) }
+  { const [a, b] = String(form.packOpenCar || '').split(/[\/／]/); put('packOpenFrom', b == null ? '' : a); put('packOpenCar', b == null ? a : b) }
   put('helperCar', form.helperCar)
   const cf = splitDate(form.confirmDate)
   put('confirmMonth', cf.month); put('confirmDay', cf.day); put('confirmDow', dowOf(form.confirmDate))
@@ -986,8 +989,8 @@ export default function Estimate({ user, switchTab }) {
         </div>
         <div className="three-col" style={{ marginTop: 10 }}>
           <Field label="スペース"><input style={inputStyle} value={form.spaceSize} onChange={e => set('spaceSize', e.target.value)} /></Field>
-          <Field label="作業量"><input style={inputStyle} value={form.workLoad} onChange={e => set('workLoad', e.target.value)} /></Field>
-          <Field label="梱包・開包（車）"><input style={inputStyle} value={form.packOpenCar} onChange={e => set('packOpenCar', e.target.value)} /></Field>
+          <Field label="作業量（〜で2枠）"><input style={inputStyle} value={form.workLoad} onChange={e => set('workLoad', e.target.value)} placeholder="例：3〜4" /></Field>
+          <Field label="梱包・開包（／で2枠）"><input style={inputStyle} value={form.packOpenCar} onChange={e => set('packOpenCar', e.target.value)} placeholder="例：1／2" /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 10 }}>
           <Field label="補助車輌">
