@@ -352,6 +352,25 @@ document.addEventListener('focusout', e => {
 })
 // フォント読込後に、流し込んだ値のはみ出しを一括補正
 formatMoneyInputs()
+// 〇（ラジオ）は一度選んだあと、もう一度押すと外せる。AM/PM なども同じ。
+document.addEventListener('mousedown', e => {
+  const lb = e.target.closest && e.target.closest('label.opt')
+  const r = lb && lb.querySelector('input[type=radio]')
+  if (r) r.dataset.wasChecked = r.checked ? '1' : ''
+}, true)
+document.addEventListener('click', e => {
+  const lb = e.target.closest && e.target.closest('label.opt')
+  const r = lb && lb.querySelector('input[type=radio]')
+  if (!r) return
+  if (r.dataset.wasChecked === '1') {
+    // ラベルの既定動作（＝選び直し）を止めてから外す
+    e.preventDefault(); e.stopPropagation()
+    r.checked = false
+    r.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  r.dataset.wasChecked = ''
+}, true)
+
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitStaticAll(); autoFitAll() })
 else { fitStaticAll(); autoFitAll() }
 document.addEventListener('estimate:recalc', () => { fitStaticAll(); autoFitAll() })
