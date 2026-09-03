@@ -81,3 +81,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* その他の料金の注記（外し／付け）の輪は行の高さに収める */
 .p-row .xs .opt .ring { inset: -0.2mm -0.3mm; }
+
+/* 品名の（　）の中の書き込み欄（TVブラなど）は行の高さを増やさない */
+.kz.name .form-input { height: 2.2mm; line-height: 1; vertical-align: middle; }

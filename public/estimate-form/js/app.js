@@ -39,7 +39,11 @@ function buildKazai() {
       const isDitto = name.startsWith('〃')
       // サイズ記号は紙どおり右寄せ（A/B/C… が同じ右端に揃う）。名称が長い行は紙どおり直後に続ける
       const fits = name.replace(/\s/g, '').length <= 4
-      const nm = el('div', 'kz name', `<span${isDitto ? ' style="margin-left:4.2mm"' : ''}>${name}</span>` +
+      // 原本の「（　）」は書き込み欄（TVブラ（ ）など）
+      const nmHtml = name.includes('（ ）')
+        ? name.replace('（ ）', `（<input class="form-input ctr" data-field="kz_${key}_note" style="width:4.6mm;font-size:1.8mm;padding:0">）`)
+        : name
+      const nm = el('div', 'kz name', `<span${isDitto ? ' style="margin-left:4.2mm"' : ''}>${nmHtml}</span>` +
         (size ? (fits ? `<span style="position:absolute;right:0.5mm;letter-spacing:0">${size}</span>`
                       : `<span style="letter-spacing:0">${size}</span>`) : ''))
       nm.style.position = 'relative'
@@ -71,7 +75,15 @@ function buildMats() {
   }
   const B = 'border-right:var(--line-w) solid var(--ink)'
   row(0, 3.78, '<div style="flex:1;display:flex;align-items:center;justify-content:center;font-weight:400;letter-spacing:1.2mm">荷　造　資　材</div>')
-  row(3.78, 3.68, `<div style="width:11.96mm;${B}"></div><div style="width:10.76mm;${B};display:flex;align-items:center;justify-content:center">／　日</div><div style="width:11.21mm;${B};display:flex;align-items:center;justify-content:center">／　日</div><div style="flex:1;display:flex;align-items:center;justify-content:center" class="xs">作業当日</div>`)
+  row(3.78, 3.68, `<div style="width:11.96mm;${B}"></div>` +
+    // 原本実測：1列目 ／174.94・日179.38、2列目 ／185.85・日190.30mm
+    [[10.76, 3.58, 7.75, 3.1, 6.08, 2.4], [11.21, 3.73, 7.91, 3.2, 6.23, 2.5]].map(([w, sl, ni, w1, dx, w2], k) =>
+      `<div style="width:${w}mm;${B};position:relative">`
+      + `<input class="form-input ctr mini" data-field="matDate${k + 1}M" style="position:absolute;left:0.5mm;top:0;height:100%;width:${w1}mm">`
+      + `<span style="position:absolute;left:${sl}mm;top:50%;transform:translateY(-50%)">／</span>`
+      + `<input class="form-input ctr mini" data-field="matDate${k + 1}D" style="position:absolute;left:${dx}mm;top:0;height:100%;width:${w2}mm">`
+      + `<span style="position:absolute;left:${ni}mm;top:50%;transform:translateY(-50%)">日</span></div>`).join('') +
+    `<div style="flex:1;display:flex;align-items:center;justify-content:center" class="xs">作業当日</div>`)
   let y = 7.46
   const rh = [3.81, 3.68, 3.57, 3.92, 3.86, 3.57, 3.75, 3.68]
   MATERIAL_ROWS.forEach(([key, label], i) => {
@@ -102,7 +114,7 @@ function buildMats() {
 // ラベル内の「（脱・着）」のような選択肢を〇付けできるようにする
 const PICKS = {
   'アンテナ（脱・着）': ['antenna', ['脱', '着']],
-  '洗濯機付(ドラム・全自動)': ['washer', ['付', 'ドラム', '全自動']],
+  '洗濯機付(ドラム・全自動)': ['washer', ['ドラム', '全自動']],
 }
 function pickLabel(label) {
   const hit = PICKS[label]
@@ -112,6 +124,8 @@ function pickLabel(label) {
   opts.forEach(o => {
     out = out.replace(o, `<label class="opt"><input type="checkbox" name="${key}_${o}" value="1">${o}<span class="ring"></span></label>`)
   })
+  // 原本では「洗濯機付」の「付」に○が印字されている
+  if (key === 'washer') out = out.replace('洗濯機付', '洗濯機<span class="pcirc">付</span>')
   return out
 }
 
@@ -192,7 +206,7 @@ function buildPay() {
   // 合計（ラベルが2段の¥をまたぐ）
   const g = row(64.53, 9.90, '', ''); g.style.padding = '0'
   g.innerHTML = `<div style="width:20.56mm;height:100%;display:flex;flex-direction:column;justify-content:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just small" style="width:15mm">合　　計</span><span class="xs">(A)+(B)+(C)+(D)</span></div>` +
-    `<div style="flex:1;height:100%;display:flex;flex-direction:column"><div style="height:5.02mm;display:flex;align-items:center;border-bottom:var(--line-w) solid var(--ink);padding:0 0.5mm"><span class="yen">¥</span>${calcIn('total')}</div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span></div></div>`
+    `<div style="flex:1;height:100%;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span>${calcIn('total')}</div>`
   const t3 = [[74.43, 6.43, '総　合　計', 'grand'], [80.86, 6.45, '消 費 税', 'tax'], [87.31, 6.39, '再　　計', 'final']]
   t3.forEach(([top, h, label, calc], i) => {
     const r = row(top, h, `<div style="width:20.56mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:1.7mm"><span class="just" style="width:15mm;font-weight:${calc === 'final' ? 700 : 400}">${label}</span></div><div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span>${calcIn(calc)}</div>`)
