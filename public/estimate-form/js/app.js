@@ -125,7 +125,9 @@ function pickLabel(label) {
     out = out.replace(o, `<label class="opt"><input type="checkbox" name="${key}_${o}" value="1">${o}<span class="ring"></span></label>`)
   })
   // 原本では「洗濯機付」の「付」に○が印字されている
-  if (key === 'washer') out = out.replace('洗濯機付', '洗濯機<span class="pcirc">付</span>')
+  // 原本では「付」に○が印字されている。その○のまま選べるようにする（選ぶと赤い輪が付く）
+  if (key === 'washer') out = out.replace('洗濯機付',
+    '洗濯機<label class="opt tsuki"><input type="checkbox" name="washer_付" value="1"><span class="pcirc">付</span><span class="ring"></span></label>')
   return out
 }
 

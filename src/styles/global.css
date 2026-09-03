@@ -153,6 +153,29 @@ html, body, #root {
 .two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
+/* ===== 見積書 料金タブ ===== */
+/* A・B・D は同じ形のカード。C（資材）は 数量×金額 が2組あるので1行使う */
+.fee-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
+.fee-card { border: 1px solid #E2E8F0; border-radius: 10px; overflow: hidden; background: #fff; }
+.fee-card > h4 { background: #F1F5FB; padding: 8px 12px; font-size: 12px; font-weight: 800; color: #334155; }
+.fee-card > .body { padding: 8px 12px 10px; }
+.fee-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.fee-row > .lab { flex: 1; min-width: 0; font-size: 12px; color: #475569; }
+.fee-row > .amt { display: flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+.fee-row > .amt > span { font-size: 11px; color: #94A3B8; }
+.fee-row > .amt > input { width: 110px; }
+.fee-sub { display: flex; justify-content: space-between; border-top: 1px solid #E2E8F0;
+           margin-top: 6px; padding-top: 7px; font-size: 13px; font-weight: 800; }
+.fee-sub > span:first-child { color: #64748B; }
+/* 資材の料金（C）：品名 ＋ 数量①／金額①／数量②／金額② */
+.feec-row { display: grid; grid-template-columns: minmax(120px, 240px) repeat(4, minmax(78px, 150px));
+            gap: 8px; align-items: center; padding: 4px 0; }
+.fee-wide { margin-top: 14px; }
+.feec-row > .lab { font-size: 12px; color: #475569; }
+.feec-head { font-size: 10px; color: #94A3B8; padding-bottom: 2px; }
+.feec-head > span { text-align: center; }
+.feec-row .cap { display: none; font-size: 10px; color: #94A3B8; }
+
 .scroll-x { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
 /* スクロール可能なことが分かるよう、細いスクロールバーを常時表示気味に */
 .scroll-x::-webkit-scrollbar { height: 8px; }
@@ -210,6 +233,10 @@ tr:hover td { background: var(--bg); }
 .setting-input:focus { border-color: var(--blueL); }
 
 /* ===== MOBILE ===== */
+@media (max-width: 1100px) and (min-width: 769px) {
+  .three-col { grid-template-columns: 1fr 1fr; }
+  .fee-grid  { grid-template-columns: 1fr 1fr; }
+}
 @media (max-width: 768px) {
   .menu-btn   { display: flex; align-items: center; justify-content: center; }
   .topbar-date { display: none; }
@@ -218,6 +245,15 @@ tr:hover td { background: var(--bg); }
   .kpi-3 { grid-template-columns: repeat(2, 1fr); }
   .two-col   { grid-template-columns: 1fr; }
   .three-col { grid-template-columns: 1fr; }
+  .fee-grid  { grid-template-columns: 1fr; }
+  /* 料金：品名を1行使い、4つの入力を2列ずつに折り返す */
+  .feec-head { display: none; }
+  .feec-row { grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 8px 0; border-top: 1px solid #F1F5F9; }
+  .feec-row > .lab { grid-column: 1 / -1; font-weight: 700; color: #334155; }
+  .feec-row .cap { display: block; }
+  .fee-row > .amt > input { width: 100%; }
+  .fee-row > .amt { flex: 1 1 auto; }
+  .fee-row > .lab { flex: 0 0 42%; }
   .setting-input { width: 130px; }
   /* モバイルではテーブルを詰めて表示（横スクロールは .scroll-x が担当） */
   table { font-size: 11px; }

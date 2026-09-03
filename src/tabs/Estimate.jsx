@@ -187,18 +187,38 @@ const LEAD_KAZAI_TO_KEY = {
   '自転車': 'jitensha', '物干し竿': 'monohoshi', '植木鉢・観葉植物': 'kanyou', '仏壇': 'butsudan_B',
   // 重量物
   'ピアノ類': 'piano_U', '小型ピアノ・エレクトーン': 'electone_B', '大型ピアノ': 'piano_G', 'バイク': 'minibike',
+  'ピアノ・エレクトーン': 'piano_U', 'ピアノ': 'piano_U', 'エレクトーン': 'electone_B',
+  // 手入力・成約データで出てくる言い回し
+  'ダイニングテーブル': 'dining_A', 'ダイニングセット': 'dining_A', 'テレビ台': 'tvdai',
+  'カラーボックス': 'colorbox', '姿見': 'sugatami', '物置': 'monooki_A', '布団袋': 'futonbukuro',
 }
-// 見積書語彙そのものの完全一致（保険）
+// 表記ゆれ（全角半角・空白・長音・「類」）を吸収した見出し語にする。
+// 例：ソファー（2人掛け）→ ソファ（2人掛け）、タンス類（大）→ タンス（大）
+const canonKazai = (s) => String(s || '').normalize('NFKC').replace(/[\s　]/g, '')
+  .replace(/\(/g, '（').replace(/\)/g, '）')
+  .replace(/ー(?=（|$)/g, '')
+  .replace(/類(?=（|$)/g, '')
+// 見積書語彙そのものの一致（保険）。「ソファー2人用」「ソファー（2人用）」どちらでも引ける
 const ITEM_NAME_TO_KEY = (() => {
   const m = {}
-  ALL_ITEMS.forEach(it => { m[it.name + (it.size ? `（${it.size}）` : '')] = it.key; if (!(it.name in m)) m[it.name] = it.key })
+  const put = (k, v) => { const c = canonKazai(k); if (c && !(c in m)) m[c] = v }
+  ALL_ITEMS.forEach(it => {
+    if (it.size) { put(`${it.name}（${it.size}）`, it.key); put(`${it.name}${it.size}`, it.key) }
+    put(it.name, it.key)
+  })
   return m
 })()
-// リード家財名 → 見積書品目キー（完全一致 → カッコ前のベース名 → 見積書語彙一致 の順）
+const LEAD_KEY_CANON = (() => {
+  const m = {}
+  for (const [k, v] of Object.entries(LEAD_KAZAI_TO_KEY)) m[canonKazai(k)] = v
+  return m
+})()
+// 家財名 → 見積書品目キー（表記ゆれを吸収 → カッコ前のベース名 の順）
 function resolveKazaiKey(name) {
   if (!name) return null
-  const base = String(name).replace(/[（(].*$/, '').trim()
-  return LEAD_KAZAI_TO_KEY[name] || LEAD_KAZAI_TO_KEY[base] || ITEM_NAME_TO_KEY[name] || ITEM_NAME_TO_KEY[base] || null
+  const c = canonKazai(name)
+  const base = c.replace(/（.*$/, '')
+  return LEAD_KEY_CANON[c] || ITEM_NAME_TO_KEY[c] || LEAD_KEY_CANON[base] || ITEM_NAME_TO_KEY[base] || null
 }
 
 // 料金欄の定義（帳票の項目名どおり）
@@ -685,6 +705,22 @@ export default function Estimate({ user, switchTab }) {
   const addExtra = () => setForm(p => (p.extraKazai || []).length >= KZX_MAX ? p : ({ ...p, extraKazai: [...(p.extraKazai || []), { name: '', pt: '', qty: '1' }] }))
   const setExtra = (i, patch) => setForm(p => ({ ...p, extraKazai: (p.extraKazai || []).map((r, ix) => ix === i ? { ...r, ...patch } : r) }))
   const removeExtra = (i) => setForm(p => ({ ...p, extraKazai: (p.extraKazai || []).filter((_, ix) => ix !== i) }))
+  // 表に同じ品目がある名前（ソファー（2人掛け）＝ソファー 2人用 など）は、
+  // 空き升に書かず表の数量へ統合する
+  const mergeExtra = (i) => setForm(p => {
+    const r = (p.extraKazai || [])[i]
+    if (!r || !r.name) return p
+    const key = resolveKazaiKey(r.name)
+    if (!key) return p
+    const it = ALL_ITEMS.find(x => x.key === key)
+    setToast(`「${r.name}」は家財表の「${it ? it.name + (it.size ? ' ' + it.size : '') : key}」に統合しました`)
+    setTimeout(() => setToast(''), 2600)
+    return {
+      ...p,
+      items: { ...p.items, [key]: String(num(p.items[key]) + (num(r.qty) || 1)) },
+      extraKazai: (p.extraKazai || []).filter((_, ix) => ix !== i),
+    }
+  })
   const setFee = (block, key, v) => setForm(p => ({ ...p, [block]: { ...p[block], [key]: v } }))
   const setFeeCx = (key, f, v) => setForm(p => ({ ...p, feeCx: { ...(p.feeCx || {}), [key]: { ...((p.feeCx || {})[key] || {}), [f]: v } } }))
 
@@ -1303,7 +1339,12 @@ export default function Estimate({ user, switchTab }) {
                   <tr key={i}>
                     <td style={{ padding: 4 }}>
                       <input style={inputStyle} value={r.name || ''} placeholder="例：ゴルフセット"
-                        onChange={e => setExtra(i, { name: e.target.value })} />
+                        onChange={e => setExtra(i, { name: e.target.value })} onBlur={() => mergeExtra(i)} />
+                      {resolveKazaiKey(r.name) && (
+                        <div style={{ fontSize: 10, color: '#1E5FA8', marginTop: 3 }}>
+                          家財表の項目と一致（入力欄を離れると統合します）
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: 4 }}>
                       <input style={{ ...inputStyle, textAlign: 'center' }} value={r.pt || ''} placeholder="才"
@@ -1369,12 +1410,12 @@ export default function Estimate({ user, switchTab }) {
 
       {/* 料金 */}
       {step === 'fee' && <Section id="sec-fee" title="料金（手入力）">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+        <div className="fee-grid">
           <FeeBlock title="基本料金 (A)" list={FEE_A} obj={form.feeA} onChange={(k, v) => setFee('feeA', k, v)} subtotal={totals.a} />
           <FeeBlock title="附帯料金 (B)" list={FEE_B} obj={form.feeB} onChange={(k, v) => setFee('feeB', k, v)} subtotal={totals.b} />
-          <FeeCBlock list={FEE_C} amt={form.feeC} ext={form.feeCx} onAmt={(k, v) => setFee('feeC', k, v)} onExt={setFeeCx} subtotal={totals.c} />
           <FeeBlock title="その他の料金 (D)" list={FEE_D} obj={form.feeD} onChange={(k, v) => setFee('feeD', k, v)} subtotal={totals.d} />
         </div>
+        <FeeCBlock list={FEE_C} amt={form.feeC} ext={form.feeCx} onAmt={(k, v) => setFee('feeC', k, v)} onExt={setFeeCx} subtotal={totals.c} />
         <SubHead>その他の料金の〇印</SubHead>
         <div className="two-col">
           <Field label="アンテナ"><ChkRow items={['脱', '着']} on={form.antennaOpt} onToggle={v => set('antennaOpt', toggleIn(form.antennaOpt, v))} /></Field>
@@ -1554,24 +1595,32 @@ function TelInput({ value, onChange, label }) {
 
 // 資材の料金：紙は「数量 枚 ¥金額 ｜ 数量 枚 ¥金額」の2組
 function FeeCBlock({ list, amt, ext, onAmt, onExt, subtotal }) {
-  const cell = { width: '100%', ...feeInput }
-  const cols = { display: 'grid', gridTemplateColumns: '1fr 52px 84px 52px 84px', gap: 4, alignItems: 'center' }
+  const box = { width: '100%', ...feeInput }
+  const num = (label, cap, value, on) => (
+    <div>
+      <div className="cap">{cap}</div>
+      <input type="number" min={0} inputMode="numeric" aria-label={`${label} ${cap}`} value={value ?? ''}
+        onChange={e => on(e.target.value)} style={box} />
+    </div>
+  )
   return (
-    <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
-      <div style={{ background: '#F1F5FB', padding: '7px 10px', fontSize: 11, fontWeight: 800, color: '#334155' }}>資材の料金 (C)</div>
-      <div style={{ padding: '6px 10px' }}>
-        <div style={{ ...cols, fontSize: 10, color: '#94A3B8' }}><span /><span>数量①</span><span>金額①</span><span>数量②</span><span>金額②</span></div>
-        {list.map(f => { const x = ext?.[f.key] || {}; return (
-          <div key={f.key} style={{ ...cols, padding: '3px 0' }}>
-            <div style={{ fontSize: 11, color: '#475569' }}>{f.label}</div>
-            <input type="number" min={0} inputMode="numeric" aria-label={`${f.label} 数量①`} value={x.q1 ?? ''} onChange={e => onExt(f.key, 'q1', e.target.value)} style={cell} />
-            <input type="number" min={0} inputMode="numeric" aria-label={`${f.label} 金額①`} value={amt?.[f.key] ?? ''} onChange={e => onAmt(f.key, e.target.value)} style={cell} />
-            <input type="number" min={0} inputMode="numeric" aria-label={`${f.label} 数量②`} value={x.q2 ?? ''} onChange={e => onExt(f.key, 'q2', e.target.value)} style={cell} />
-            <input type="number" min={0} inputMode="numeric" aria-label={`${f.label} 金額②`} value={x.a2 ?? ''} onChange={e => onExt(f.key, 'a2', e.target.value)} style={cell} />
-          </div>) })}
-        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #E2E8F0', marginTop: 6, paddingTop: 6, fontSize: 12, fontWeight: 800 }}>
-          <span>小計 (C)</span><span>{yen(subtotal)}</span>
-        </div>
+    <div className="fee-card fee-wide">
+      <h4>資材の料金 (C)　<span style={{ fontWeight: 400, color: '#64748B' }}>数量と金額を2組まで</span></h4>
+      <div className="body">
+        <div className="feec-row feec-head"><span /><span>数量①</span><span>金額①</span><span>数量②</span><span>金額②</span></div>
+        {list.map(f => {
+          const x = ext?.[f.key] || {}
+          return (
+            <div className="feec-row" key={f.key}>
+              <div className="lab">{f.label}</div>
+              {num(f.label, '数量①', x.q1, v => onExt(f.key, 'q1', v))}
+              {num(f.label, '金額①', amt?.[f.key], v => onAmt(f.key, v))}
+              {num(f.label, '数量②', x.q2, v => onExt(f.key, 'q2', v))}
+              {num(f.label, '金額②', x.a2, v => onExt(f.key, 'a2', v))}
+            </div>
+          )
+        })}
+        <div className="fee-sub"><span>小計 (C)</span><span>{yen(subtotal)}</span></div>
       </div>
     </div>
   )
@@ -1579,23 +1628,20 @@ function FeeCBlock({ list, amt, ext, onAmt, onExt, subtotal }) {
 
 function FeeBlock({ title, list, obj, onChange, subtotal }) {
   return (
-    <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
-      <div style={{ background: '#F1F5FB', padding: '7px 10px', fontSize: 11, fontWeight: 800, color: '#334155' }}>{title}</div>
-      <div style={{ padding: '6px 10px' }}>
+    <div className="fee-card">
+      <h4>{title}</h4>
+      <div className="body">
         {list.map(f => (
-          <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
-            <div style={{ flex: 1, fontSize: 11, color: '#475569' }}>{f.label}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <span style={{ fontSize: 11, color: '#94A3B8' }}>¥</span>
-              <input type="number" min={0} inputMode="numeric" value={obj?.[f.key] ?? ''}
-                onChange={e => onChange(f.key, e.target.value)}
-                style={{ width: 90, ...feeInput }} />
+          <div className="fee-row" key={f.key}>
+            <div className="lab">{f.label}</div>
+            <div className="amt">
+              <span>¥</span>
+              <input type="number" min={0} inputMode="numeric" aria-label={f.label} value={obj?.[f.key] ?? ''}
+                onChange={e => onChange(f.key, e.target.value)} style={feeInput} />
             </div>
           </div>
         ))}
-        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #E2E8F0', marginTop: 6, paddingTop: 6, fontSize: 12, fontWeight: 800 }}>
-          <span style={{ color: '#64748B' }}>小計</span><span>{yen(subtotal)}</span>
-        </div>
+        <div className="fee-sub"><span>小計</span><span>{yen(subtotal)}</span></div>
       </div>
     </div>
   )
