@@ -315,6 +315,7 @@ function emptyForm() {
     moveFloorFrom: '', moveFloorTo: '', pianoFloorFrom: '', pianoFloorTo: '',
     // 家財数量
     items: {},
+    memos: {},            // 家財表の右列（品目ごとの2〜3文字のメモ）{ key: 'S' }
     extraKazai: [],       // 特殊家財（帳票の空き升に手書きする行）[{ name, pt, qty }]
     unmatchedKazai: [],   // 自由記入行にも入りきらなかった家財（上限超過ぶん）
     // 荷造資材（数量：予定1／予定2／作業当日）と用具
@@ -467,6 +468,10 @@ function buildPrintData(form) {
   for (const [k, v] of Object.entries(form.items || {})) {
     if (num(v) > 0) d['kz_' + (PRINT_KEY_MAP[k] || k)] = v
   }
+  // 家財表の右列（メモ）
+  for (const [k, m] of Object.entries(form.memos || {})) {
+    if (String(m || '').trim()) d['kz_' + (PRINT_KEY_MAP[k] || k) + '_x'] = String(m).trim()
+  }
   // 料金
   for (const f of FEE_A) put('feeA_' + f.key, form.feeA?.[f.key])
   for (const f of FEE_B) put('feeB_' + f.key, form.feeB?.[f.key])
@@ -482,6 +487,7 @@ function buildPrintData(form) {
     put('kzx' + (i + 1) + '_name', r.name)
     put('kzx' + (i + 1) + '_pt', r.pt)
     put('kzx' + (i + 1) + '_qty', r.qty)
+    put('kzx' + (i + 1) + '_x', r.x)
   })
   // 荷造資材（予定1／予定2／作業当日）と用具
   for (const [key] of MATERIAL_ROWS) {
@@ -497,8 +503,7 @@ function buildPrintData(form) {
   // 紙は 月／日 のスロットなので分けて渡す
   { const c = splitDate(form.billConfirmDate); put('billConfirmM', c.month); put('billConfirmD', c.day) }
   put('billConfirmAmPm', form.billConfirmAmPm); put('billConfirmHour', form.billConfirm); put('billConfirmName', form.billConfirmName)
-  ;['billClose', 'billPay'].forEach(k => { const s = splitMD(form[k]); put(k + 'M', s.m); put(k + 'D', s.d) })
-  put('billSend', form.billSend)
+  ;['billClose', 'billPay', 'billSend'].forEach(k => { const s = splitMD(form[k]); put(k + 'M', s.m); put(k + 'D', s.d) })
   put('pianoUG', form.pianoUG)
   // 支払・備考
   put('payMethod', form.payment)
@@ -635,7 +640,7 @@ export default function Estimate({ user, switchTab }) {
     setForm(f); setEditId(null); setView('edit'); setPreview(false); setStep('basic')
   }
   const openEdit = (item) => {
-    setForm({ ...emptyForm(), ...item, items: { ...(item.items || {}) },
+    setForm({ ...emptyForm(), ...item, items: { ...(item.items || {}) }, memos: { ...(item.memos || {}) },
       feeA: { ...(item.feeA || {}) }, feeB: { ...(item.feeB || {}) },
       feeC: { ...(item.feeC || {}) }, feeCx: { ...(item.feeCx || {}) }, feeD: { ...(item.feeD || {}) } })
     setEditId(item.id); setView('edit'); setPreview(false); setStep('basic')
@@ -671,6 +676,7 @@ export default function Estimate({ user, switchTab }) {
     setZipBusy('')
   }
   const setItemQty = (key, v) => setForm(p => ({ ...p, items: { ...p.items, [key]: v } }))
+  const setMemo = (key, v) => setForm(p => ({ ...p, memos: { ...(p.memos || {}), [key]: v } }))
   // 特殊家財（帳票の空き升に印刷する自由記入行）
   const addExtra = () => setForm(p => (p.extraKazai || []).length >= KZX_MAX ? p : ({ ...p, extraKazai: [...(p.extraKazai || []), { name: '', pt: '', qty: '1' }] }))
   const setExtra = (i, patch) => setForm(p => ({ ...p, extraKazai: (p.extraKazai || []).map((r, ix) => ix === i ? { ...r, ...patch } : r) }))
@@ -1219,7 +1225,7 @@ export default function Estimate({ user, switchTab }) {
           {KAZAI_GROUPS.map(group => {
             const visible = group.items.filter(it => {
               // 検索中は「入力済みのみ」を一時的に無視する（そうしないと未入力の品目を探して追加できない）
-              if (kazaiOnlyEntered && !kazaiQuery && !(num(form.items[it.key]) > 0)) return false
+              if (kazaiOnlyEntered && !kazaiQuery && !(num(form.items[it.key]) > 0) && !String(form.memos?.[it.key] || '').trim()) return false
               if (kazaiQuery && !(`${it.name}${it.size}`.includes(kazaiQuery))) return false
               return true
             })
@@ -1256,6 +1262,9 @@ export default function Estimate({ user, switchTab }) {
                       />
                       <button type="button" onClick={() => setItemQty(it.key, q + 1)}
                         style={{ width: 30, height: 30, border: '1px solid #1E5FA8', borderRadius: 6, background: '#EFF6FF', color: '#1E5FA8', fontSize: 16, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>＋</button>
+                      <input value={form.memos?.[it.key] ?? ''} maxLength={4} placeholder="メモ" title="家財表の右列に印字するメモ（2〜3文字）"
+                        onChange={e => setMemo(it.key, e.target.value)}
+                        style={{ width: 54, padding: '5px 4px', border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 12, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }} />
                     </div>
                   )
                 })}
@@ -1264,7 +1273,7 @@ export default function Estimate({ user, switchTab }) {
             )
           })}
         </div>
-        {kazaiOnlyEntered && !kazaiQuery && !Object.values(form.items || {}).some(v => num(v) > 0) && (
+        {kazaiOnlyEntered && !kazaiQuery && !Object.values(form.items || {}).some(v => num(v) > 0) && !Object.values(form.memos || {}).some(v => String(v || '').trim()) && (
           <div style={{ padding: 20, textAlign: 'center', color: '#94A3B8', fontSize: 12 }}>まだ数量が入力されていません。「入力済みのみ」をOFFにしてください。</div>
         )}
         <div style={{ marginTop: 10, fontSize: 11, color: '#94A3B8' }}>
@@ -1281,7 +1290,7 @@ export default function Estimate({ user, switchTab }) {
           <div className="scroll-x">
             <table style={{ minWidth: 420 }}>
               <thead>
-                <tr><th>品名</th><th style={{ width: 110, textAlign: 'center' }}>点数（才）</th><th style={{ width: 90, textAlign: 'center' }}>数量</th><th style={{ width: 44 }}></th></tr>
+                <tr><th>品名</th><th style={{ width: 110, textAlign: 'center' }}>点数（才）</th><th style={{ width: 90, textAlign: 'center' }}>数量</th><th style={{ width: 90, textAlign: 'center' }}>メモ</th><th style={{ width: 44 }}></th></tr>
               </thead>
               <tbody>
                 {form.extraKazai.map((r, i) => (
@@ -1297,6 +1306,10 @@ export default function Estimate({ user, switchTab }) {
                     <td style={{ padding: 4 }}>
                       <input style={{ ...inputStyle, textAlign: 'center' }} value={r.qty || ''} placeholder="1"
                         onChange={e => setExtra(i, { qty: e.target.value })} />
+                    </td>
+                    <td style={{ padding: 4 }}>
+                      <input style={{ ...inputStyle, textAlign: 'center' }} value={r.x || ''} placeholder="2〜3字" maxLength={4}
+                        onChange={e => setExtra(i, { x: e.target.value })} />
                     </td>
                     <td style={{ padding: 4, textAlign: 'center' }}>
                       <button type="button" title="この行を削除" onClick={() => removeExtra(i)}
@@ -1409,7 +1422,7 @@ export default function Estimate({ user, switchTab }) {
         </div>
         <div className="two-col" style={{ marginTop: 10 }}>
           <Field label="担当者"><input style={inputStyle} value={form.billStaff} onChange={e => set('billStaff', e.target.value)} /></Field>
-          <Field label="請求書発送"><input style={inputStyle} value={form.billSend} onChange={e => set('billSend', e.target.value)} placeholder="例：郵送 / メール" /></Field>
+          <Field label="請求書発送"><input style={inputStyle} value={form.billSend} onChange={e => set('billSend', e.target.value)} placeholder="例：9/25（月/日）" /></Field>
         </div>
       </Section>}
 
