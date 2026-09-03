@@ -325,7 +325,7 @@ function emptyForm() {
     feeCx: {},   // 資材の料金の 数量①／数量②／金額②（金額① は feeC）
     // 請求先
     billName: '', billConfirm: '', billConfirmDate: '', billConfirmAmPm: '', billConfirmName: '', billAddr: '', billClose: '', billPay: '',
-    pianoUG: '',
+    pianoUG: '', pianoCurNote: '', pianoDstNote: '',
     billTel: '', billStaff: '', billSend: '',
     // その他
     memo: '', requestTo: '', payment: '',
@@ -508,6 +508,7 @@ function buildPrintData(form) {
   put('billConfirmAmPm', form.billConfirmAmPm); put('billConfirmHour', form.billConfirm); put('billConfirmName', form.billConfirmName)
   ;['billClose', 'billPay', 'billSend'].forEach(k => { const s = splitMD(form[k]); put(k + 'M', s.m); put(k + 'D', s.d) })
   put('pianoUG', form.pianoUG)
+  put('pianoCurNote', form.pianoCurNote); put('pianoDstNote', form.pianoDstNote)
   // 支払・備考
   put('payMethod', form.payment)
   put('promiseText', form.memo)
@@ -1126,6 +1127,8 @@ export default function Estimate({ user, switchTab }) {
             </div>
           </Field>
           <Field label="ピアノ U／G の〇"><ChkRow items={['U', 'G']} on={form.pianoUG ? [form.pianoUG] : []} onToggle={v => set('pianoUG', form.pianoUG === v ? '' : v)} /></Field>
+          <Field label="ピアノ 現住所（F の左）"><input style={inputStyle} value={form.pianoCurNote} onChange={e => set('pianoCurNote', e.target.value)} placeholder="例：3" /></Field>
+          <Field label="ピアノ 届先住所（F の左）"><input style={inputStyle} value={form.pianoDstNote} onChange={e => set('pianoDstNote', e.target.value)} placeholder="例：1" /></Field>
           <Field label="ピアノ 現住所の〇"><ChkRow items={PIANO_OPTS} on={form.pianoCurOpt} onToggle={v => set('pianoCurOpt', toggleIn(form.pianoCurOpt, v))} /></Field>
           <Field label="ピアノ 届先住所の〇"><ChkRow items={PIANO_OPTS} on={form.pianoDstOpt} onToggle={v => set('pianoDstOpt', toggleIn(form.pianoDstOpt, v))} /></Field>
         </div>
