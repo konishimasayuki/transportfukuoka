@@ -23,6 +23,8 @@ export function splitTel(v) {
 export function applyFormData(data) {
   for (const [key, val] of Object.entries(data || {})) {
     if (val == null) continue
+    // 自動計算欄を手で書き換えた分（_calc）は最後にまとめて戻す
+    if (key === '_calc') continue
     const el = document.querySelector(`[data-field="${key}"]`)
     if (el) {
       el.value = String(val)
@@ -44,6 +46,12 @@ export function applyFormData(data) {
     }
   }
   document.dispatchEvent(new Event('estimate:recalc'))
+  // 自動計算より後に流し込まないと recalc に上書きされる
+  for (const [k, v] of Object.entries((data || {})._calc || {})) {
+    const el = document.querySelector(`[data-calc="${k}"]`)
+    if (!el || v === '' || v == null) continue
+    el.value = Number(v).toLocaleString('ja-JP'); el.dataset.manual = '1'
+  }
 }
 
 export function readFormData() {
@@ -60,5 +68,17 @@ export function readFormData() {
   }
   for (const el of document.querySelectorAll('input[type=radio]:checked')) out[el.name] = el.value
   for (const el of document.querySelectorAll('input[type=checkbox]:checked')) { if (el.name) out[el.name] = true }
+  // 自動計算欄を手で書き換えている分だけ持ち出す（自動のままの欄は保存しない）
+  const calc = {}
+  for (const el of document.querySelectorAll('[data-calc]')) {
+    if (el.dataset.manual === '1' && el.value) calc[el.dataset.calc] = String(el.value).replace(/[,\s]/g, '')
+  }
+  if (Object.keys(calc).length) out._calc = calc
   return out
+}
+
+// 一覧に出す金額・才数は、帳票が計算した値をそのまま使う
+export function readTotals() {
+  const v = (n) => { const e = document.querySelector(`[data-calc="${n}"]`); return e ? Number(String(e.value || '').replace(/[,\s]/g, '')) || 0 : 0 }
+  return { total: v('final'), points: v('pointTotal') }
 }

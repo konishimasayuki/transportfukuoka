@@ -1,7 +1,7 @@
 // 帳票の動的部分（家財表・荷造資材・料金表・お支払欄）の生成と、
 // 表示スケール・計算・デバッグオーバーレイ。
 import { KAZAI_COLS, MATERIAL_ROWS, GEAR_ITEMS, FEE_A, FEE_B, FEE_C, FEE_D } from './fields.js'
-import { applyFormData, readFormData } from './form-data.js'
+import { applyFormData, readFormData, readTotals } from './form-data.js'
 
 const $ = (s, r = document) => r.querySelector(s)
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e }
@@ -298,13 +298,18 @@ function autoFitAll() {
 }
 
 /* ---------- 表示スケール（スマホはA4を丸ごと縮小） ---------- */
+// CRM の見積書モーダルに iframe で埋め込まれているか
+const EMBED = new URLSearchParams(location.search).get('embed') === '1'
 function fitScale() {
   const base = 210 * 96 / 25.4
   const w = document.documentElement.clientWidth
   const s = Math.min(1, w / base)
   const sc = $('.sheet-scale')
   sc.style.transform = s < 1 ? `scale(${s})` : ''
-  $('.sheet-viewport').style.height = (297 * 96 / 25.4) * s + 'px'
+  const h = (297 * 96 / 25.4) * s
+  $('.sheet-viewport').style.height = h + 'px'
+  // 親（モーダル）が iframe の高さを合わせられるように知らせる
+  if (EMBED && parent !== window) parent.postMessage({ type: 'estimate:height', height: Math.ceil(h) }, '*')
 }
 
 /* ---------- 起動 ---------- */
@@ -333,8 +338,9 @@ if (new URLSearchParams(location.search).get('debug') === 'overlay') {
   document.body.classList.add('debug-overlay')
   $('.reference-overlay').src = '../IMG_9280.jpeg'
 }
-// CRM（見積管理タブ）の「印刷プレビュー」からの流し込み
-try {
+// CRM（見積管理タブ）の「印刷プレビュー」からの流し込み。
+// 見積書モーダル（?embed=1）では親が明示的に流し込むので、ここでは読まない。
+if (!EMBED) try {
   const stored = localStorage.getItem('transportfukuoka:estimatePrint')
   if (stored) applyFormData(JSON.parse(stored))
 } catch { /* 壊れたデータは無視して白紙で開く */ }
@@ -374,4 +380,11 @@ document.addEventListener('click', e => {
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitStaticAll(); autoFitAll() })
 else { fitStaticAll(); autoFitAll() }
 document.addEventListener('estimate:recalc', () => { fitStaticAll(); autoFitAll() })
-window.estimateForm = { applyFormData, readFormData, recalc, autoFitAll, fitStaticAll }
+// 親（CRM の見積書モーダル）から呼ぶ入口。iframe は同一オリジンなので直接触れる。
+window.estimateForm = {
+  applyFormData, readFormData, readTotals, recalc, autoFitAll, fitStaticAll,
+  // 流し込み→金額の桁区切り→再計算→はみ出し補正までを1回で
+  fill(data) { applyFormData(data || {}); formatMoneyInputs(); recalc(); fitStaticAll(); autoFitAll() },
+  read() { return { data: readFormData(), totals: readTotals() } },
+}
+if (EMBED && parent !== window) parent.postMessage({ type: 'estimate:ready' }, '*')
