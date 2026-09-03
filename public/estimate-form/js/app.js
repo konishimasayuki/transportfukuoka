@@ -178,7 +178,10 @@ function buildPay() {
   const tops = [23.51, 27.64, 31.70, 35.77, 39.90, 44.02, 48.08, 52.16, 56.34, 60.40]
   FEE_D.forEach(([key, label, note], i) => {
     const lw = 24.63
-    const noteHtml = note ? `<span class="xs" style="line-height:1.02;margin-left:0.3mm">${note.split('|').join('<br>')}</span>` : ''
+    // 「外し」「付け」は原本でそれぞれ〇を付ける
+    const noteHtml = note ? `<span class="xs" style="line-height:1.02;margin-left:0.3mm">${note.split('|')
+      .map(t => key ? `<label class="opt" style="padding:0 0.2mm"><input type="checkbox" name="${key}_${t}" value="1">${t}<span class="ring"></span></label>` : t)
+      .join('<br>')}</span>` : ''
     const wLab = note ? 17.5 : 22.5
     // 長いラベルは折り返さず、枠に収まるまで字を詰める（原本も1行）
     const fs = fitLabel(label, wLab - (PICKS[label] ? 1.2 : 0))

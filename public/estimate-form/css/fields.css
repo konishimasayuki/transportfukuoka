@@ -78,3 +78,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .tel3 input { flex: 1 1 0; min-width: 0; padding: 0; }
 .tel3 input[data-tel="3"] { flex-grow: 1.25; }
 .tel3 .dash { flex: 0 0 auto; }
+
+/* その他の料金の注記（外し／付け）の輪は行の高さに収める */
+.p-row .xs .opt .ring { inset: -0.2mm -0.3mm; }
