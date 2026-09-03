@@ -120,6 +120,19 @@
   grid-template-rows: 2.23mm 3.55mm 1fr;
 }
 .ws-label { grid-row: 1 / 4; }
+/* エレベーター作業：原本は「人乗」が縦2字、（　）の中に数字を書く余白がある
+   実測 人乗 152.91／（ 155.96／） 163.45／・ 165.61／無 167.38mm（枠左 144.6mm） */
+.ev-cell { position: relative; padding: 0; }
+.ev-cell > *, .ev-cell > .opt { position: absolute; top: 50%; transform: translateY(-50%); }
+.ev-cell .nin { left: 7.70mm; padding: 0 0.2mm; }
+.ev-cell .v2 { display: block; font-size: 1.72mm; line-height: 0.88; text-align: center;
+  transform: scaleX(1.42); transform-origin: left center; }
+.ev-cell .p1 { left: 9.91mm; }
+.ev-cell .num2 { left: 11.76mm; top: 0; transform: none; height: 100%; width: 6.0mm; }
+.ev-cell .mu2 { position: absolute; left: -0.05mm; top: -0.12mm; font-size: 1.3mm; line-height: 1; }
+.ev-cell .p2 { left: 18.11mm; }
+.ev-cell .sep2 { left: 20.12mm; }
+.ev-cell .mu-no { left: 22.17mm; padding: 0 0.2mm; }
 .ws-cd { position: relative; padding: 0 0.5mm; }
 .ws-cd .cd { position: absolute; left: 0.4mm; top: 0.1mm; font-size: 1.45mm; letter-spacing: 0; line-height: 1; }
 .ws-cd .just { padding: 0.9mm 0.3mm 0 2.2mm; }
@@ -152,7 +165,7 @@
 /* ---- お支払方法・その他の料金 ---- */
 /* 原本ではお支払方法とその他の料金が別枠（角丸が切れている）ので2つに分ける */
 .pay  { left: 154.9mm; top: 180.2mm;  width: 49.3mm; height: 18.67mm; }
-.pay2 { left: 154.9mm; top: 199.59mm; width: 49.3mm; height: 74.31mm; }
+.pay2 { left: 154.9mm; top: 199.59mm; width: 49.3mm; height: 74.70mm; }
 .pay .p-row, .pay2 .p-row { position: absolute; left: 0; right: 0; border-bottom: var(--line-w) solid var(--ink); display: flex; align-items: center; padding: 0 1mm; overflow: hidden; }
 
 /* ---- Block13 お約束事項 ---- */

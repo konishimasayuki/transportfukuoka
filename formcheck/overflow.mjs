@@ -72,7 +72,9 @@ const report = await page.evaluate(() => {
     // 矩形は行ボックス（字のインクより上下に約0.3em広い）なので、上下はその分を許容する。
     // 末尾の letter-spacing は空白なので右端から引く。
     const fs = parseFloat(cs.fontSize)
-    const vt = vertical ? TOL : 0.3 * fs, ht = vertical ? 0.3 * fs : TOL
+    const lh = cs.lineHeight === 'normal' ? fs * 1.2 : parseFloat(cs.lineHeight)
+    const lead = Math.max(0, fs - lh)   // 行間を詰めた分、行ボックスは字より小さい
+    const vt = vertical ? TOL : 0.3 * fs + lead, ht = vertical ? 0.3 * fs + lead : TOL
     const ls = parseFloat(cs.letterSpacing) || 0
     if (!vertical) u.right -= ls; else u.bottom -= ls
     const over = []
