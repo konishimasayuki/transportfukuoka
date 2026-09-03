@@ -90,3 +90,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .sm-pick .opt .ring, .ug .opt .ring { inset: -0.05mm; border-width: 0.28mm; }
 /* お支払方法の最終行の下罫線は枠線と重なって二重線になるので引かない */
 .pay .p-row:last-child { border-bottom: 0; }
+
+/* 洗濯機（付）：印字の○の上から赤い輪を重ねる */
+.opt.tsuki { padding: 0; }
+.opt.tsuki .ring { inset: -0.25mm; }
