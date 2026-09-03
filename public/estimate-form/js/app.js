@@ -52,13 +52,12 @@ function buildKazai() {
   }
   // 小計行（各列 4 トラックを 2+2 で使う）
   for (let c = 0; c < 5; c++) {
-    const lb = el('div', 'kz sub', '<span class="just">小　　計</span>')
+    const lb = el('div', 'kz sub bot', '<span class="just">小　　計</span>')
     lb.style.gridColumn = 'span 2'
-    const v = el('div', 'kz sub'); v.style.gridColumn = 'span 2'
-    v.innerHTML = calcIn('ptcol' + c, 'style="text-align:right;font-weight:600"')
-    lb.classList.add('bot'); v.classList.add('bot')
-    if (c === 4) v.classList.add('mats-edge')
-    grid.append(lb, v)
+    // 左＝個数の合計、右＝点数の合計（列の左は個数、右はメモ、という運用に合わせる）
+    const q = el('div', 'kz sub bot', calcIn('qtycol' + c, 'style="text-align:center;font-weight:600"'))
+    const v = el('div', 'kz sub bot' + (c === 4 ? ' mats-edge' : ''), calcIn('ptcol' + c, 'style="text-align:right;font-weight:600"'))
+    grid.append(lb, q, v)
   }
   root.append(grid, buildMats())
 }
@@ -226,11 +225,11 @@ function recalc() {
   // 家財ポイント
   let pt = 0
   KAZAI_COLS.forEach((col, ci) => {
-    let colPt = 0
-    col.forEach(([key, , , p]) => { if (typeof p === 'number') colPt += p * val('kz_' + key) })
+    let colPt = 0, colQty = 0
+    col.forEach(([key, , , p]) => { const q = val('kz_' + key); colQty += q; if (typeof p === 'number') colPt += p * q })
     // 自由記入行（点数×数量。どちらか空なら0）
-    freeSlots.filter(f => f.col === ci).forEach(f => { colPt += val('kzx' + f.n + '_pt') * val('kzx' + f.n + '_qty') })
-    out['ptcol' + ci] = colPt; pt += colPt
+    freeSlots.filter(f => f.col === ci).forEach(f => { const q = val('kzx' + f.n + '_qty'); colQty += q; colPt += val('kzx' + f.n + '_pt') * q })
+    out['ptcol' + ci] = colPt; out['qtycol' + ci] = colQty; pt += colPt
   })
   out.pointTotal = pt
   for (const [k, v] of Object.entries(out)) {
@@ -243,8 +242,16 @@ function recalc() {
 }
 
 /* ---------- はみ出し防止：欄に収まるまで文字を自動縮小 ---------- */
+// 家財表の右列（メモ欄）：1文字は大きく、2文字目からは小さくして枠に収める
+const PX = 96 / 25.4
+function memoBase(el) {
+  const n = [...(el.value || '')].length
+  el.style.fontWeight = n <= 1 ? '700' : '500'
+  return (n <= 1 ? 2.6 : n === 2 ? 2.0 : 1.6) * PX + 'px'
+}
 function autoFit(el) {
-  if (!el.dataset.baseFs) el.dataset.baseFs = getComputedStyle(el).fontSize
+  if (el.dataset.field && /_x$/.test(el.dataset.field)) el.dataset.baseFs = memoBase(el)
+  else if (!el.dataset.baseFs) el.dataset.baseFs = getComputedStyle(el).fontSize
   el.style.fontSize = el.dataset.baseFs
   let fs = parseFloat(el.dataset.baseFs)
   const min = fs * 0.45
@@ -291,6 +298,15 @@ document.addEventListener('input', e => {
   }
   if (t.matches && t.matches('.num, .qty, [data-field^="fee"], [data-field^="kz_"], [data-field^="kzx"], [data-calc]')) recalc()
   if (t.matches && t.matches('.form-input, .form-area')) autoFit(t)
+  // 電話番号の3枠：数字以外は捨て、枠が埋まる（か－を打つ）と次の枠へ
+  if (t.dataset && t.dataset.tel) {
+    const raw = t.value, digits = raw.replace(/\D/g, '').slice(0, +t.maxLength || 4)
+    if (raw !== digits) t.value = digits
+    if (digits.length >= (+t.maxLength || 4) || /[-ー－\s]$/.test(raw)) {
+      const nxt = t.parentElement.querySelector(`[data-tel="${+t.dataset.tel + 1}"]`)
+      if (nxt) nxt.focus()
+    }
+  }
 })
 document.addEventListener('estimate:recalc', recalc)
 recalc()

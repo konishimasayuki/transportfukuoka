@@ -72,3 +72,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .workconf3 .sm-pick { font-size: 1.6mm; }
 .workconf3 .sm-pick .opt { padding: 0 0.2mm; }
 .workconf3 .sm-pick .opt .ring { inset: -0.05mm -0.15mm; }
+
+/* 電話番号の3枠（－は紙の印字。枠が埋まると次へ移る） */
+.tel3 { display: flex; align-items: center; justify-content: center; gap: 0.2mm; padding: 0 0.6mm; }
+.tel3 input { flex: 1 1 0; min-width: 0; padding: 0; }
+.tel3 input[data-tel="3"] { flex-grow: 1.25; }
+.tel3 .dash { flex: 0 0 auto; }
