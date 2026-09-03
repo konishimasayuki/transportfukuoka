@@ -49,6 +49,26 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* 原本の長い斜線（グリフの／では細く短いので実寸で描く） */
 .diag { display: inline-block; position: relative; }
-.diag::before { content: ''; position: absolute; inset: 0;
-  background: linear-gradient(to top left, transparent calc(50% - 0.09mm), var(--ink) calc(50% - 0.09mm),
-    var(--ink) calc(50% + 0.09mm), transparent calc(50% + 0.09mm)); }
+.diag > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.diag line { stroke: var(--ink); stroke-width: 0.18mm; vector-effect: non-scaling-stroke; }
+
+/* 長体処理のラッパ（fitStatic が生成） */
+.fitwrap { display: inline-flex; align-items: center; white-space: nowrap; transform-origin: left center; flex: 0 0 auto; }
+/* 原本に印字されている○（洗濯機(付) など） */
+.pcirc { display: inline-block; border: 0.16mm solid var(--ink); border-radius: 50%; padding: 0 0.12mm; line-height: 1; }
+/* 上付きの単位（作業状況の m） */
+.mu { font-size: 1.3mm; line-height: 0; vertical-align: 0.8mm; }
+/* 支払・その他の料金の〇付けは原本に余白が無い */
+.p-row .opt { padding: 0 0.25mm; }
+.p-row .opt .ring { inset: -0.35mm -0.4mm; }
+/* 用具・ピアノU/G の輪はセル内に収める */
+.mats .opt .ring { left: 0.15mm; right: 0.15mm; }
+.ug { display: inline-flex; flex-direction: column; line-height: 1; font-size: 1.62mm; }
+.ug .opt { padding: 0 0.25mm; }
+.ug .opt .ring { inset: -0.05mm -0.15mm; }
+/* セルの高さに対して輪が大きすぎる箇所 */
+.workconf1 .cx .opt .ring { inset: -0.25mm -0.5mm; }
+.workconf2 .opt .ring { left: 0.45mm; right: 0.75mm; }
+.workconf3 .sm-pick { font-size: 1.6mm; }
+.workconf3 .sm-pick .opt { padding: 0 0.2mm; }
+.workconf3 .sm-pick .opt .ring { inset: -0.05mm -0.15mm; }

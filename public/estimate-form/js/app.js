@@ -32,23 +32,22 @@ function buildKazai() {
         const q1 = el('div', 'kz', inp('kzx' + n + '_qty'))
         const q2 = el('div', `kz${c === 4 ? ' mats-edge' : ''}`, inp('kzx' + n + '_x'))
         grid.append(nm, ptc, q1, q2)
-        if (c === 2) grid.append(el('div', 'kz'))
         freeSlots.push({ n, col: c })
         continue
       }
       const [key, name, size, pt] = it
       const isDitto = name.startsWith('〃')
-      // サイズ記号は紙と同じ固定位置(12.2mm)。ただし名称が長い行は紙どおり直後に続ける
+      // サイズ記号は紙どおり右寄せ（A/B/C… が同じ右端に揃う）。名称が長い行は紙どおり直後に続ける
       const fits = name.replace(/\s/g, '').length <= 4
       const nm = el('div', 'kz name', `<span${isDitto ? ' style="margin-left:4.2mm"' : ''}>${name}</span>` +
-        (size ? (fits ? `<span style="position:absolute;left:12.2mm;letter-spacing:0">${size}</span>`
+        (size ? (fits ? `<span style="position:absolute;right:0.5mm;letter-spacing:0">${size}</span>`
                       : `<span style="letter-spacing:0">${size}</span>`) : ''))
       nm.style.position = 'relative'
-      const ptc = el('div', 'kz pt', pt === null ? '<span style="transform:rotate(-20deg)">/</span>' : (pt === '' ? '' : String(pt)))
+      nm.dataset.fit = ''
+      const ptc = el('div', 'kz pt', pt === null ? '<span>／</span>' : (pt === '' ? '' : String(pt)))
       const q1 = el('div', 'kz', inp('kz_' + key))
       const q2 = el('div', `kz${c === 4 ? ' mats-edge' : ''}`, inp('kz_' + key + '_x'))
       grid.append(nm, ptc, q1, q2)
-      if (c === 2) grid.append(el('div', 'kz'))   // 原本にある列3右の細い空き列
     }
   }
   // 小計行（各列 4 トラックを 2+2 で使う）
@@ -60,7 +59,6 @@ function buildKazai() {
     lb.classList.add('bot'); v.classList.add('bot')
     if (c === 4) v.classList.add('mats-edge')
     grid.append(lb, v)
-    if (c === 2) { const sp = el('div', 'kz sub bot'); grid.append(sp) }
   }
   root.append(grid, buildMats())
 }
@@ -78,7 +76,8 @@ function buildMats() {
   let y = 7.46
   const rh = [3.81, 3.68, 3.57, 3.92, 3.86, 3.57, 3.75, 3.68]
   MATERIAL_ROWS.forEach(([key, label], i) => {
-    row(y, rh[i], `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.5mm;line-height:1.05;font-size:1.95mm" class="xs">${label}</div><div style="width:10.76mm;${B}">${inp('mat_' + key + '_d1')}</div><div style="width:11.21mm;${B}">${inp('mat_' + key + '_d2')}</div><div style="flex:1">${inp('mat_' + key + '_day')}</div>`)
+    const two = label.includes('|')
+    row(y, rh[i], `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.5mm;line-height:1.0;font-size:${two ? 1.58 : 1.95}mm;letter-spacing:0;white-space:nowrap" class="xs">${label.replace('|', '<br>')}</div><div style="width:10.76mm;${B}">${inp('mat_' + key + '_d1')}</div><div style="width:11.21mm;${B}">${inp('mat_' + key + '_d2')}</div><div style="flex:1">${inp('mat_' + key + '_day')}</div>`)
     y += rh[i]
   })
   // 作成日・配達日（右にロープ～養生資材の小列）
@@ -86,13 +85,15 @@ function buildMats() {
   wrow(37.30, 5.58, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.6mm"><span class="just small">作　成　日</span></div><div style="flex:1"><input class="form-input mini" data-field="createDate"></div>`)
   wrow(42.88, 5.53, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.6mm"><span class="just small">配　達　日</span></div><div style="flex:1"><input class="form-input mini" data-field="delivDate"></div>`)
   wrow(48.41, 7.40, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.6mm" class="small">ポイント<br>合　　計</div><div style="flex:1;display:flex;align-items:center;justify-content:center;font-size:4mm;font-weight:700">${calcIn('pointTotal', 'style="text-align:center;font-size:4mm;font-weight:700"')}</div>`)
-  row(55.81, 4.07, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.6mm"><span class="just small">保　　管</span></div><div style="flex:1;display:flex;align-items:center;justify-content:center" class="small"><input class="form-input ctr mini" data-field="storageUntil" style="width:14mm">年　　月　　日迄</div>`)
+  // 原本実測：年 181.87／月 190.25／日 198.63／迄 201.17mm（欄左 171.4mm 基準）
+  const AB = 'position:absolute;top:50%;transform:translateY(-50%)'
+  row(55.81, 4.07, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.6mm"><span class="just small">保　　管</span></div><div style="flex:1;position:relative" class="small"><input class="form-input ctr mini" data-field="storageYear" style="position:absolute;left:3.6mm;top:0;height:100%;width:6.2mm"><span style="${AB};left:10.4mm">年</span><input class="form-input ctr mini" data-field="storageMonth" style="position:absolute;left:12.7mm;top:0;height:100%;width:5.6mm"><span style="${AB};left:18.8mm">月</span><input class="form-input ctr mini" data-field="storageDay" style="position:absolute;left:21.0mm;top:0;height:100%;width:6.0mm"><span style="${AB};left:27.2mm">日</span><span style="${AB};left:29.7mm">迄</span></div>`)
   const sec = row(59.88, 4.0, `<div style="width:11.96mm;${B};display:flex;align-items:center;padding:0 0.4mm" class="xs">シークレット</div><div style="flex:1;display:flex;align-items:center;justify-content:space-evenly" class="xs">${['車輌','資材','制服','引越先'].map(v => `<label class="opt"><input type="checkbox" name="secret_${v}">${v}<span class="ring"></span></label>`).join('・')}</div>`)
   sec.style.borderBottom = 'none'
   // 小列（ロープ〜養生資材）
   const gy = [37.30, 41.00, 44.71, 48.41, 52.11, 55.81]
   GEAR_ITEMS.forEach((g, i) => {
-    const r = el('div', '', `<label class="opt" style="width:100%;justify-content:center"><input type="checkbox" name="gear_${g.replace(/\s/g, '')}"><span class="xs just" style="padding:0 0.9mm">${g}</span><span class="ring"></span></label>`)
+    const r = el('div', '', `<label class="opt" style="width:100%;justify-content:center;padding:0 0.5mm"><input type="checkbox" name="gear_${g.replace(/\s/g, '')}"><span class="xs just" style="padding:0 0.5mm;white-space:nowrap">${g}</span><span class="ring"></span></label>`)
     r.style.cssText = `position:absolute;left:33.93mm;right:0;top:${gy[i]}mm;height:${gy[i + 1] - gy[i]}mm;border-left:var(--line-w) solid var(--ink);border-bottom:var(--line-w) solid var(--ink);display:flex;align-items:center`
     m.append(r)
   })
@@ -112,6 +113,7 @@ function pickLabel(label) {
   opts.forEach(o => {
     out = out.replace(o, `<label class="opt"><input type="checkbox" name="${key}_${o}" value="1">${o}<span class="ring"></span></label>`)
   })
+  if (key === 'washer') out = out.replace('洗濯機付', '洗濯機<span class="pcirc">付</span>')
   return out
 }
 
@@ -142,7 +144,9 @@ function buildFees() {
   const c = $('#fees-c'); c.append(el('div', 'fee-hd', '資　材　の　料　金'))
   FEE_C.forEach(([key, label, unit]) => {
     const r = el('div', 'fee-row',
-      `<div class="fl" style="width:17.84mm;justify-content:space-between"><span class="${label.includes('|') ? 'xs' : 'small'}" style="line-height:1.05">${label.replace('|', '<br>')}</span><span class="xs">${inp('feeC_' + key + '_qty1', 'form-input qty mini', 'style="width:4.5mm"')}${unit}</span></div>` +
+      `<div class="fl" style="width:17.84mm;justify-content:space-between">${label.includes('|')
+        ? `<span class="xs" style="line-height:1.02;font-size:1.62mm;letter-spacing:0;white-space:nowrap">${label.replace('|', '<br>')}</span>`
+        : `<span class="small" data-fit style="display:inline-block;max-width:9.4mm;white-space:nowrap;${label.length <= 1 ? 'padding-left:5.6mm' : ''}">${label}</span>`}<span class="xs" style="white-space:nowrap">${inp('feeC_' + key + '_qty1', 'form-input qty mini', 'style="width:4.5mm"')}${unit}</span></div>` +
       `<div class="fv" style="flex:0 0 14.22mm;border-right:var(--line-w) solid var(--ink)"><span class="yen">¥</span>${inp('feeC_' + key + '_amt1', 'form-input num mini')}</div>` +
       `<div class="fl" style="width:9.08mm;justify-content:flex-end"><span class="xs">${inp('feeC_' + key + '_qty2', 'form-input qty mini', 'style="width:4.5mm"')}${unit}</span></div>` +
       `<div class="fv"><span class="yen">¥</span>${inp('feeC_' + key + '_amt2', 'form-input num mini')}</div>`)
@@ -169,7 +173,7 @@ function buildPay() {
   row(5.3, 4.4, '<div style="flex:1;display:flex;justify-content:space-between;padding:0 1.2mm" class="small">' +
     ['現 金', '前 受 金', '会 社 請 求'].map(v => `<label class="opt"><input type="radio" name="payMethod" value="${v.replace(/\s/g, '')}">${v}<span class="ring"></span></label>`).join('<span class="sep">・</span>') + '</div>')
   // 原本の実測：カ 157.02／ド末 168.70／（ 173.39／） 202.22（mm）
-  row(9.7, 4.5, `<div class="small" style="display:flex;align-items:center;width:100%;letter-spacing:0.12mm"><label class="opt"><input type="radio" name="payMethod" value="カード">カ ー ド<span class="ring"></span></label><span style="display:inline-block;width:6.9mm"></span>（<input class="form-input mini" data-field="cardNote" style="width:29mm">）</div>`)
+  row(9.7, 4.5, `<div class="small" style="position:relative;width:100%;height:100%"><label class="opt" style="position:absolute;left:0.14mm;top:50%;transform:translateY(-50%);padding:0 0.3mm"><input type="radio" name="payMethod" value="カード"><span style="letter-spacing:3.11mm;margin-right:-3.11mm">カード</span><span class="ring"></span></label><span style="position:absolute;left:15.76mm;top:50%;transform:translateY(-50%)">（</span><input class="form-input mini" data-field="cardNote" style="position:absolute;left:18.1mm;top:0;height:100%;width:27mm"><span style="position:absolute;left:45.93mm;top:50%;transform:translateY(-50%)">)</span></div>`)
   row(14.22, 4.45, `<div class="small" style="display:flex;align-items:center;width:100%"><span class="small">領収書宛先名</span><input class="form-input mini" data-field="receiptName" style="flex:1"></div>`)
   row(19.4, 4.11, '<div style="flex:1;text-align:center;font-weight:400;letter-spacing:1.5mm">その他の料金</div>')
   const tops = [23.51, 27.64, 31.70, 35.77, 39.90, 44.02, 48.08, 52.16, 56.34, 60.40]
@@ -178,7 +182,7 @@ function buildPay() {
     const noteHtml = note ? `<span class="xs" style="line-height:1.02;margin-left:0.3mm">${note.split('|').join('<br>')}</span>` : ''
     const wLab = note ? 17.5 : 22.5
     // 長いラベルは折り返さず、枠に収まるまで字を詰める（原本も1行）
-    const fs = fitLabel(label, wLab)
+    const fs = fitLabel(label, wLab - (PICKS[label] ? 1.2 : 0))
     row(tops[i], tops[i + 1] - tops[i],
       `<div style="width:${lw}mm;height:100%;display:flex;align-items:center;border-right:var(--line-w) solid var(--ink);padding-left:0.6mm"><span class="just small" style="width:${wLab}mm;white-space:nowrap;font-size:${fs}mm">${pickLabel(label)}</span>${noteHtml}</div>` +
       `<div style="flex:1;display:flex;align-items:center;padding:0 0.5mm"><span class="yen">¥</span>${key ? inp('feeD_' + key, 'form-input num mini') : ''}</div>`).style.padding = '0'
@@ -250,6 +254,20 @@ function autoFit(el) {
     while (el.scrollWidth > el.clientWidth + 0.5 && fs > min) { fs -= 0.3; el.style.fontSize = fs + 'px' }
   }
 }
+// 静的な文字（品名など）を枠に収める。原本は長い品名を長体（横に詰めた字）で入れているので、
+// はみ出す分だけ横方向に縮める。data-fit を付けた要素が対象。
+function fitStatic(el) {
+  let w = el.querySelector(':scope > .fitwrap')
+  if (!w) { w = document.createElement('span'); w.className = 'fitwrap'; while (el.firstChild) w.append(el.firstChild); el.append(w) }
+  w.style.transform = ''
+  const cs = getComputedStyle(el)
+  w.style.transformOrigin = cs.justifyContent === 'center' ? 'center center' : 'left center'
+  const avail = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+  const need = w.offsetWidth
+  if (need > avail + 0.2) w.style.transform = `scaleX(${(avail / need).toFixed(4)})`
+}
+function fitStaticAll() { document.querySelectorAll('[data-fit]').forEach(fitStatic) }
+
 function autoFitAll() {
   document.querySelectorAll('.form-input, .form-area').forEach(el => { if (el.value) autoFit(el) })
 }
@@ -300,7 +318,7 @@ document.addEventListener('focusout', e => {
 })
 // フォント読込後に、流し込んだ値のはみ出しを一括補正
 formatMoneyInputs()
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => autoFitAll())
-else autoFitAll()
-document.addEventListener('estimate:recalc', () => { autoFitAll() })
-window.estimateForm = { applyFormData, readFormData, recalc, autoFitAll }
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitStaticAll(); autoFitAll() })
+else { fitStaticAll(); autoFitAll() }
+document.addEventListener('estimate:recalc', () => { fitStaticAll(); autoFitAll() })
+window.estimateForm = { applyFormData, readFormData, recalc, autoFitAll, fitStaticAll }

@@ -322,7 +322,8 @@ function emptyForm() {
     // 料金（すべて手入力）
     feeA: {}, feeB: {}, feeC: {}, feeD: {},
     // 請求先
-    billName: '', billConfirm: '', billAddr: '', billClose: '', billPay: '',
+    billName: '', billConfirm: '', billConfirmDate: '', billConfirmAmPm: '', billConfirmName: '', billAddr: '', billClose: '', billPay: '',
+    pianoUG: '',
     billTel: '', billStaff: '', billSend: '',
     // その他
     memo: '', requestTo: '', payment: '',
@@ -358,6 +359,20 @@ const PRINT_KEY_MAP = {
   getabako: 'getabako_T', getabako_y: 'getabako_Y', juutan: 'jutan',
   kitchencnt: 'kitchen_c', dining_A: 'shokutaku_A', dining_B: 'shokutaku_B',
   table: 'table_wy',
+}
+// 「9/20」「9／20」「9月20日」「2026-09-20」→ 月／日。数字や「末」だけなら日の欄へ
+function splitMD(v) {
+  const s = String(v || '').trim(); if (!s) return { m: '', d: '' }
+  let m = /^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})/.exec(s); if (m) return { m: String(+m[2]), d: String(+m[3]) }
+  m = /^(\d{1,2})\s*[\/／月]\s*(\d{1,2}|末)/.exec(s); if (m) return { m: String(+m[1]), d: m[2] }
+  return { m: '', d: s.replace(/日.*$/, '') }
+}
+// 「2026-10-31」「2026/10/31」「2026 10 31」「26.10.31」→ 年(下2桁)／月／日
+function splitYMD(v) {
+  const s = String(v || '').trim(); if (!s) return { y: '', m: '', d: '' }
+  const m = /^(\d{2}|\d{4})\s*[-/.年\s]\s*(\d{1,2})\s*[-/.月\s]\s*(\d{1,2})/.exec(s)
+  if (!m) return { y: s, m: '', d: '' }
+  return { y: m[1].slice(-2), m: String(+m[2]), d: String(+m[3]) }
 }
 function splitDate(ymd) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || '')
@@ -470,11 +485,15 @@ function buildPrintData(form) {
     put('mat_' + key + '_day', form.mats?.[key + '_day'])
   }
   ;(form.gear || []).forEach(g => { d['gear_' + g.replace(/\s/g, '')] = true })
-  put('createDate', form.createDate); put('delivDate', form.delivDate); put('storageUntil', form.storageUntil)
+  put('createDate', form.createDate); put('delivDate', form.delivDate)
+  { const s = splitYMD(form.storageUntil); put('storageYear', s.y); put('storageMonth', s.m); put('storageDay', s.d) }
   // 請求先
-  put('billName', form.billName); put('billConfirm', form.billConfirm); put('billAddr', form.billAddr)
-  put('billClose', form.billClose); put('billPay', form.billPay); put('billTel', form.billTel)
-  put('billStaff', form.billStaff); put('billSend', form.billSend)
+  put('billName', form.billName); put('billAddr', form.billAddr); put('billTel', form.billTel); put('billStaff', form.billStaff)
+  // 紙は 月／日 のスロットなので分けて渡す
+  { const c = splitDate(form.billConfirmDate); put('billConfirmM', c.month); put('billConfirmD', c.day) }
+  put('billConfirmAmPm', form.billConfirmAmPm); put('billConfirmHour', form.billConfirm); put('billConfirmName', form.billConfirmName)
+  ;[['billClose', 'billClose'], ['billPay', 'billPay'], ['billSend', 'billSend']].forEach(([k, out]) => { const s = splitMD(form[k]); put(out + 'M', s.m); put(out + 'D', s.d) })
+  put('pianoUG', form.pianoUG)
   // 支払・備考
   put('payMethod', form.payment)
   put('promiseText', form.memo)
@@ -1090,6 +1109,7 @@ export default function Estimate({ user, switchTab }) {
               <span style={{ fontSize: 12, color: '#94A3B8', whiteSpace: 'nowrap' }}>F</span>
             </div>
           </Field>
+          <Field label="ピアノ U／G の〇"><ChkRow items={['U', 'G']} on={form.pianoUG ? [form.pianoUG] : []} onToggle={v => set('pianoUG', form.pianoUG === v ? '' : v)} /></Field>
           <Field label="ピアノ 現住所の〇"><ChkRow items={PIANO_OPTS} on={form.pianoCurOpt} onToggle={v => set('pianoCurOpt', toggleIn(form.pianoCurOpt, v))} /></Field>
           <Field label="ピアノ 届先住所の〇"><ChkRow items={PIANO_OPTS} on={form.pianoDstOpt} onToggle={v => set('pianoDstOpt', toggleIn(form.pianoDstOpt, v))} /></Field>
         </div>
@@ -1314,7 +1334,7 @@ export default function Estimate({ user, switchTab }) {
         <div className="three-col" style={{ marginTop: 10 }}>
           <Field label="作成日"><input style={inputStyle} value={form.createDate} onChange={e => set('createDate', e.target.value)} placeholder="例：9/1" /></Field>
           <Field label="配達日"><input style={inputStyle} value={form.delivDate} onChange={e => set('delivDate', e.target.value)} placeholder="例：9/3" /></Field>
-          <Field label="保管（〜迄）"><input style={inputStyle} value={form.storageUntil} onChange={e => set('storageUntil', e.target.value)} placeholder="例：2026　10　31" /></Field>
+          <Field label="保管（〜迄）"><input style={inputStyle} value={form.storageUntil} onChange={e => set('storageUntil', e.target.value)} placeholder="例：2026/10/31" /></Field>
         </div>
         <div style={{ marginTop: 10 }}>
           <Field label="用具"><ChkRow items={GEAR_ITEMS} on={form.gear} onToggle={v => set('gear', toggleIn(form.gear, v))} /></Field>
@@ -1363,19 +1383,26 @@ export default function Estimate({ user, switchTab }) {
         <SubHead>請求先（会社請求のとき）</SubHead>
         <div className="two-col">
           <Field label="請求先 会社名"><input style={inputStyle} value={form.billName} onChange={e => set('billName', e.target.value)} /></Field>
-          <Field label="確認（時刻／様）"><input style={inputStyle} value={form.billConfirm} onChange={e => set('billConfirm', e.target.value)} placeholder="例：14" /></Field>
+          <Field label="確認（月／日・AM/PM・時・様）">
+            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.7fr 1.4fr', gap: 6 }}>
+              <input type="date" style={inputStyle} value={form.billConfirmDate} onChange={e => set('billConfirmDate', e.target.value)} />
+              <select style={inputStyle} value={form.billConfirmAmPm} onChange={e => set('billConfirmAmPm', e.target.value)}><option value="">—</option><option value="AM">AM</option><option value="PM">PM</option></select>
+              <input style={inputStyle} value={form.billConfirm} onChange={e => set('billConfirm', e.target.value)} placeholder="時" />
+              <input style={inputStyle} value={form.billConfirmName} onChange={e => set('billConfirmName', e.target.value)} placeholder="様（氏名）" />
+            </div>
+          </Field>
         </div>
         <div style={{ marginTop: 10 }}>
           <Field label="住所"><input style={inputStyle} value={form.billAddr} onChange={e => set('billAddr', e.target.value)} /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 10 }}>
-          <Field label="〆日"><input style={inputStyle} value={form.billClose} onChange={e => set('billClose', e.target.value)} placeholder="例：20" /></Field>
-          <Field label="支払日"><input style={inputStyle} value={form.billPay} onChange={e => set('billPay', e.target.value)} placeholder="例：末" /></Field>
+          <Field label="〆日"><input style={inputStyle} value={form.billClose} onChange={e => set('billClose', e.target.value)} placeholder="例：9/20（月/日）または 20" /></Field>
+          <Field label="支払日"><input style={inputStyle} value={form.billPay} onChange={e => set('billPay', e.target.value)} placeholder="例：10/末 または 末" /></Field>
           <Field label="電話"><input style={inputStyle} inputMode="tel" value={form.billTel} onChange={e => set('billTel', e.target.value)} /></Field>
         </div>
         <div className="two-col" style={{ marginTop: 10 }}>
           <Field label="担当者"><input style={inputStyle} value={form.billStaff} onChange={e => set('billStaff', e.target.value)} /></Field>
-          <Field label="請求書発送"><input style={inputStyle} value={form.billSend} onChange={e => set('billSend', e.target.value)} placeholder="例：郵送 / メール" /></Field>
+          <Field label="請求書発送"><input style={inputStyle} value={form.billSend} onChange={e => set('billSend', e.target.value)} placeholder="例：9/25（月/日）" /></Field>
         </div>
       </Section>}
 

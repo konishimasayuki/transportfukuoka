@@ -84,3 +84,6 @@ html, body { background: #525659; }
   opacity: 0.5; pointer-events: none; z-index: 90;
 }
 body.debug-overlay .reference-overlay { display: block; }
+
+/* ブラウザ印刷の「背景のグラフィック」オフでも塗り（黒帯など）を落とさせない */
+.a4-sheet, .a4-sheet * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
