@@ -55,7 +55,7 @@ export const KAZAI_COLS = [
 // 荷造資材（右端ブロックの上段行）
 export const MATERIAL_ROWS = [
   ['mtSmall','小'],['mtMid','中'],['mtWa','和'],['tape','ガムテープ'],['futon','ふとん袋'],
-  ['hbox','ハンガーボックス'],['lightron','ライトロンクレープ紙'],['aircap','エアーキャップ'],
+  ['hbox','ハンガー|ボックス'],['lightron','ライトロン|クレープ紙'],['aircap','エアー|キャップ'],
 ]
 export const GEAR_ITEMS = ['ロープ','ハシゴ','工　具','台　車','養生資材']
 

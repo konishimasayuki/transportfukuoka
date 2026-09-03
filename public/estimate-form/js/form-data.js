@@ -9,6 +9,17 @@ export const formData = {
   estimateDate: '', requestDate: '', estimatorName: '',
 }
 
+// 電話番号「092-123-4567」を3枠に分ける（ハイフン無しは桁数で推定）
+export function splitTel(v) {
+  const s = String(v || '').trim()
+  if (!s) return ['', '', '']
+  if (s.includes('-')) { const p = s.split('-'); return [p[0] || '', p[1] || '', p.slice(2).join('') || ''] }
+  const d = s.replace(/\D/g, '')
+  if (d.length === 11) return [d.slice(0, 3), d.slice(3, 7), d.slice(7)]
+  if (d.length === 10) return /^0[36]/.test(d) ? [d.slice(0, 2), d.slice(2, 6), d.slice(6)] : [d.slice(0, 3), d.slice(3, 6), d.slice(6)]
+  return [s, '', '']
+}
+
 export function applyFormData(data) {
   for (const [key, val] of Object.entries(data || {})) {
     if (val == null) continue
@@ -16,6 +27,13 @@ export function applyFormData(data) {
     if (el) {
       el.value = String(val)
       el.dispatchEvent(new Event('input', { bubbles: true }))
+      continue
+    }
+    // 3枠の電話番号（data-field="xxx_1/_2/_3"）
+    const tel = [1, 2, 3].map(i => document.querySelector(`[data-field="${key}_${i}"]`))
+    if (tel.every(Boolean)) {
+      const p = splitTel(val)
+      tel.forEach((e, i) => { e.value = p[i]; e.dispatchEvent(new Event('input', { bubbles: true })) })
       continue
     }
     // radio / checkbox（name= のグループ。値一致で ON）
@@ -32,6 +50,13 @@ export function readFormData() {
   const out = {}
   for (const el of document.querySelectorAll('[data-field]')) {
     if (el.value) out[el.dataset.field] = el.dataset.value ?? el.value
+  }
+  // 3枠の電話番号は「a-b-c」にまとめる
+  for (const k of Object.keys(out)) {
+    const m = /^(.*)_1$/.exec(k)
+    if (!m || !document.querySelector(`[data-field="${m[1]}_2"]`)) continue
+    out[m[1]] = [1, 2, 3].map(i => out[`${m[1]}_${i}`] || '').join('-').replace(/-+$/, '')
+    ;[1, 2, 3].forEach(i => delete out[`${m[1]}_${i}`])
   }
   for (const el of document.querySelectorAll('input[type=radio]:checked')) out[el.name] = el.value
   for (const el of document.querySelectorAll('input[type=checkbox]:checked')) { if (el.name) out[el.name] = true }

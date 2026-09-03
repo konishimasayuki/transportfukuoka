@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { DEMO_CONTRACTS } from '../lib/demoData'
 import { GMAPS_KEY, zipFromAddress } from '../lib/gmaps'
 
@@ -315,14 +315,17 @@ function emptyForm() {
     moveFloorFrom: '', moveFloorTo: '', pianoFloorFrom: '', pianoFloorTo: '',
     // 家財数量
     items: {},
+    memos: {},            // 家財表の右列（品目ごとの2〜3文字のメモ）{ key: 'S' }
     extraKazai: [],       // 特殊家財（帳票の空き升に手書きする行）[{ name, pt, qty }]
     unmatchedKazai: [],   // 自由記入行にも入りきらなかった家財（上限超過ぶん）
     // 荷造資材（数量：予定1／予定2／作業当日）と用具
     mats: {}, gear: [], createDate: '', delivDate: '', storageUntil: '',
     // 料金（すべて手入力）
     feeA: {}, feeB: {}, feeC: {}, feeD: {},
+    feeCx: {},   // 資材の料金の 数量①／数量②／金額②（金額① は feeC）
     // 請求先
-    billName: '', billConfirm: '', billAddr: '', billClose: '', billPay: '',
+    billName: '', billConfirm: '', billConfirmDate: '', billConfirmAmPm: '', billConfirmName: '', billAddr: '', billClose: '', billPay: '',
+    pianoUG: '',
     billTel: '', billStaff: '', billSend: '',
     // その他
     memo: '', requestTo: '', payment: '',
@@ -358,6 +361,20 @@ const PRINT_KEY_MAP = {
   getabako: 'getabako_T', getabako_y: 'getabako_Y', juutan: 'jutan',
   kitchencnt: 'kitchen_c', dining_A: 'shokutaku_A', dining_B: 'shokutaku_B',
   table: 'table_wy',
+}
+// 「9/20」「9／20」「9月20日」「2026-09-20」→ 月／日。数字や「末」だけなら日の欄へ
+function splitMD(v) {
+  const s = String(v || '').trim(); if (!s) return { m: '', d: '' }
+  let m = /^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})/.exec(s); if (m) return { m: String(+m[2]), d: String(+m[3]) }
+  m = /^(\d{1,2})\s*[\/／月]\s*(\d{1,2}|末)/.exec(s); if (m) return { m: String(+m[1]), d: m[2] }
+  return { m: '', d: s.replace(/日.*$/, '') }
+}
+// 「2026-10-31」「2026/10/31」「2026 10 31」「26.10.31」→ 年(下2桁)／月／日
+function splitYMD(v) {
+  const s = String(v || '').trim(); if (!s) return { y: '', m: '', d: '' }
+  const m = /^(\d{2}|\d{4})\s*[-/.年\s]\s*(\d{1,2})\s*[-/.月\s]\s*(\d{1,2})/.exec(s)
+  if (!m) return { y: s, m: '', d: '' }
+  return { y: m[1].slice(-2), m: String(+m[2]), d: String(+m[3]) }
 }
 function splitDate(ymd) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || '')
@@ -451,10 +468,18 @@ function buildPrintData(form) {
   for (const [k, v] of Object.entries(form.items || {})) {
     if (num(v) > 0) d['kz_' + (PRINT_KEY_MAP[k] || k)] = v
   }
+  // 家財表の右列（メモ）
+  for (const [k, m] of Object.entries(form.memos || {})) {
+    if (String(m || '').trim()) d['kz_' + (PRINT_KEY_MAP[k] || k) + '_x'] = String(m).trim()
+  }
   // 料金
   for (const f of FEE_A) put('feeA_' + f.key, form.feeA?.[f.key])
   for (const f of FEE_B) put('feeB_' + f.key, form.feeB?.[f.key])
-  for (const f of FEE_C) put('feeC_' + f.key + '_amt1', form.feeC?.[f.key])
+  for (const f of FEE_C) {
+    const x = form.feeCx?.[f.key] || {}
+    put('feeC_' + f.key + '_amt1', form.feeC?.[f.key]); put('feeC_' + f.key + '_qty1', x.q1)
+    put('feeC_' + f.key + '_qty2', x.q2); put('feeC_' + f.key + '_amt2', x.a2)
+  }
   for (const f of FEE_D) put('feeD_' + f.key, form.feeD?.[f.key])
   // 特殊家財（帳票の空き升への自由記入行）
   ;(form.extraKazai || []).slice(0, KZX_MAX).forEach((r, i) => {
@@ -462,6 +487,7 @@ function buildPrintData(form) {
     put('kzx' + (i + 1) + '_name', r.name)
     put('kzx' + (i + 1) + '_pt', r.pt)
     put('kzx' + (i + 1) + '_qty', r.qty)
+    put('kzx' + (i + 1) + '_x', r.x)
   })
   // 荷造資材（予定1／予定2／作業当日）と用具
   for (const [key] of MATERIAL_ROWS) {
@@ -470,11 +496,15 @@ function buildPrintData(form) {
     put('mat_' + key + '_day', form.mats?.[key + '_day'])
   }
   ;(form.gear || []).forEach(g => { d['gear_' + g.replace(/\s/g, '')] = true })
-  put('createDate', form.createDate); put('delivDate', form.delivDate); put('storageUntil', form.storageUntil)
+  put('createDate', form.createDate); put('delivDate', form.delivDate)
+  { const s = splitYMD(form.storageUntil); put('storageYear', s.y); put('storageMonth', s.m); put('storageDay', s.d) }
   // 請求先
-  put('billName', form.billName); put('billConfirm', form.billConfirm); put('billAddr', form.billAddr)
-  put('billClose', form.billClose); put('billPay', form.billPay); put('billTel', form.billTel)
-  put('billStaff', form.billStaff); put('billSend', form.billSend)
+  put('billName', form.billName); put('billAddr', form.billAddr); put('billTel', form.billTel); put('billStaff', form.billStaff)
+  // 紙は 月／日 のスロットなので分けて渡す
+  { const c = splitDate(form.billConfirmDate); put('billConfirmM', c.month); put('billConfirmD', c.day) }
+  put('billConfirmAmPm', form.billConfirmAmPm); put('billConfirmHour', form.billConfirm); put('billConfirmName', form.billConfirmName)
+  ;['billClose', 'billPay', 'billSend'].forEach(k => { const s = splitMD(form[k]); put(k + 'M', s.m); put(k + 'D', s.d) })
+  put('pianoUG', form.pianoUG)
   // 支払・備考
   put('payMethod', form.payment)
   put('promiseText', form.memo)
@@ -610,9 +640,9 @@ export default function Estimate({ user, switchTab }) {
     setForm(f); setEditId(null); setView('edit'); setPreview(false); setStep('basic')
   }
   const openEdit = (item) => {
-    setForm({ ...emptyForm(), ...item, items: { ...(item.items || {}) },
+    setForm({ ...emptyForm(), ...item, items: { ...(item.items || {}) }, memos: { ...(item.memos || {}) },
       feeA: { ...(item.feeA || {}) }, feeB: { ...(item.feeB || {}) },
-      feeC: { ...(item.feeC || {}) }, feeD: { ...(item.feeD || {}) } })
+      feeC: { ...(item.feeC || {}) }, feeCx: { ...(item.feeCx || {}) }, feeD: { ...(item.feeD || {}) } })
     setEditId(item.id); setView('edit'); setPreview(false); setStep('basic')
   }
   const backToList = () => { setView('list'); setPreview(false); setForm(emptyForm()); setEditId(null); setStep('basic') }
@@ -646,11 +676,13 @@ export default function Estimate({ user, switchTab }) {
     setZipBusy('')
   }
   const setItemQty = (key, v) => setForm(p => ({ ...p, items: { ...p.items, [key]: v } }))
+  const setMemo = (key, v) => setForm(p => ({ ...p, memos: { ...(p.memos || {}), [key]: v } }))
   // 特殊家財（帳票の空き升に印刷する自由記入行）
   const addExtra = () => setForm(p => (p.extraKazai || []).length >= KZX_MAX ? p : ({ ...p, extraKazai: [...(p.extraKazai || []), { name: '', pt: '', qty: '1' }] }))
   const setExtra = (i, patch) => setForm(p => ({ ...p, extraKazai: (p.extraKazai || []).map((r, ix) => ix === i ? { ...r, ...patch } : r) }))
   const removeExtra = (i) => setForm(p => ({ ...p, extraKazai: (p.extraKazai || []).filter((_, ix) => ix !== i) }))
   const setFee = (block, key, v) => setForm(p => ({ ...p, [block]: { ...p[block], [key]: v } }))
+  const setFeeCx = (key, f, v) => setForm(p => ({ ...p, feeCx: { ...(p.feeCx || {}), [key]: { ...((p.feeCx || {})[key] || {}), [f]: v } } }))
 
   // 集計
   const totals = useMemo(() => {
@@ -662,7 +694,7 @@ export default function Estimate({ user, switchTab }) {
     const qtyTotal = ALL_ITEMS.reduce((s, it) => s + num(form.items[it.key]), 0)
     const a = sumFee(form.feeA, FEE_A)
     const b = sumFee(form.feeB, FEE_B)
-    const c = sumFee(form.feeC, FEE_C)
+    const c = sumFee(form.feeC, FEE_C) + FEE_C.reduce((s, f) => s + num(form.feeCx?.[f.key]?.a2), 0)
     const d = sumFee(form.feeD, FEE_D)
     const goukei = a + b + c + d
     const tax = Math.round(goukei * TAX_RATE)
@@ -1006,9 +1038,9 @@ export default function Estimate({ user, switchTab }) {
           <Field label="住所フリガナ"><input style={inputStyle} value={form.fromFurigana} onChange={e => set('fromFurigana', e.target.value)} placeholder="フクオカシミナミク…" /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 6 }}>
-          <Field label="電話（自宅）"><input style={inputStyle} inputMode="tel" value={form.fromTelHome} onChange={e => set('fromTelHome', e.target.value)} /></Field>
-          <Field label="電話（勤務先）"><input style={inputStyle} inputMode="tel" value={form.fromTelWork} onChange={e => set('fromTelWork', e.target.value)} /></Field>
-          <Field label="携帯電話"><input style={inputStyle} inputMode="tel" value={form.fromTelMobile} onChange={e => set('fromTelMobile', e.target.value)} placeholder="090-…" /></Field>
+          <Field label="電話（自宅）"><TelInput label="電話（自宅）" value={form.fromTelHome} onChange={v => set('fromTelHome', v)} /></Field>
+          <Field label="電話（勤務先）"><TelInput label="電話（勤務先）" value={form.fromTelWork} onChange={v => set('fromTelWork', v)} /></Field>
+          <Field label="携帯電話"><TelInput label="携帯電話" value={form.fromTelMobile} onChange={v => set('fromTelMobile', v)} /></Field>
         </div>
 
         <div style={{ marginTop: 14, fontWeight: 700, fontSize: 12, color: '#0E8A7A' }}>［B］転居先</div>
@@ -1025,9 +1057,9 @@ export default function Estimate({ user, switchTab }) {
           <Field label="住所フリガナ"><input style={inputStyle} value={form.toFurigana} onChange={e => set('toFurigana', e.target.value)} placeholder="フクオカシミナミク…" /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 6 }}>
-          <Field label="電話（自宅）"><input style={inputStyle} inputMode="tel" value={form.toTelHome} onChange={e => set('toTelHome', e.target.value)} /></Field>
-          <Field label="電話（勤務先）"><input style={inputStyle} inputMode="tel" value={form.toTelWork} onChange={e => set('toTelWork', e.target.value)} /></Field>
-          <Field label="携帯電話"><input style={inputStyle} inputMode="tel" value={form.toTelMobile} onChange={e => set('toTelMobile', e.target.value)} /></Field>
+          <Field label="電話（自宅）"><TelInput label="電話（自宅）" value={form.toTelHome} onChange={v => set('toTelHome', v)} /></Field>
+          <Field label="電話（勤務先）"><TelInput label="電話（勤務先）" value={form.toTelWork} onChange={v => set('toTelWork', v)} /></Field>
+          <Field label="携帯電話"><TelInput label="携帯電話" value={form.toTelMobile} onChange={v => set('toTelMobile', v)} /></Field>
         </div>
       </Section>}
 
@@ -1090,6 +1122,7 @@ export default function Estimate({ user, switchTab }) {
               <span style={{ fontSize: 12, color: '#94A3B8', whiteSpace: 'nowrap' }}>F</span>
             </div>
           </Field>
+          <Field label="ピアノ U／G の〇"><ChkRow items={['U', 'G']} on={form.pianoUG ? [form.pianoUG] : []} onToggle={v => set('pianoUG', form.pianoUG === v ? '' : v)} /></Field>
           <Field label="ピアノ 現住所の〇"><ChkRow items={PIANO_OPTS} on={form.pianoCurOpt} onToggle={v => set('pianoCurOpt', toggleIn(form.pianoCurOpt, v))} /></Field>
           <Field label="ピアノ 届先住所の〇"><ChkRow items={PIANO_OPTS} on={form.pianoDstOpt} onToggle={v => set('pianoDstOpt', toggleIn(form.pianoDstOpt, v))} /></Field>
         </div>
@@ -1192,7 +1225,7 @@ export default function Estimate({ user, switchTab }) {
           {KAZAI_GROUPS.map(group => {
             const visible = group.items.filter(it => {
               // 検索中は「入力済みのみ」を一時的に無視する（そうしないと未入力の品目を探して追加できない）
-              if (kazaiOnlyEntered && !kazaiQuery && !(num(form.items[it.key]) > 0)) return false
+              if (kazaiOnlyEntered && !kazaiQuery && !(num(form.items[it.key]) > 0) && !String(form.memos?.[it.key] || '').trim()) return false
               if (kazaiQuery && !(`${it.name}${it.size}`.includes(kazaiQuery))) return false
               return true
             })
@@ -1229,6 +1262,9 @@ export default function Estimate({ user, switchTab }) {
                       />
                       <button type="button" onClick={() => setItemQty(it.key, q + 1)}
                         style={{ width: 30, height: 30, border: '1px solid #1E5FA8', borderRadius: 6, background: '#EFF6FF', color: '#1E5FA8', fontSize: 16, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>＋</button>
+                      <input value={form.memos?.[it.key] ?? ''} maxLength={4} placeholder="メモ" title="家財表の右列に印字するメモ（2〜3文字）"
+                        onChange={e => setMemo(it.key, e.target.value)}
+                        style={{ width: 54, padding: '5px 4px', border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 12, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }} />
                     </div>
                   )
                 })}
@@ -1237,7 +1273,7 @@ export default function Estimate({ user, switchTab }) {
             )
           })}
         </div>
-        {kazaiOnlyEntered && !kazaiQuery && !Object.values(form.items || {}).some(v => num(v) > 0) && (
+        {kazaiOnlyEntered && !kazaiQuery && !Object.values(form.items || {}).some(v => num(v) > 0) && !Object.values(form.memos || {}).some(v => String(v || '').trim()) && (
           <div style={{ padding: 20, textAlign: 'center', color: '#94A3B8', fontSize: 12 }}>まだ数量が入力されていません。「入力済みのみ」をOFFにしてください。</div>
         )}
         <div style={{ marginTop: 10, fontSize: 11, color: '#94A3B8' }}>
@@ -1254,7 +1290,7 @@ export default function Estimate({ user, switchTab }) {
           <div className="scroll-x">
             <table style={{ minWidth: 420 }}>
               <thead>
-                <tr><th>品名</th><th style={{ width: 110, textAlign: 'center' }}>点数（才）</th><th style={{ width: 90, textAlign: 'center' }}>数量</th><th style={{ width: 44 }}></th></tr>
+                <tr><th>品名</th><th style={{ width: 110, textAlign: 'center' }}>点数（才）</th><th style={{ width: 90, textAlign: 'center' }}>数量</th><th style={{ width: 90, textAlign: 'center' }}>メモ</th><th style={{ width: 44 }}></th></tr>
               </thead>
               <tbody>
                 {form.extraKazai.map((r, i) => (
@@ -1270,6 +1306,10 @@ export default function Estimate({ user, switchTab }) {
                     <td style={{ padding: 4 }}>
                       <input style={{ ...inputStyle, textAlign: 'center' }} value={r.qty || ''} placeholder="1"
                         onChange={e => setExtra(i, { qty: e.target.value })} />
+                    </td>
+                    <td style={{ padding: 4 }}>
+                      <input style={{ ...inputStyle, textAlign: 'center' }} value={r.x || ''} placeholder="2〜3字" maxLength={4}
+                        onChange={e => setExtra(i, { x: e.target.value })} />
                     </td>
                     <td style={{ padding: 4, textAlign: 'center' }}>
                       <button type="button" title="この行を削除" onClick={() => removeExtra(i)}
@@ -1314,7 +1354,7 @@ export default function Estimate({ user, switchTab }) {
         <div className="three-col" style={{ marginTop: 10 }}>
           <Field label="作成日"><input style={inputStyle} value={form.createDate} onChange={e => set('createDate', e.target.value)} placeholder="例：9/1" /></Field>
           <Field label="配達日"><input style={inputStyle} value={form.delivDate} onChange={e => set('delivDate', e.target.value)} placeholder="例：9/3" /></Field>
-          <Field label="保管（〜迄）"><input style={inputStyle} value={form.storageUntil} onChange={e => set('storageUntil', e.target.value)} placeholder="例：2026　10　31" /></Field>
+          <Field label="保管（〜迄）"><input style={inputStyle} value={form.storageUntil} onChange={e => set('storageUntil', e.target.value)} placeholder="例：2026/10/31" /></Field>
         </div>
         <div style={{ marginTop: 10 }}>
           <Field label="用具"><ChkRow items={GEAR_ITEMS} on={form.gear} onToggle={v => set('gear', toggleIn(form.gear, v))} /></Field>
@@ -1326,7 +1366,7 @@ export default function Estimate({ user, switchTab }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
           <FeeBlock title="基本料金 (A)" list={FEE_A} obj={form.feeA} onChange={(k, v) => setFee('feeA', k, v)} subtotal={totals.a} />
           <FeeBlock title="附帯料金 (B)" list={FEE_B} obj={form.feeB} onChange={(k, v) => setFee('feeB', k, v)} subtotal={totals.b} />
-          <FeeBlock title="資材の料金 (C)" list={FEE_C} obj={form.feeC} onChange={(k, v) => setFee('feeC', k, v)} subtotal={totals.c} />
+          <FeeCBlock list={FEE_C} amt={form.feeC} ext={form.feeCx} onAmt={(k, v) => setFee('feeC', k, v)} onExt={setFeeCx} subtotal={totals.c} />
           <FeeBlock title="その他の料金 (D)" list={FEE_D} obj={form.feeD} onChange={(k, v) => setFee('feeD', k, v)} subtotal={totals.d} />
         </div>
         <SubHead>その他の料金の〇印</SubHead>
@@ -1363,19 +1403,26 @@ export default function Estimate({ user, switchTab }) {
         <SubHead>請求先（会社請求のとき）</SubHead>
         <div className="two-col">
           <Field label="請求先 会社名"><input style={inputStyle} value={form.billName} onChange={e => set('billName', e.target.value)} /></Field>
-          <Field label="確認（時刻／様）"><input style={inputStyle} value={form.billConfirm} onChange={e => set('billConfirm', e.target.value)} placeholder="例：14" /></Field>
+          <Field label="確認（月／日・AM/PM・時・様）">
+            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.7fr 1.4fr', gap: 6 }}>
+              <input type="date" style={inputStyle} value={form.billConfirmDate} onChange={e => set('billConfirmDate', e.target.value)} />
+              <select style={inputStyle} value={form.billConfirmAmPm} onChange={e => set('billConfirmAmPm', e.target.value)}><option value="">—</option><option value="AM">AM</option><option value="PM">PM</option></select>
+              <input style={inputStyle} value={form.billConfirm} onChange={e => set('billConfirm', e.target.value)} placeholder="時" />
+              <input style={inputStyle} value={form.billConfirmName} onChange={e => set('billConfirmName', e.target.value)} placeholder="様（氏名）" />
+            </div>
+          </Field>
         </div>
         <div style={{ marginTop: 10 }}>
           <Field label="住所"><input style={inputStyle} value={form.billAddr} onChange={e => set('billAddr', e.target.value)} /></Field>
         </div>
         <div className="three-col" style={{ marginTop: 10 }}>
-          <Field label="〆日"><input style={inputStyle} value={form.billClose} onChange={e => set('billClose', e.target.value)} placeholder="例：20" /></Field>
-          <Field label="支払日"><input style={inputStyle} value={form.billPay} onChange={e => set('billPay', e.target.value)} placeholder="例：末" /></Field>
-          <Field label="電話"><input style={inputStyle} inputMode="tel" value={form.billTel} onChange={e => set('billTel', e.target.value)} /></Field>
+          <Field label="〆日"><input style={inputStyle} value={form.billClose} onChange={e => set('billClose', e.target.value)} placeholder="例：9/20（月/日）または 20" /></Field>
+          <Field label="支払日"><input style={inputStyle} value={form.billPay} onChange={e => set('billPay', e.target.value)} placeholder="例：10/末 または 末" /></Field>
+          <Field label="電話"><TelInput label="電話" value={form.billTel} onChange={v => set('billTel', v)} /></Field>
         </div>
         <div className="two-col" style={{ marginTop: 10 }}>
           <Field label="担当者"><input style={inputStyle} value={form.billStaff} onChange={e => set('billStaff', e.target.value)} /></Field>
-          <Field label="請求書発送"><input style={inputStyle} value={form.billSend} onChange={e => set('billSend', e.target.value)} placeholder="例：郵送 / メール" /></Field>
+          <Field label="請求書発送"><input style={inputStyle} value={form.billSend} onChange={e => set('billSend', e.target.value)} placeholder="例：9/25（月/日）" /></Field>
         </div>
       </Section>}
 
@@ -1466,6 +1513,64 @@ function Seg({ choices, value, onChange }) {
     </div>
   )
 }
+// 電話番号：紙と同じ3つの枠。－は自動で入り、枠が埋まる（か－を打つ）と次の枠へ移る。保存は「092-123-4567」
+function splitTel(v) {
+  const s = String(v || '').trim()
+  if (!s) return ['', '', '']
+  if (s.includes('-')) { const p = s.split('-'); return [p[0] || '', p[1] || '', p.slice(2).join('') || ''] }
+  const d = s.replace(/\D/g, '')
+  if (d.length === 11) return [d.slice(0, 3), d.slice(3, 7), d.slice(7)]
+  if (d.length === 10) return /^0[36]/.test(d) ? [d.slice(0, 2), d.slice(2, 6), d.slice(6)] : [d.slice(0, 3), d.slice(3, 6), d.slice(6)]
+  return [s, '', '']
+}
+function TelInput({ value, onChange, label }) {
+  const parts = splitTel(value)
+  const refs = [useRef(null), useRef(null), useRef(null)]
+  const MAX = [4, 4, 4]
+  const upd = (i, raw) => {
+    const digits = raw.replace(/\D/g, '').slice(0, MAX[i])
+    const next = [...parts]; next[i] = digits
+    onChange(next.some(Boolean) ? next.join('-').replace(/-+$/, '') : '')
+    if (i < 2 && (digits.length >= MAX[i] || /[-ー－\s]$/.test(raw))) refs[i + 1].current?.focus()
+  }
+  const back = (i, e) => { if (e.key === 'Backspace' && !e.currentTarget.value && i > 0) { e.preventDefault(); refs[i - 1].current?.focus() } }
+  const box = { ...inputStyle, textAlign: 'center', padding: '8px 4px' }
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto 1.2fr', alignItems: 'center', gap: 4 }}>
+      {[0, 1, 2].map(i => [
+        i > 0 && <span key={'d' + i} style={{ color: '#94A3B8' }}>－</span>,
+        <input key={i} ref={refs[i]} style={box} inputMode="numeric" maxLength={MAX[i]} value={parts[i]} aria-label={`${label || '電話'} ${i + 1}`}
+          onChange={e => upd(i, e.target.value)} onKeyDown={e => back(i, e)} />,
+      ])}
+    </div>
+  )
+}
+
+// 資材の料金：紙は「数量 枚 ¥金額 ｜ 数量 枚 ¥金額」の2組
+function FeeCBlock({ list, amt, ext, onAmt, onExt, subtotal }) {
+  const cell = { width: '100%', ...feeInput }
+  const cols = { display: 'grid', gridTemplateColumns: '1fr 52px 84px 52px 84px', gap: 4, alignItems: 'center' }
+  return (
+    <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ background: '#F1F5FB', padding: '7px 10px', fontSize: 11, fontWeight: 800, color: '#334155' }}>資材の料金 (C)</div>
+      <div style={{ padding: '6px 10px' }}>
+        <div style={{ ...cols, fontSize: 10, color: '#94A3B8' }}><span /><span>数量①</span><span>金額①</span><span>数量②</span><span>金額②</span></div>
+        {list.map(f => { const x = ext?.[f.key] || {}; return (
+          <div key={f.key} style={{ ...cols, padding: '3px 0' }}>
+            <div style={{ fontSize: 11, color: '#475569' }}>{f.label}</div>
+            <input type="number" min={0} inputMode="numeric" aria-label={`${f.label} 数量①`} value={x.q1 ?? ''} onChange={e => onExt(f.key, 'q1', e.target.value)} style={cell} />
+            <input type="number" min={0} inputMode="numeric" aria-label={`${f.label} 金額①`} value={amt?.[f.key] ?? ''} onChange={e => onAmt(f.key, e.target.value)} style={cell} />
+            <input type="number" min={0} inputMode="numeric" aria-label={`${f.label} 数量②`} value={x.q2 ?? ''} onChange={e => onExt(f.key, 'q2', e.target.value)} style={cell} />
+            <input type="number" min={0} inputMode="numeric" aria-label={`${f.label} 金額②`} value={x.a2 ?? ''} onChange={e => onExt(f.key, 'a2', e.target.value)} style={cell} />
+          </div>) })}
+        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #E2E8F0', marginTop: 6, paddingTop: 6, fontSize: 12, fontWeight: 800 }}>
+          <span>小計 (C)</span><span>{yen(subtotal)}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function FeeBlock({ title, list, obj, onChange, subtotal }) {
   return (
     <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
