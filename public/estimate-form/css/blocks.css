@@ -98,10 +98,12 @@
 /* エアコンのセパレート／ウィンド行：カナは同じ幅に均等割り、S/M と 台 は上下段で同じ位置
    （原本実測：左枠 S/M 120.33・台 126.93、右枠 S/M 147.06・台 153.53mm） */
 .ac-row { position: relative; padding: 0; }
-.ac-row .lab { position: absolute; left: 0.53mm; top: 50%; transform: translateY(-50%); width: 11.55mm; }
-.ac-row .sm { position: absolute; left: 12.79mm; top: 50%; transform: translateY(-50%); line-height: 1; }
+/* 上下中央に置くのに transform を使うと、字の描画位置とクリック判定がずれて
+   「見えているSを押すとMが選ばれる」ことがある。上下0＋margin:auto で中央に置く。 */
+.ac-row .lab { position: absolute; left: 0.53mm; top: 0; bottom: 0; height: fit-content; margin: auto 0; width: 11.55mm; }
+.ac-row .sm { position: absolute; left: 12.79mm; top: 0; bottom: 0; height: fit-content; margin: auto 0; line-height: 1; }
 .ac-row .qtyin { position: absolute; left: 14.74mm; top: 0; height: 100%; width: 4.4mm; }
-.ac-row .dai { position: absolute; left: 19.57mm; top: 50%; transform: translateY(-50%); }
+.ac-row .dai { position: absolute; left: 19.57mm; top: 0; bottom: 0; height: fit-content; margin: auto 0; }
 .ac-row.r .lab { left: 0.71mm; width: 11.68mm; }
 .ac-row.r .sm { left: 13.10mm; }
 .ac-row.r .qtyin { left: 15.02mm; }
@@ -123,7 +125,7 @@
 /* エレベーター作業：原本は「人乗」が縦2字、（　）の中に数字を書く余白がある
    実測 人乗 152.91／（ 155.96／） 163.45／・ 165.61／無 167.38mm（枠左 144.6mm） */
 .ev-cell { position: relative; padding: 0; }
-.ev-cell > *, .ev-cell > .opt { position: absolute; top: 50%; transform: translateY(-50%); }
+.ev-cell > *, .ev-cell > .opt { position: absolute; top: 0; bottom: 0; height: fit-content; margin: auto 0; }
 .ev-cell .nin { left: 7.70mm; padding: 0 0.2mm; }
 .ev-cell .v2 { display: block; font-size: 1.72mm; line-height: 0.88; text-align: center;
   transform: scaleX(1.42); transform-origin: left center; }

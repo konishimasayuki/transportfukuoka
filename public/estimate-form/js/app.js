@@ -364,6 +364,29 @@ document.addEventListener('focusout', e => {
 })
 // フォント読込後に、流し込んだ値のはみ出しを一括補正
 formatMoneyInputs()
+// S・M（エアコンの大きさ）と U・G（ピアノの種類）は、字が 1.4mm と小さく上下に並ぶ。
+// ブラウザ任せの当たり判定だと、押した字と別の字が選ばれることがあるので、
+// 押した場所に一番近い字を自分で選ぶ。どちらか一方だけ・もう一度押すと外れる。
+document.addEventListener('click', e => {
+  const pick = e.target.closest && e.target.closest('.sm-pick, .ug')
+  if (!pick) return
+  const opts = [...pick.querySelectorAll('.opt')]
+  if (opts.length < 2) return
+  let best = null, bd = Infinity
+  for (const o of opts) {
+    const r = o.getBoundingClientRect()
+    const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right)
+    const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom)
+    const d = dx * dx + dy * dy
+    if (d < bd) { bd = d; best = o }
+  }
+  const inp = best.querySelector('input')
+  const was = inp.checked
+  e.preventDefault(); e.stopImmediatePropagation()
+  for (const o of opts) o.querySelector('input').checked = false
+  inp.checked = !was
+  inp.dispatchEvent(new Event('change', { bubbles: true }))
+}, true)
 // 〇（ラジオ）は一度選んだあと、もう一度押すと外せる。AM/PM なども同じ。
 document.addEventListener('mousedown', e => {
   const lb = e.target.closest && e.target.closest('label.opt')

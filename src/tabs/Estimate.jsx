@@ -945,6 +945,8 @@ export default function Estimate({ user, switchTab }) {
   }
   const setItemQty = (key, v) => setForm(p => ({ ...p, items: { ...p.items, [key]: v } }))
   const setMemo = (key, v) => setForm(p => ({ ...p, memos: { ...(p.memos || {}), [key]: v } }))
+  // S・M（エアコンの大きさ）はどちらか一方だけ。同じものをもう一度押すと外れる
+  const pickOne = (arr, v) => ((arr || [])[0] === v && (arr || []).length === 1 ? [] : [v])
   const setItemPt = (key, v) => setForm(p => ({ ...p, pts: { ...(p.pts || {}), [key]: v } }))
   // 特殊家財（帳票の空き升に印刷する自由記入行）
   const addExtra = () => setForm(p => (p.extraKazai || []).length >= KZX_MAX ? p : ({ ...p, extraKazai: [...(p.extraKazai || []), { name: '', pt: '', qty: '1' }] }))
@@ -1392,13 +1394,13 @@ export default function Estimate({ user, switchTab }) {
           <Field label="エアコン セパレート（台）">
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: 10, color: '#94A3B8' }}>取外</span>
-              <ChkRow items={SM_OPTS} on={form.acSepFrom} onToggle={v => set('acSepFrom', toggleIn(form.acSepFrom, v))} />
+              <ChkRow items={SM_OPTS} on={form.acSepFrom} onToggle={v => set('acSepFrom', pickOne(form.acSepFrom, v))} />
               <input type="number" style={{ ...inputStyle, width: 70 }} value={form.airconSep} onChange={e => set('airconSep', e.target.value)} />
               <span style={{ fontSize: 10, color: '#94A3B8' }}>台</span>
             </div>
             <div style={{ marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: 10, color: '#94A3B8' }}>取付</span>
-              <ChkRow items={SM_OPTS} on={form.acSepTo} onToggle={v => set('acSepTo', toggleIn(form.acSepTo, v))} />
+              <ChkRow items={SM_OPTS} on={form.acSepTo} onToggle={v => set('acSepTo', pickOne(form.acSepTo, v))} />
               <input type="number" style={{ ...inputStyle, width: 70 }} value={form.airconSepTo} onChange={e => set('airconSepTo', e.target.value)} />
               <span style={{ fontSize: 10, color: '#94A3B8' }}>台</span>
             </div>
@@ -1406,13 +1408,13 @@ export default function Estimate({ user, switchTab }) {
           <Field label="エアコン ウィンド（台）">
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: 10, color: '#94A3B8' }}>取外</span>
-              <ChkRow items={SM_OPTS} on={form.acWinFrom} onToggle={v => set('acWinFrom', toggleIn(form.acWinFrom, v))} />
+              <ChkRow items={SM_OPTS} on={form.acWinFrom} onToggle={v => set('acWinFrom', pickOne(form.acWinFrom, v))} />
               <input type="number" style={{ ...inputStyle, width: 70 }} value={form.airconWindow} onChange={e => set('airconWindow', e.target.value)} />
               <span style={{ fontSize: 10, color: '#94A3B8' }}>台</span>
             </div>
             <div style={{ marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: 10, color: '#94A3B8' }}>取付</span>
-              <ChkRow items={SM_OPTS} on={form.acWinTo} onToggle={v => set('acWinTo', toggleIn(form.acWinTo, v))} />
+              <ChkRow items={SM_OPTS} on={form.acWinTo} onToggle={v => set('acWinTo', pickOne(form.acWinTo, v))} />
               <input type="number" style={{ ...inputStyle, width: 70 }} value={form.airconWindowTo} onChange={e => set('airconWindowTo', e.target.value)} />
               <span style={{ fontSize: 10, color: '#94A3B8' }}>台</span>
             </div>
