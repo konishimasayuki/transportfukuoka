@@ -663,3 +663,11 @@ button.db-week-cell:hover, label.db-week-cell:hover { border-color: var(--blueL)
 
 /* 見積書モーダルの操作列。画面が狭いときは説明と番号を隠して1行に収める */
 @media (max-width: 720px) { .pm-hint { display: none; } }
+
+/* リード詳細モーダル。スマホでは画面より高くならないようにし（iOSのvh対策で dvh）、
+   上部のボタンは4列のマス目に整えて指で押せる大きさにする。 */
+.lead-modal-box { max-height: 92vh; max-height: 92dvh; }
+@media (max-width: 640px) {
+  .lead-hdr-btns { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; }
+  .lead-hdr-btns > button { width: 100%; min-height: 44px; padding: 4px 2px; }
+}
