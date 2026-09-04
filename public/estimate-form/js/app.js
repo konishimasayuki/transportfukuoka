@@ -1,7 +1,7 @@
 // 帳票の動的部分（家財表・荷造資材・料金表・お支払欄）の生成と、
 // 表示スケール・計算・デバッグオーバーレイ。
 import { KAZAI_COLS, MATERIAL_ROWS, GEAR_ITEMS, FEE_A, FEE_B, FEE_C, FEE_D } from './fields.js'
-import { applyFormData, readFormData } from './form-data.js'
+import { applyFormData, readFormData, readTotals } from './form-data.js'
 
 const $ = (s, r = document) => r.querySelector(s)
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e }
@@ -48,7 +48,9 @@ function buildKazai() {
                       : `<span style="letter-spacing:0">${size}</span>`) : ''))
       nm.style.position = 'relative'
       nm.dataset.fit = ''
-      const ptc = el('div', 'kz pt', pt === null ? '<span>／</span>' : (pt === '' ? '' : String(pt)))
+      // 原本で才数が空の行（TVブラ・TV薄型）は、その場で才数を書き込めるようにする
+      const ptc = el('div', 'kz pt', pt === null ? '<span>／</span>'
+        : (pt === '' ? inp('kz_' + key + '_pt', 'form-input pt-in') : String(pt)))
       const q1 = el('div', 'kz', inp('kz_' + key))
       const q2 = el('div', `kz${c === 4 ? ' mats-edge' : ''}`, inp('kz_' + key + '_x'))
       grid.append(nm, ptc, q1, q2)
@@ -244,7 +246,11 @@ function recalc() {
   let pt = 0
   KAZAI_COLS.forEach((col, ci) => {
     let colPt = 0, colQty = 0
-    col.forEach(([key, , , p]) => { const q = val('kz_' + key); colQty += q; if (typeof p === 'number') colPt += p * q })
+    col.forEach(([key, , , p]) => {
+      const q = val('kz_' + key); colQty += q
+      // 才数が原本で空の行は、書き込まれた才数を使う
+      colPt += (typeof p === 'number' ? p : val('kz_' + key + '_pt')) * q
+    })
     // 自由記入行（点数×数量。どちらか空なら0）
     freeSlots.filter(f => f.col === ci).forEach(f => { const q = val('kzx' + f.n + '_qty'); colQty += q; colPt += val('kzx' + f.n + '_pt') * q })
     out['ptcol' + ci] = colPt; out['qtycol' + ci] = colQty; pt += colPt
@@ -298,13 +304,18 @@ function autoFitAll() {
 }
 
 /* ---------- 表示スケール（スマホはA4を丸ごと縮小） ---------- */
+// CRM の見積書モーダルに iframe で埋め込まれているか
+const EMBED = new URLSearchParams(location.search).get('embed') === '1'
 function fitScale() {
   const base = 210 * 96 / 25.4
   const w = document.documentElement.clientWidth
   const s = Math.min(1, w / base)
   const sc = $('.sheet-scale')
   sc.style.transform = s < 1 ? `scale(${s})` : ''
-  $('.sheet-viewport').style.height = (297 * 96 / 25.4) * s + 'px'
+  const h = (297 * 96 / 25.4) * s
+  $('.sheet-viewport').style.height = h + 'px'
+  // 親（モーダル）が iframe の高さを合わせられるように知らせる
+  if (EMBED && parent !== window) parent.postMessage({ type: 'estimate:height', height: Math.ceil(h) }, '*')
 }
 
 /* ---------- 起動 ---------- */
@@ -333,8 +344,9 @@ if (new URLSearchParams(location.search).get('debug') === 'overlay') {
   document.body.classList.add('debug-overlay')
   $('.reference-overlay').src = '../IMG_9280.jpeg'
 }
-// CRM（見積管理タブ）の「印刷プレビュー」からの流し込み
-try {
+// CRM（見積管理タブ）の「印刷プレビュー」からの流し込み。
+// 見積書モーダル（?embed=1）では親が明示的に流し込むので、ここでは読まない。
+if (!EMBED) try {
   const stored = localStorage.getItem('transportfukuoka:estimatePrint')
   if (stored) applyFormData(JSON.parse(stored))
 } catch { /* 壊れたデータは無視して白紙で開く */ }
@@ -352,7 +364,56 @@ document.addEventListener('focusout', e => {
 })
 // フォント読込後に、流し込んだ値のはみ出しを一括補正
 formatMoneyInputs()
+// S・M（エアコンの大きさ）と U・G（ピアノの種類）は、字が 1.4mm と小さく上下に並ぶ。
+// ブラウザ任せの当たり判定だと、押した字と別の字が選ばれることがあるので、
+// 押した場所に一番近い字を自分で選ぶ。どちらか一方だけ・もう一度押すと外れる。
+document.addEventListener('click', e => {
+  const pick = e.target.closest && e.target.closest('.sm-pick, .ug')
+  if (!pick) return
+  const opts = [...pick.querySelectorAll('.opt')]
+  if (opts.length < 2) return
+  let best = null, bd = Infinity
+  for (const o of opts) {
+    const r = o.getBoundingClientRect()
+    const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right)
+    const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom)
+    const d = dx * dx + dy * dy
+    if (d < bd) { bd = d; best = o }
+  }
+  const inp = best.querySelector('input')
+  const was = inp.checked
+  e.preventDefault(); e.stopImmediatePropagation()
+  for (const o of opts) o.querySelector('input').checked = false
+  inp.checked = !was
+  inp.dispatchEvent(new Event('change', { bubbles: true }))
+}, true)
+// 〇（ラジオ）は一度選んだあと、もう一度押すと外せる。AM/PM なども同じ。
+document.addEventListener('mousedown', e => {
+  const lb = e.target.closest && e.target.closest('label.opt')
+  const r = lb && lb.querySelector('input[type=radio]')
+  if (r) r.dataset.wasChecked = r.checked ? '1' : ''
+}, true)
+document.addEventListener('click', e => {
+  const lb = e.target.closest && e.target.closest('label.opt')
+  const r = lb && lb.querySelector('input[type=radio]')
+  if (!r) return
+  if (r.dataset.wasChecked === '1') {
+    // ラベルの既定動作（＝選び直し）を止めてから外す
+    e.preventDefault(); e.stopPropagation()
+    r.checked = false
+    r.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  r.dataset.wasChecked = ''
+}, true)
+
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitStaticAll(); autoFitAll() })
 else { fitStaticAll(); autoFitAll() }
 document.addEventListener('estimate:recalc', () => { fitStaticAll(); autoFitAll() })
-window.estimateForm = { applyFormData, readFormData, recalc, autoFitAll, fitStaticAll }
+// 親（CRM の見積書モーダル）から呼ぶ入口。iframe は同一オリジンなので直接触れる。
+window.estimateForm = {
+  applyFormData, readFormData, readTotals, recalc, autoFitAll, fitStaticAll,
+  // 流し込み→金額の桁区切り→再計算→はみ出し補正までを1回で
+  fill(data) { applyFormData(data || {}); formatMoneyInputs(); recalc(); fitStaticAll(); autoFitAll() },
+  read() { return { data: readFormData(), totals: readTotals() } },
+}
+if (EMBED && parent !== window) parent.postMessage({ type: 'estimate:ready' }, '*')

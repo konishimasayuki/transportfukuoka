@@ -27,7 +27,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* 丸で囲む選択肢（紙の「○で囲む」を label+input で再現） */
 .opt { position: relative; display: inline-flex; align-items: center; justify-content: center;
        padding: 0 0.8mm; cursor: pointer; border-radius: 50%; }
-.opt input { position: absolute; opacity: 0; pointer-events: none; }
+/* 隠しているチェックボックスは既定で 13x13px あり、小さなラベル（3x5px 等）から
+   はみ出す。クリックで焦点が当たると、ブラウザがそれを見せようと overflow:hidden の
+   セルを勝手にスクロールし、字も〇も動いてしまう。ラベルと同じ大きさに収める。 */
+.opt input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+             opacity: 0; pointer-events: none; -webkit-appearance: none; appearance: none; }
 .opt .ring { position: absolute; inset: -0.2mm; border: 0.45mm solid transparent; border-radius: 999px; }
 .opt input:checked ~ .ring { border-color: #b91c1c; }
 /* 原本に〇が印字されている欄は、〇を囲まずに中へ✓を入れる */
@@ -63,15 +67,15 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .p-row .opt .ring { inset: -0.35mm -0.4mm; }
 /* 用具・ピアノU/G の輪はセル内に収める */
 .mats .opt .ring { left: 0.15mm; right: 0.15mm; }
-.ug { display: inline-flex; flex-direction: column; line-height: 1; font-size: 1.62mm; }
+.ug { display: inline-flex; flex-direction: column; line-height: 1; font-size: 1.42mm; }
 .ug .opt { padding: 0 0.25mm; }
 .ug .opt .ring { inset: -0.05mm -0.15mm; }
 /* セルの高さに対して輪が大きすぎる箇所 */
 .workconf1 .cx .opt .ring { inset: -0.25mm -0.5mm; }
 .workconf2 .opt .ring { left: 0.45mm; right: 0.75mm; }
-.workconf3 .sm-pick { font-size: 1.6mm; }
-.workconf3 .sm-pick .opt { padding: 0 0.2mm; }
-.workconf3 .sm-pick .opt .ring { inset: -0.05mm -0.15mm; }
+.workconf3 .sm-pick { font-size: 1.4mm; }
+/* 隣のカナと近いので余白を持たせない（輪が隣の字に重なって見えるため） */
+.workconf3 .sm-pick .opt { padding: 0; }
 
 /* 電話番号の3枠（－は紙の印字。枠が埋まると次へ移る） */
 .tel3 { display: flex; align-items: center; justify-content: center; gap: 0.2mm; padding: 0 0.6mm; }
@@ -85,12 +89,23 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* 品名の（　）の中の書き込み欄（TVブラなど）は行の高さを増やさない */
 .kz.name .form-input { height: 2.2mm; line-height: 1; vertical-align: middle; }
 
-/* S/M・U/G のように字が小さく隣と近い選択肢は、輪を字の大きさに合わせる
-   （輪が大きいと隣の字に重なって、字が動いたように見えるため） */
-.sm-pick .opt .ring, .ug .opt .ring { inset: -0.05mm; border-width: 0.28mm; }
+/* S/M・U/G は字が 1.6mm と小さく、上下に2つ重ねて置いてある。
+   既定の太さ（0.45mm）や 0.28mm では線が字を塗り潰し、上下の輪どうしも繋がって
+   赤い塊に見える（＝字が動いたように見える）。細く・上下は字に寄せて描く。 */
+/* 行内（inline-flex）のままだと、字の描画位置と押せる範囲がずれて
+   「見えているSを押すとMが選ばれる」。縦並びの箱にして両者を一致させる。 */
+.sm-pick { display: inline-flex; flex-direction: column; align-items: flex-start; }
+.sm-pick br, .ug br { display: none; }
+.sm-pick .opt, .ug .opt { padding: 0; }
+.sm-pick .opt .ring, .ug .opt .ring { inset: -0.13mm -0.28mm; border-width: 0.1mm; }
+/* ピアノU/G は左の「ノ」がすぐ隣なので、輪を横に広げない */
+.ug .opt .ring { inset: -0.13mm -0.17mm; }
 /* お支払方法の最終行の下罫線は枠線と重なって二重線になるので引かない */
 .pay .p-row:last-child { border-bottom: 0; }
 
 /* 洗濯機（付）：印字の○の上から赤い輪を重ねる */
 .opt.tsuki { padding: 0; }
 .opt.tsuki .ring { inset: -0.25mm; }
+
+/* 原本で才数が空の行（TVブラ・TV薄型）に置く才数の入力欄。印字の数字と同じ見え方にする */
+.kz.pt .form-input.pt-in { width: 100%; height: 100%; text-align: right; font-size: 2.1mm; letter-spacing: 0; padding: 0; }

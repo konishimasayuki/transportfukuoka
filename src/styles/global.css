@@ -660,3 +660,6 @@ button.db-week-cell:hover, label.db-week-cell:hover { border-color: var(--blueL)
 .hp-sel { border: 0; background: transparent; padding: 4px 2px; text-align: center; font-size: 12px; }
 .hp-sel.big { font-size: 14px; font-weight: 700; padding: 7px 2px; }
 .hp-badge .hp-sel { width: 100%; }
+
+/* 見積書モーダルの操作列。画面が狭いときは説明と番号を隠して1行に収める */
+@media (max-width: 720px) { .pm-hint { display: none; } }

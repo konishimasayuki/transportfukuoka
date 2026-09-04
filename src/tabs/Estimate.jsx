@@ -25,6 +25,7 @@ const COMPANY = {
 /* -------------------------------------------------------------------------
  * 家財 → ポイント（才数）対応表【2026-06 実帳票・写真照合済 / 全104行】
  * pt: null = サイズ別・別途見積（合計に加算しない）
+ * ptIn: true = 原本の才数欄が空で、その都度書き込む行（書いた才数×数量を合計に入れる）
  * ⚠ 暫定確定。紙の帳票と最終照合後に値を差し替える場合はこの配列のみ編集。
  * ----------------------------------------------------------------------- */
 const KAZAI_GROUPS = [
@@ -99,8 +100,8 @@ const KAZAI_GROUPS = [
       { key: 'washer_drum',  name: '洗濯機',         size: 'ドラム', pt: 15 },
       { key: 'washer_full',  name: '洗濯機',         size: '全自動', pt: 13 },
       { key: 'dryer',        name: '乾燥機',         size: '',      pt: 8 },
-      { key: 'tv_brown',     name: 'TVブラ',         size: '( )',   pt: null },
-      { key: 'tv_thin',      name: 'TV薄型',         size: '( )',   pt: null },
+      { key: 'tv_brown',     name: 'TVブラ',         size: '( )',   pt: null, ptIn: true },
+      { key: 'tv_thin',      name: 'TV薄型',         size: '( )',   pt: null, ptIn: true },
       { key: 'video',        name: 'ビデオ',         size: '',      pt: 0.5 },
       { key: 'pc',           name: 'パソコン',       size: '',      pt: 10 },
       { key: 'range',        name: 'レンジ',         size: '',      pt: 2 },
@@ -250,7 +251,8 @@ const FEE_C = [
   { key: 'tape',     label: 'ガムテープ' },
   { key: 'futon',    label: 'ふとん袋' },
   { key: 'hbox',     label: 'ハンガーボックス' },
-  { key: 'lightron', label: 'ライトロン・クレープ紙・エアキャップ' },
+  { key: 'lightron', label: 'ライトロン・クレープ紙' },
+  { key: 'aircap',   label: 'エアーキャップ' },
 ]
 const FEE_D = [
   { key: 'aircon',     label: 'エアコン基本工事（取付）' },
@@ -327,6 +329,7 @@ function emptyForm() {
     acSepFrom: [], acSepTo: [], acWinFrom: [], acWinTo: [],// エアコンの S・M
     antennaOpt: [], washerOpt: [],                         // アンテナ（脱・着）／洗濯機付（ドラム・全自動）
     pianoWork: '', airconSep: '', airconWindow: '', optionWork: '',
+    airconSepTo: '', airconWindowTo: '',   // エアコン移設の台数は取外住所・取付住所で別々
     pianoCur: false, pianoDst: false, airconRemove: false, airconInstall: false,
     // 作業状況：現地[C]／行先[D] を別々に持つ（帳票が2段のため）
     twoPlace: '', roadWidth: '', elevator: '', windowLift: '', machine: '',
@@ -335,6 +338,7 @@ function emptyForm() {
     moveFloorFrom: '', moveFloorTo: '', pianoFloorFrom: '', pianoFloorTo: '',
     // 家財数量
     items: {},
+    pts: {},              // 原本の才数欄が空の行（TVブラ・TV薄型）に書き込む才数
     memos: {},            // 家財表の右列（品目ごとの2〜3文字のメモ）{ key: 'S' }
     extraKazai: [],       // 特殊家財（帳票の空き升に手書きする行）[{ name, pt, qty }]
     unmatchedKazai: [],   // 自由記入行にも入りきらなかった家財（上限超過ぶん）
@@ -352,6 +356,8 @@ function emptyForm() {
     status: '作成中',
     // 成約管理由来の場合に元レコードを参照（重複表示防止に使う）
     contractId: '',
+    // 見積書モーダルで書いた帳票の中身そのもの（開き直したときはこれを優先して戻す）
+    paper: null,
   }
 }
 
@@ -395,6 +401,16 @@ function splitYMD(v) {
   const m = /^(\d{2}|\d{4})\s*[-/.年\s]\s*(\d{1,2})\s*[-/.月\s]\s*(\d{1,2})/.exec(s)
   if (!m) return { y: s, m: '', d: '' }
   return { y: m[1].slice(-2), m: String(+m[2]), d: String(+m[3]) }
+}
+// 「2026-09-10」「2026/9/10 14:30」「2026年9月10日」→ 2026-09-10。
+// 年の無い「9/26 10:00」（リードの受付日時）は hint の年を使う。取れなければ空
+function ymd(v, hint) {
+  const s = String(v || '')
+  const m = /(\d{4})\s*[-/.年]\s*(\d{1,2})\s*[-/.月]\s*(\d{1,2})/.exec(s)
+  if (m) return `${m[1]}-${String(+m[2]).padStart(2, '0')}-${String(+m[3]).padStart(2, '0')}`
+  const md = /^\s*(\d{1,2})\s*[-/.月]\s*(\d{1,2})/.exec(s)
+  const y = (/(\d{4})/.exec(String(hint || '')) || [])[1]
+  return (md && y) ? `${y}-${String(+md[1]).padStart(2, '0')}-${String(+md[2]).padStart(2, '0')}` : ''
 }
 function splitDate(ymd) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || '')
@@ -463,8 +479,8 @@ function buildPrintData(form) {
   ;(form.acWinTo   || []).forEach(v => { d['WinTo_' + v] = true })
   ;(form.antennaOpt || []).forEach(v => { d['antenna_' + v] = true })
   ;(form.washerOpt  || []).forEach(v => { d['washer_' + v] = true })
-  put('airconSepFrom', form.airconSep); put('airconSepTo', form.airconSep)
-  put('airconWinFrom', form.airconWindow); put('airconWinTo', form.airconWindow)
+  put('airconSepFrom', form.airconSep); put('airconSepTo', form.airconSepTo)
+  put('airconWinFrom', form.airconWindow); put('airconWinTo', form.airconWindowTo)
   put('optionWork', form.optionWork)
   if (form.pianoCur) d.pianoCur = true
   if (form.pianoDst) d.pianoDst = true
@@ -494,6 +510,10 @@ function buildPrintData(form) {
   // 家財表の右列（メモ）
   for (const [k, m] of Object.entries(form.memos || {})) {
     if (String(m || '').trim()) d['kz_' + (PRINT_KEY_MAP[k] || k) + '_x'] = String(m).trim()
+  }
+  // 原本の才数欄が空の行に書き込む才数
+  for (const [k, v] of Object.entries(form.pts || {})) {
+    if (String(v || '').trim()) d['kz_' + (PRINT_KEY_MAP[k] || k) + '_pt'] = String(v).trim()
   }
   // 料金
   for (const f of FEE_A) put('feeA_' + f.key, form.feeA?.[f.key])
@@ -534,6 +554,200 @@ function buildPrintData(form) {
   put('promiseText', form.memo)
   return d
 }
+/* 帳票 → 見積フォーム（buildPrintData の逆）。
+   見積書モーダルで直接書き換えた内容を、見積タブ・一覧・他タブが読める形に戻す。
+   帳票にしか無い欄（月日だけで年が無い等）は base（開いたときのフォーム）から補う。 */
+// 「月」「日」＋ base の年 → 2026-09-10。どちらか欠けたら空
+function joinMD(base, m, d) {
+  if (!Number.isFinite(Number(m)) || !Number.isFinite(Number(d)) || m === '' || d === '') return ''
+  const y = (/^(\d{4})-/.exec(String(base || '')) || [])[1] || String(new Date().getFullYear())
+  return `${y}-${String(Number(m)).padStart(2, '0')}-${String(Number(d)).padStart(2, '0')}`
+}
+// 年（下2桁）＋月＋日 → 2026-09-10
+function joinY2MD(y, m, d) {
+  if (!y || !Number.isFinite(Number(m)) || !Number.isFinite(Number(d)) || m === '' || d === '') return ''
+  return `20${String(y).slice(-2)}-${String(Number(m)).padStart(2, '0')}-${String(Number(d)).padStart(2, '0')}`
+}
+function readPrintData(p, base) {
+  const f = { ...emptyForm(), ...(base || {}) }
+  const g = (k) => (p[k] === undefined || p[k] === null) ? '' : String(p[k])
+  // 帳票の name="接頭辞_値" の 〇 を配列に戻す
+  const picks = (prefix) => Object.keys(p).filter(k => k.startsWith(prefix) && p[k]).map(k => k.slice(prefix.length))
+  // 顧客
+  f.name = g('customerName'); f.kana = g('customerFurigana')
+  f.fromZip = g('currentPostal'); f.fromAddress = g('currentAddress'); f.fromFurigana = g('currentFurigana')
+  f.fromTelHome = g('curTelHome'); f.fromTelWork = g('curTelWork'); f.fromTelMobile = g('curTelMobile')
+  f.toZip = g('destPostal'); f.toAddress = g('destAddress'); f.toFurigana = g('destFurigana')
+  f.toTelHome = g('dstTelHome'); f.toTelWork = g('dstTelWork'); f.toTelMobile = g('dstTelMobile')
+  // 日程（帳票は月日だけなので年は元のまま）
+  f.moveDate = joinMD(base?.moveDate, p.moveMonth, p.moveDay); f.moveAP = g('moveAmPm'); f.moveHour = g('moveHour')
+  f.deliverDate = joinMD(base?.deliverDate, p.deliverMonth, p.deliverDay); f.deliverAP = g('deliverAmPm'); f.deliverHour = g('deliverHour')
+  f.packDate = joinMD(base?.packDate, p.packMonth, p.packDay); f.packAP = g('packAmPm'); f.packHour = g('packHour')
+  f.openDate = joinMD(base?.openDate, p.unpackMonth, p.unpackDay); f.unpackAP = g('unpackAmPm'); f.unpackHour = g('unpackHour')
+  f.estimateDate = joinY2MD(p.estimateYear, p.estimateMonth, p.estimateDay) || g('estimateDate')
+  f.requestDate = joinY2MD(p.requestYear, p.requestMonth, p.requestDay) || g('requestDate')
+  f.estimator = g('estimatorName')
+  f.sendTypes = picks('send_'); f.distanceKm = g('distanceKm')
+  // 受付・伝票
+  f.reception1 = g('reception1'); f.reception2 = g('reception2'); f.frontNote = g('frontNote')
+  f.spaceSize = g('spaceSize')
+  f.workLoad = g('workLoadFrom') ? `${g('workLoadFrom')}〜${g('workLoad')}` : g('workLoad')
+  f.packOpenCar = g('packOpenFrom') ? `${g('packOpenFrom')}／${g('packOpenCar')}` : g('packOpenCar')
+  f.helperCar = g('helperCar')
+  f.confirmDate = joinMD(base?.confirmDate, p.confirmMonth, p.confirmDay)
+  f.confirmerName = g('confirmerName'); f.refName = g('refName')
+  f.bizMove = !!p.bizMove; f.bizClean = !!p.bizClean; f.bizReuse = !!p.bizReuse; f.bizOther = g('bizOther')
+  f.media = picks('media_'); f.mediaReuseCount = g('mediaReuseCount'); f.secret = picks('secret_')
+  // 作業内容の確認
+  f.packSmallBy = g('packSmallBy'); f.packFurniBy = g('packFurniBy'); f.packOpenBy = g('packOpenBy')
+  f.packSmallOpt = picks('small_'); f.packFurniOpt = picks('furni_'); f.packOpenOpt = picks('open_')
+  const PMAP_R = { step: '階段', elev: 'エレベーター', win: '窓出し', mach: '機械' }
+  f.pianoCurOpt = Object.keys(PMAP_R).filter(k => p[k + 'Cur']).map(k => PMAP_R[k])
+  f.pianoDstOpt = Object.keys(PMAP_R).filter(k => p[k + 'Dst']).map(k => PMAP_R[k])
+  f.acSepFrom = picks('SepFrom_'); f.acSepTo = picks('SepTo_')
+  f.acWinFrom = picks('WinFrom_'); f.acWinTo = picks('WinTo_')
+  f.antennaOpt = picks('antenna_'); f.washerOpt = picks('washer_')
+  f.airconSep = g('airconSepFrom'); f.airconSepTo = g('airconSepTo')
+  f.airconWindow = g('airconWinFrom'); f.airconWindowTo = g('airconWinTo')
+  f.optionWork = g('optionWork')
+  f.pianoCur = !!p.pianoCur; f.pianoDst = !!p.pianoDst
+  f.airconRemove = !!p.airconRemove; f.airconInstall = !!p.airconInstall
+  f.moveFloorFrom = g('moveFloorFrom'); f.moveFloorTo = g('moveFloorTo')
+  f.pianoFloorFrom = g('pianoFloorFrom'); f.pianoFloorTo = g('pianoFloorTo')
+  f.pianoUG = g('pianoUG'); f.pianoCurNote = g('pianoCurNote'); f.pianoDstNote = g('pianoDstNote')
+  // 作業状況（現地[C]／行先[D]）。道幅は S・M・L のどれに数字が入っているかで判定
+  const road = (suf) => { const b = ['S', 'M', 'L'].find(x => p['road' + x + suf] !== undefined); return b ? [b, g('road' + b + suf)] : ['', ''] }
+  f.twoPlace = g('twoPlaceC'); [f.roadWidth, f.roadWidthM] = road('C')
+  f.elevator = g('elevC'); f.elevatorM = g('elevMC'); f.windowLift = g('windowC'); f.machine = g('machineC')
+  f.twoPlaceD = g('twoPlaceD'); [f.roadWidthD, f.roadWidthDM] = road('D')
+  f.elevatorD = g('elevD'); f.elevatorDM = g('elevMD'); f.windowLiftD = g('windowD'); f.machineD = g('machineD')
+  // 家財の数量とメモ
+  f.items = {}; f.memos = {}; f.pts = {}
+  for (const it of ALL_ITEMS) {
+    const pk = PRINT_KEY_MAP[it.key] || it.key
+    if (p['kz_' + pk] !== undefined) f.items[it.key] = String(p['kz_' + pk])
+    if (p['kz_' + pk + '_x'] !== undefined) f.memos[it.key] = String(p['kz_' + pk + '_x'])
+    if (p['kz_' + pk + '_pt'] !== undefined) f.pts[it.key] = String(p['kz_' + pk + '_pt'])
+  }
+  // 特殊家財（帳票の空き升）
+  f.extraKazai = []
+  for (let i = 1; i <= KZX_MAX; i++) {
+    const r = { name: g(`kzx${i}_name`), pt: g(`kzx${i}_pt`), qty: g(`kzx${i}_qty`), x: g(`kzx${i}_x`) }
+    if (r.name || r.qty || r.pt) f.extraKazai.push(r)
+  }
+  // 料金
+  f.feeA = {}; f.feeB = {}; f.feeC = {}; f.feeCx = {}; f.feeD = {}
+  for (const x of FEE_A) if (p['feeA_' + x.key] !== undefined) f.feeA[x.key] = String(p['feeA_' + x.key])
+  for (const x of FEE_B) if (p['feeB_' + x.key] !== undefined) f.feeB[x.key] = String(p['feeB_' + x.key])
+  for (const x of FEE_D) if (p['feeD_' + x.key] !== undefined) f.feeD[x.key] = String(p['feeD_' + x.key])
+  for (const x of FEE_C) {
+    if (p[`feeC_${x.key}_amt1`] !== undefined) f.feeC[x.key] = String(p[`feeC_${x.key}_amt1`])
+    const cx = { q1: g(`feeC_${x.key}_qty1`), q2: g(`feeC_${x.key}_qty2`), a2: g(`feeC_${x.key}_amt2`) }
+    if (cx.q1 || cx.q2 || cx.a2) f.feeCx[x.key] = cx
+  }
+  // 荷造資材・用具
+  f.mats = {}
+  for (const [key] of MATERIAL_ROWS) for (const c of ['d1', 'd2', 'day'])
+    if (p[`mat_${key}_${c}`] !== undefined) f.mats[`${key}_${c}`] = String(p[`mat_${key}_${c}`])
+  f.gear = GEAR_ITEMS.filter(x => p['gear_' + x.replace(/\s/g, '')])
+  f.createDate = g('createDate'); f.delivDate = g('delivDate')
+  f.storageUntil = joinY2MD(p.storageYear, p.storageMonth, p.storageDay)
+  // 請求先
+  f.billName = g('billName'); f.billAddr = g('billAddr'); f.billTel = g('billTel'); f.billStaff = g('billStaff')
+  f.billConfirmDate = joinMD(base?.billConfirmDate, p.billConfirmM, p.billConfirmD)
+  f.billConfirmAmPm = g('billConfirmAmPm'); f.billConfirm = g('billConfirmHour'); f.billConfirmName = g('billConfirmName')
+  const md = (k) => g(k + 'M') ? `${g(k + 'M')}/${g(k + 'D')}` : g(k + 'D')
+  f.billClose = md('billClose'); f.billPay = md('billPay'); f.billSend = md('billSend')
+  f.payment = g('payMethod'); f.memo = g('promiseText')
+  return f
+}
+// 見積フォームに戻しきれない欄（TVの括弧内・資材の予定日・エアコンの外し／付け・
+// カード備考・領収書宛先・道幅のS/M/L併記 など）だけを取り出す。
+// これを保存しておけば、次に開いたときに帳票の見た目がそのまま戻る。
+function paperResidue(paper, form) {
+  const echo = buildPrintData(form)
+  const out = {}
+  for (const [k, v] of Object.entries(paper)) {
+    if (k === '_calc') { if (Object.keys(v || {}).length) out._calc = v; continue }
+    if (String(echo[k] ?? '') !== String(v ?? '')) out[k] = v
+  }
+  return Object.keys(out).length ? out : null
+}
+
+/* -----------------------------------------------------------------------
+ * 見積書モーダル：原本どおりの帳票（/estimate-form/）をそのまま出して、
+ * 利用者に直接書き込んでもらう。モーダルの外を触ったら保存して閉じる。
+ * ----------------------------------------------------------------------- */
+function PaperModal({ form, saving, onSave, onClose, onOpenDetail }) {
+  const frameRef = useRef(null)
+  const [h, setH] = useState(1123)
+  const [ready, setReady] = useState(false)
+  // 表示倍率。スマホでも字が潰れないよう既定は実寸（枠内で縦横に送る）
+  const [z, setZ] = useState(1)
+  // 開いたときに1回だけ流し込む。前に帳票で書いた内容（paper）があればそれを優先する
+  const seed = useRef({ ...buildPrintData(form), ...(form.paper || {}) })
+
+  useEffect(() => {
+    const onMsg = (e) => { if (e.data && e.data.type === 'estimate:height') setH(e.data.height + 2) }
+    addEventListener('message', onMsg)
+    return () => removeEventListener('message', onMsg)
+  }, [])
+  // Esc でも保存して閉じる（モーダルの外を触ったときと同じ扱い）
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') save() }
+    addEventListener('keydown', onKey)
+    return () => removeEventListener('keydown', onKey)
+  })
+
+  const api = () => { try { return frameRef.current?.contentWindow?.estimateForm || null } catch { return null } }
+  const onLoad = () => {
+    const a = api(); if (a) { a.fill(seed.current); setReady(true) }
+    // 実寸だと枠より広いので、左上から見えるようにしておく
+    const box = frameRef.current?.parentElement
+    if (box) { box.scrollTo(0, 0); setTimeout(() => box.scrollTo(0, 0), 60) }
+  }
+  // 帳票の中身を読み出して保存する。読めなかったときは黙って閉じずに知らせる
+  const save = () => { const a = api(); onSave(a ? a.read() : null) }
+
+  return (
+    <div style={ovl} onMouseDown={e => { if (e.target === e.currentTarget) save() }}>
+      <div style={paperBox}>
+        <div style={paperBar}>
+          <b style={{ fontSize: 14 }}>御見積書</b>
+          <span className="pm-hint" style={{ fontSize: 12, color: '#64748B' }}>{form.estimateNo}　{form.name ? form.name + ' 様' : ''}</span>
+          <span style={{ flex: 1 }} />
+          <span className="pm-hint" style={{ fontSize: 11, color: '#94A3B8' }}>枠の外を触ると保存して閉じます</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <button className="btn btn-outline btn-sm" title="縮小" onClick={() => setZ(v => Math.max(0.4, +(v - 0.1).toFixed(2)))}>−</button>
+            <button className="btn btn-outline btn-sm" style={{ minWidth: 52 }} onClick={() => setZ(1)}>{Math.round(z * 100)}%</button>
+            <button className="btn btn-outline btn-sm" title="拡大" onClick={() => setZ(v => Math.min(2, +(v + 0.1).toFixed(2)))}>＋</button>
+          </span>
+          <button className="btn btn-outline btn-sm" disabled={!ready}
+            onClick={() => { const a = api(); onOpenDetail(a ? a.read() : null) }}>詳細</button>
+          <button className="btn btn-outline btn-sm" disabled={!ready}
+            onClick={() => { try { frameRef.current.contentWindow.print() } catch {} }}>🖨</button>
+          <button className="btn btn-primary btn-sm" disabled={saving} onClick={save}>{saving ? '保存中…' : '保存して閉じる'}</button>
+          <button className="btn btn-sm" style={{ background: '#F1F5F9' }} onClick={onClose}>破棄</button>
+        </div>
+        <div style={{ flex: '1 1 auto', overflow: 'auto', background: '#E2E8F0', padding: 8 }}>
+          <iframe ref={frameRef} onLoad={onLoad} title="御見積書"
+            src="/estimate-form/index.html?embed=1"
+            style={{ width: Math.round(A4_PX * z), maxWidth: 'none', height: h, border: 0, background: '#fff', display: 'block' }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+const A4_PX = 210 * 96 / 25.4          // A4の幅（実寸）
+const ovl = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,.6)', zIndex: 1200,
+  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }
+// 帳票は縦に長いので、操作の並びは上に固定して中身だけを枠内で送る
+const paperBox = { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 880,
+  boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden',
+  display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 24px)' }
+const paperBar = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: '0 0 auto',
+  padding: '10px 12px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }
+
 function openPrintPreview(form) {
   try { localStorage.setItem(PRINT_FORM_KEY, JSON.stringify(buildPrintData(form))) } catch { /* 容量超過等は素通し */ }
   window.open('/estimate-form/index.html', '_blank')
@@ -661,13 +875,43 @@ export default function Estimate({ user, switchTab }) {
     const f = emptyForm()
     f.estimateNo = nextNo()
     f.estimateDate = new Date().toISOString().slice(0, 10)
-    setForm(f); setEditId(null); setView('edit'); setPreview(false); setStep('basic')
+    openPaper(f, null)
   }
-  const openEdit = (item) => {
-    setForm({ ...emptyForm(), ...item, items: { ...(item.items || {}) }, memos: { ...(item.memos || {}) },
-      feeA: { ...(item.feeA || {}) }, feeB: { ...(item.feeB || {}) },
-      feeC: { ...(item.feeC || {}) }, feeCx: { ...(item.feeCx || {}) }, feeD: { ...(item.feeD || {}) } })
-    setEditId(item.id); setView('edit'); setPreview(false); setStep('basic')
+  const formOf = (item) => ({ ...emptyForm(), ...item, items: { ...(item.items || {}) }, memos: { ...(item.memos || {}) }, pts: { ...(item.pts || {}) },
+    feeA: { ...(item.feeA || {}) }, feeB: { ...(item.feeB || {}) },
+    feeC: { ...(item.feeC || {}) }, feeCx: { ...(item.feeCx || {}) }, feeD: { ...(item.feeD || {}) } })
+  /* ---- 見積書モーダル（帳票をそのまま出して直接書いてもらう） ---- */
+  const [paperForm, setPaperForm] = useState(null)   // 開いている見積書
+  const [paperId, setPaperId] = useState(null)       // 既存レコードなら その id
+  const openPaper = (f, id = null) => { setPaperForm(f); setPaperId(id) }
+  const closePaper = () => { setPaperForm(null); setPaperId(null) }
+  // 帳票の中身を読み出して保存する。金額・才数は帳票が計算した値をそのまま使う
+  const savePaper = async (read) => {
+    if (!read) { showToast('帳票を読み取れませんでした。開き直してください'); return }
+    const pd = read.data || {}
+    // 白紙のまま閉じたときは、空のレコードを作らない
+    if (!paperId && !pd.customerName && !read.totals.total && !read.totals.points) {
+      closePaper(); showToast('白紙だったので保存しませんでした'); return
+    }
+    const id = paperId || Date.now().toString()
+    const next = readPrintData(pd, paperForm)
+    next.paper = paperResidue(pd, next)
+    const payload = { ...next, id, total: read.totals.total, points: read.totals.points }
+    setSaving(true)
+    if (isDemo) {
+      setItems(pr => paperId ? pr.map(i => (i.id === id ? payload : i)) : [payload, ...pr])
+      setSaving(false); closePaper(); showToast('保存しました（デモ：ローカルのみ）'); return
+    }
+    try {
+      await fetch('/api/estimate', { method: paperId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      await fetchItems(); showToast('保存しました')
+    } catch (e) { console.error(e); showToast('保存に失敗しました') }
+    setSaving(false); closePaper()
+  }
+  // モーダルから今までのタブ形式の入力画面へ移る（書いた内容は持っていく／保存はまだしない）
+  const paperToDetail = (read) => {
+    setForm(read ? readPrintData(read.data || {}, paperForm) : paperForm)
+    setEditId(paperId); setView('edit'); setPreview(false); setStep('basic'); closePaper()
   }
   const backToList = () => { setView('list'); setPreview(false); setForm(emptyForm()); setEditId(null); setStep('basic') }
 
@@ -701,6 +945,9 @@ export default function Estimate({ user, switchTab }) {
   }
   const setItemQty = (key, v) => setForm(p => ({ ...p, items: { ...p.items, [key]: v } }))
   const setMemo = (key, v) => setForm(p => ({ ...p, memos: { ...(p.memos || {}), [key]: v } }))
+  // S・M（エアコンの大きさ）はどちらか一方だけ。同じものをもう一度押すと外れる
+  const pickOne = (arr, v) => ((arr || [])[0] === v && (arr || []).length === 1 ? [] : [v])
+  const setItemPt = (key, v) => setForm(p => ({ ...p, pts: { ...(p.pts || {}), [key]: v } }))
   // 特殊家財（帳票の空き升に印刷する自由記入行）
   const addExtra = () => setForm(p => (p.extraKazai || []).length >= KZX_MAX ? p : ({ ...p, extraKazai: [...(p.extraKazai || []), { name: '', pt: '', qty: '1' }] }))
   const setExtra = (i, patch) => setForm(p => ({ ...p, extraKazai: (p.extraKazai || []).map((r, ix) => ix === i ? { ...r, ...patch } : r) }))
@@ -728,7 +975,8 @@ export default function Estimate({ user, switchTab }) {
   const totals = useMemo(() => {
     const points = ALL_ITEMS.reduce((s, it) => {
       const q = num(form.items[it.key])
-      return s + (it.pt ? q * it.pt : 0)
+      // 才数が印字されている行はその値、空の行（TVブラ等）は書き込まれた才数を使う
+      return s + q * (it.pt ? it.pt : (it.ptIn ? num(form.pts?.[it.key]) : 0))
     }, 0)
     const extraPt = (form.extraKazai || []).reduce((s, r) => s + num(r.pt) * num(r.qty), 0)
     const qtyTotal = ALL_ITEMS.reduce((s, it) => s + num(form.items[it.key]), 0)
@@ -788,7 +1036,16 @@ export default function Estimate({ user, switchTab }) {
   if (view === 'list') {
     // 見積書 + 成約管理 をマージ表示。成約由来は見積書化されていないものだけ（contractId で重複排除）
     const issuedContractIds = new Set(items.map(i => i.contractId).filter(Boolean))
-    const fromEst = items.map(i => ({ ...i, _kind: 'estimate', _sortDate: i.estimateDate || i.moveDate || '' }))
+    // 成約から起こした見積書は、元の成約と同じ並び順（売上登録日＋成約の並び）のままにする。
+    // 見積日で並べ替えると「見積書として作成」を押した瞬間に行が別の場所へ飛ぶため。
+    const conById = {}
+    contracts.forEach((c, ix) => { conById[c.id] = { c, ix } })
+    const fromEst = items.map(i => {
+      const h = i.contractId ? conById[i.contractId] : null
+      return { ...i, _kind: 'estimate',
+        _sortDate: (h && (h.c.salesDate || h.c.date)) || i.estimateDate || i.moveDate || '',
+        _tie: h ? 1000 + h.ix : 0 }
+    })
     const fromCon = contracts
       .filter(c => !issuedContractIds.has(c.id))
       .map(c => ({
@@ -804,18 +1061,27 @@ export default function Estimate({ user, switchTab }) {
         status: c.status || '成約',
         _sortDate: c.salesDate || c.date || '', // 売り上げ登録日を優先して並べ替え
       }))
-    const rows = [...fromEst, ...fromCon].sort((a, b) => String(b._sortDate).localeCompare(String(a._sortDate)))
+    // 同じ日付の中でも位置が変わらないよう、成約由来は成約一覧の並びを副キーにする
+    const conIx = Object.fromEntries(contracts.map((c, ix) => [c.id, ix]))
+    fromCon.forEach(r => { r._tie = 1000 + conIx[r._contract.id] })
+    const rows = [...fromEst, ...fromCon]
+      .sort((a, b) => String(b._sortDate).localeCompare(String(a._sortDate)) || (a._tie - b._tie))
     const estCount = items.length
     const conCount = fromCon.length
     const sumEst = items.reduce((s, i) => s + num(i.total), 0)
     const sumCon = fromCon.reduce((s, i) => s + num(i.total), 0)
     const sumAll = sumEst + sumCon
 
-    // 成約レコードを「見積書として作成」する：成約データをプリフィルしてEdit Viewへ
+    // 成約レコードを「見積書として作成」する：成約・リードの内容を入れた帳票をモーダルで開く
     const issueFromContract = (c) => {
       const f = emptyForm()
       f.estimateNo = nextNo()
-      f.estimateDate = new Date().toISOString().slice(0, 10)
+      // 訪問見積日があればそれを見積日に、無ければ今日
+      f.estimateDate = ymd(c.visitEstimateDate) || new Date().toISOString().slice(0, 10)
+      // 受付日は、リードから引き継いだ受付日時（無ければ売上登録日）
+      f.requestDate = ymd(c.receivedAt, c.salesDate || c.date) || ymd(c.salesDate) || ''
+      // 一括見積サイト経由（サムライ／ズバッと／価格.com／SUUMO ほか）は帳票の媒体「net」に〇
+      if (c.srcLabel) f.media = ['net']
       f.name = c.name || ''
       f.kana = c.kana || ''
       f.fromTelMobile = c.phone || ''
@@ -823,7 +1089,7 @@ export default function Estimate({ user, switchTab }) {
       f.estimator = c.staff || ''   // 見積者は担当者で補完
       f.fromAddress = c.fromAddress || ''
       f.toAddress = c.toAddress || ''
-      f.moveDate = (c.date && /^\d{4}-\d{2}-\d{2}/.test(c.date)) ? c.date : ''
+      f.moveDate = ymd(c.date) || ymd(c.moveDateText) || ''
       f.deliverDate = f.moveDate // お届日は引越日と同日を既定に
       f.memo = c.memo || ''
       f.contractId = c.id
@@ -844,7 +1110,7 @@ export default function Estimate({ user, switchTab }) {
       f.extraKazai = extra
       f.unmatchedKazai = over
       if (c.boxCount) { const boxKey = ALL_ITEMS.find(it => it.name === 'ダンボール' && it.size === '小')?.key; if (boxKey) f.items[boxKey] = Number(c.boxCount) || 0 }
-      setForm(f); setEditId(null); setView('edit'); setPreview(false); setStep('basic')
+      openPaper(f, null)
     }
 
     return (
@@ -893,7 +1159,7 @@ export default function Estimate({ user, switchTab }) {
                               <button className="btn btn-primary btn-sm" onClick={() => issueFromContract(item._contract)}>📝 見積書として作成</button>
                             ) : (
                               <>
-                                <button className="btn btn-outline btn-sm" onClick={() => openEdit(item)}>編集</button>
+                                <button className="btn btn-outline btn-sm" onClick={() => openPaper(formOf(item), item.id)}>編集</button>
                                 <button className="btn btn-sm" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }} onClick={() => setDeleteConfirm(item.id)}>削除</button>
                               </>
                             )}
@@ -922,6 +1188,11 @@ export default function Estimate({ user, switchTab }) {
               </div>
             </div>
           </div>
+        )}
+
+        {paperForm && (
+          <PaperModal form={paperForm} saving={saving}
+            onSave={savePaper} onClose={closePaper} onOpenDetail={paperToDetail} />
         )}
 
         {toast && <Toast msg={toast} />}
@@ -1121,21 +1392,31 @@ export default function Estimate({ user, switchTab }) {
         </div>
         <div className="three-col" style={{ marginTop: 10 }}>
           <Field label="エアコン セパレート（台）">
-            <input type="number" style={inputStyle} value={form.airconSep} onChange={e => set('airconSep', e.target.value)} />
-            <div style={{ marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 10, color: '#94A3B8', alignSelf: 'center' }}>取外</span>
-              <ChkRow items={SM_OPTS} on={form.acSepFrom} onToggle={v => set('acSepFrom', toggleIn(form.acSepFrom, v))} />
-              <span style={{ fontSize: 10, color: '#94A3B8', alignSelf: 'center' }}>取付</span>
-              <ChkRow items={SM_OPTS} on={form.acSepTo} onToggle={v => set('acSepTo', toggleIn(form.acSepTo, v))} />
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 10, color: '#94A3B8' }}>取外</span>
+              <ChkRow items={SM_OPTS} on={form.acSepFrom} onToggle={v => set('acSepFrom', pickOne(form.acSepFrom, v))} />
+              <input type="number" style={{ ...inputStyle, width: 70 }} value={form.airconSep} onChange={e => set('airconSep', e.target.value)} />
+              <span style={{ fontSize: 10, color: '#94A3B8' }}>台</span>
+            </div>
+            <div style={{ marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 10, color: '#94A3B8' }}>取付</span>
+              <ChkRow items={SM_OPTS} on={form.acSepTo} onToggle={v => set('acSepTo', pickOne(form.acSepTo, v))} />
+              <input type="number" style={{ ...inputStyle, width: 70 }} value={form.airconSepTo} onChange={e => set('airconSepTo', e.target.value)} />
+              <span style={{ fontSize: 10, color: '#94A3B8' }}>台</span>
             </div>
           </Field>
           <Field label="エアコン ウィンド（台）">
-            <input type="number" style={inputStyle} value={form.airconWindow} onChange={e => set('airconWindow', e.target.value)} />
-            <div style={{ marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 10, color: '#94A3B8', alignSelf: 'center' }}>取外</span>
-              <ChkRow items={SM_OPTS} on={form.acWinFrom} onToggle={v => set('acWinFrom', toggleIn(form.acWinFrom, v))} />
-              <span style={{ fontSize: 10, color: '#94A3B8', alignSelf: 'center' }}>取付</span>
-              <ChkRow items={SM_OPTS} on={form.acWinTo} onToggle={v => set('acWinTo', toggleIn(form.acWinTo, v))} />
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 10, color: '#94A3B8' }}>取外</span>
+              <ChkRow items={SM_OPTS} on={form.acWinFrom} onToggle={v => set('acWinFrom', pickOne(form.acWinFrom, v))} />
+              <input type="number" style={{ ...inputStyle, width: 70 }} value={form.airconWindow} onChange={e => set('airconWindow', e.target.value)} />
+              <span style={{ fontSize: 10, color: '#94A3B8' }}>台</span>
+            </div>
+            <div style={{ marginTop: 6, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 10, color: '#94A3B8' }}>取付</span>
+              <ChkRow items={SM_OPTS} on={form.acWinTo} onToggle={v => set('acWinTo', pickOne(form.acWinTo, v))} />
+              <input type="number" style={{ ...inputStyle, width: 70 }} value={form.airconWindowTo} onChange={e => set('airconWindowTo', e.target.value)} />
+              <span style={{ fontSize: 10, color: '#94A3B8' }}>台</span>
             </div>
           </Field>
           <Field label="ピアノ・エレクトーン作業"><input style={inputStyle} value={form.pianoWork} onChange={e => set('pianoWork', e.target.value)} placeholder="有無・備考" /></Field>
@@ -1272,7 +1553,8 @@ export default function Estimate({ user, switchTab }) {
               return true
             })
             if (!visible.length) return null
-            const gPts = group.items.reduce((sum, it) => sum + (it.pt != null ? num(form.items[it.key]) * it.pt : 0), 0)
+            const gPts = group.items.reduce((sum, it) =>
+              sum + num(form.items[it.key]) * (it.pt != null ? it.pt : (it.ptIn ? num(form.pts?.[it.key]) : 0)), 0)
             return (
             <div key={group.title} style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
               <div style={{ background: '#F1F5FB', padding: '7px 10px', fontSize: 11, fontWeight: 800, color: '#334155', display: 'flex', justifyContent: 'space-between' }}>
@@ -1289,10 +1571,18 @@ export default function Estimate({ user, switchTab }) {
                     }}>
                       <div style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
                         {it.name}{it.size && <span style={{ color: '#94A3B8' }}> {it.size}</span>}
-                        <span style={{ color: '#CBD5E1', fontSize: 10 }}> {it.pt == null ? '(別途)' : `${it.pt}才`}</span>
+                        {it.ptIn ? (
+                          <span style={{ color: '#94A3B8', fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <input type="number" min={0} inputMode="numeric" title="才数（原本の才数欄が空の行）"
+                              value={form.pts?.[it.key] ?? ''} onChange={e => setItemPt(it.key, e.target.value)}
+                              style={{ width: 44, padding: '3px 4px', border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 12, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }} />才
+                          </span>
+                        ) : (
+                          <span style={{ color: '#CBD5E1', fontSize: 10 }}> {it.pt == null ? '(別途)' : `${it.pt}才`}</span>
+                        )}
                       </div>
-                      {q > 0 && it.pt != null && (
-                        <span style={{ fontSize: 10, color: '#1E5FA8', fontWeight: 700, whiteSpace: 'nowrap' }}>{(q * it.pt).toLocaleString('ja-JP')}才</span>
+                      {q > 0 && (it.pt != null || (it.ptIn && num(form.pts?.[it.key]) > 0)) && (
+                        <span style={{ fontSize: 10, color: '#1E5FA8', fontWeight: 700, whiteSpace: 'nowrap' }}>{(q * (it.pt != null ? it.pt : num(form.pts?.[it.key]))).toLocaleString('ja-JP')}才</span>
                       )}
                       <button type="button" onClick={() => setItemQty(it.key, Math.max(0, q - 1))}
                         style={{ width: 30, height: 30, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', color: q > 0 ? '#B91C1C' : '#CBD5E1', fontSize: 16, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>−</button>
@@ -1319,7 +1609,7 @@ export default function Estimate({ user, switchTab }) {
           <div style={{ padding: 20, textAlign: 'center', color: '#94A3B8', fontSize: 12 }}>まだ数量が入力されていません。「入力済みのみ」をOFFにしてください。</div>
         )}
         <div style={{ marginTop: 10, fontSize: 11, color: '#94A3B8' }}>
-          ※ ポイント（才数）は数量×単価の自動合計です。「(別途)」項目（ピアノ・TV等）はサイズ別のため合計に含めません。
+          ※ ポイント（才数）は数量×才数の自動合計です。TVブラ・TV薄型は原本の才数欄が空なので、その場で才数を入れてください（入れた分は合計に入ります）。「(別途)」項目（ピアノ等）は合計に含めません。
         </div>
 
         <SubHead>特殊家財（表に無い品目）</SubHead>
