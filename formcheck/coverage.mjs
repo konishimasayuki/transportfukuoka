@@ -28,9 +28,12 @@ const emitted = new Set()
   const strs = (n) => [...cut('const ' + n, ']').matchAll(/'([^']+)'/g)].map(m => m[1])
   const pkm = Object.fromEntries([...cut('const PRINT_KEY_MAP', '}\n')
     .matchAll(/'?([\w]+)'?\s*:\s*'([^']+)'/g)].map(m => [m[1], m[2]]))
-  for (const k of keys(cut('const KAZAI_GROUPS', 'const FEE_A'))) {
+  const kazaiSrc = cut('const KAZAI_GROUPS', 'const FEE_A')
+  for (const k of keys(kazaiSrc)) {
     const p = pkm[k] || k; emitted.add('kz_' + p); emitted.add('kz_' + p + '_x')
   }
+  // 原本の才数欄が空で、その都度書き込む行（ptIn: true）
+  for (const m of kazaiSrc.matchAll(/key:\s*'([^']+)'[^\n]*ptIn:\s*true/g)) emitted.add('kz_' + (pkm[m[1]] || m[1]) + '_pt')
   for (const [a, b, tag] of [['const FEE_A', 'const FEE_B', 'feeA_'],
                              ['const FEE_B', 'const FEE_C', 'feeB_'],
                              ['const FEE_D', 'const KZX_MAX', 'feeD_']])

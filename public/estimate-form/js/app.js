@@ -48,7 +48,9 @@ function buildKazai() {
                       : `<span style="letter-spacing:0">${size}</span>`) : ''))
       nm.style.position = 'relative'
       nm.dataset.fit = ''
-      const ptc = el('div', 'kz pt', pt === null ? '<span>／</span>' : (pt === '' ? '' : String(pt)))
+      // 原本で才数が空の行（TVブラ・TV薄型）は、その場で才数を書き込めるようにする
+      const ptc = el('div', 'kz pt', pt === null ? '<span>／</span>'
+        : (pt === '' ? inp('kz_' + key + '_pt', 'form-input pt-in') : String(pt)))
       const q1 = el('div', 'kz', inp('kz_' + key))
       const q2 = el('div', `kz${c === 4 ? ' mats-edge' : ''}`, inp('kz_' + key + '_x'))
       grid.append(nm, ptc, q1, q2)
@@ -244,7 +246,11 @@ function recalc() {
   let pt = 0
   KAZAI_COLS.forEach((col, ci) => {
     let colPt = 0, colQty = 0
-    col.forEach(([key, , , p]) => { const q = val('kz_' + key); colQty += q; if (typeof p === 'number') colPt += p * q })
+    col.forEach(([key, , , p]) => {
+      const q = val('kz_' + key); colQty += q
+      // 才数が原本で空の行は、書き込まれた才数を使う
+      colPt += (typeof p === 'number' ? p : val('kz_' + key + '_pt')) * q
+    })
     // 自由記入行（点数×数量。どちらか空なら0）
     freeSlots.filter(f => f.col === ci).forEach(f => { const q = val('kzx' + f.n + '_qty'); colQty += q; colPt += val('kzx' + f.n + '_pt') * q })
     out['ptcol' + ci] = colPt; out['qtycol' + ci] = colQty; pt += colPt

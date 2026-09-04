@@ -25,6 +25,7 @@ const COMPANY = {
 /* -------------------------------------------------------------------------
  * 家財 → ポイント（才数）対応表【2026-06 実帳票・写真照合済 / 全104行】
  * pt: null = サイズ別・別途見積（合計に加算しない）
+ * ptIn: true = 原本の才数欄が空で、その都度書き込む行（書いた才数×数量を合計に入れる）
  * ⚠ 暫定確定。紙の帳票と最終照合後に値を差し替える場合はこの配列のみ編集。
  * ----------------------------------------------------------------------- */
 const KAZAI_GROUPS = [
@@ -99,8 +100,8 @@ const KAZAI_GROUPS = [
       { key: 'washer_drum',  name: '洗濯機',         size: 'ドラム', pt: 15 },
       { key: 'washer_full',  name: '洗濯機',         size: '全自動', pt: 13 },
       { key: 'dryer',        name: '乾燥機',         size: '',      pt: 8 },
-      { key: 'tv_brown',     name: 'TVブラ',         size: '( )',   pt: null },
-      { key: 'tv_thin',      name: 'TV薄型',         size: '( )',   pt: null },
+      { key: 'tv_brown',     name: 'TVブラ',         size: '( )',   pt: null, ptIn: true },
+      { key: 'tv_thin',      name: 'TV薄型',         size: '( )',   pt: null, ptIn: true },
       { key: 'video',        name: 'ビデオ',         size: '',      pt: 0.5 },
       { key: 'pc',           name: 'パソコン',       size: '',      pt: 10 },
       { key: 'range',        name: 'レンジ',         size: '',      pt: 2 },
@@ -337,6 +338,7 @@ function emptyForm() {
     moveFloorFrom: '', moveFloorTo: '', pianoFloorFrom: '', pianoFloorTo: '',
     // 家財数量
     items: {},
+    pts: {},              // 原本の才数欄が空の行（TVブラ・TV薄型）に書き込む才数
     memos: {},            // 家財表の右列（品目ごとの2〜3文字のメモ）{ key: 'S' }
     extraKazai: [],       // 特殊家財（帳票の空き升に手書きする行）[{ name, pt, qty }]
     unmatchedKazai: [],   // 自由記入行にも入りきらなかった家財（上限超過ぶん）
@@ -509,6 +511,10 @@ function buildPrintData(form) {
   for (const [k, m] of Object.entries(form.memos || {})) {
     if (String(m || '').trim()) d['kz_' + (PRINT_KEY_MAP[k] || k) + '_x'] = String(m).trim()
   }
+  // 原本の才数欄が空の行に書き込む才数
+  for (const [k, v] of Object.entries(form.pts || {})) {
+    if (String(v || '').trim()) d['kz_' + (PRINT_KEY_MAP[k] || k) + '_pt'] = String(v).trim()
+  }
   // 料金
   for (const f of FEE_A) put('feeA_' + f.key, form.feeA?.[f.key])
   for (const f of FEE_B) put('feeB_' + f.key, form.feeB?.[f.key])
@@ -616,11 +622,12 @@ function readPrintData(p, base) {
   f.twoPlaceD = g('twoPlaceD'); [f.roadWidthD, f.roadWidthDM] = road('D')
   f.elevatorD = g('elevD'); f.elevatorDM = g('elevMD'); f.windowLiftD = g('windowD'); f.machineD = g('machineD')
   // 家財の数量とメモ
-  f.items = {}; f.memos = {}
+  f.items = {}; f.memos = {}; f.pts = {}
   for (const it of ALL_ITEMS) {
     const pk = PRINT_KEY_MAP[it.key] || it.key
     if (p['kz_' + pk] !== undefined) f.items[it.key] = String(p['kz_' + pk])
     if (p['kz_' + pk + '_x'] !== undefined) f.memos[it.key] = String(p['kz_' + pk + '_x'])
+    if (p['kz_' + pk + '_pt'] !== undefined) f.pts[it.key] = String(p['kz_' + pk + '_pt'])
   }
   // 特殊家財（帳票の空き升）
   f.extraKazai = []
@@ -870,7 +877,7 @@ export default function Estimate({ user, switchTab }) {
     f.estimateDate = new Date().toISOString().slice(0, 10)
     openPaper(f, null)
   }
-  const formOf = (item) => ({ ...emptyForm(), ...item, items: { ...(item.items || {}) }, memos: { ...(item.memos || {}) },
+  const formOf = (item) => ({ ...emptyForm(), ...item, items: { ...(item.items || {}) }, memos: { ...(item.memos || {}) }, pts: { ...(item.pts || {}) },
     feeA: { ...(item.feeA || {}) }, feeB: { ...(item.feeB || {}) },
     feeC: { ...(item.feeC || {}) }, feeCx: { ...(item.feeCx || {}) }, feeD: { ...(item.feeD || {}) } })
   /* ---- 見積書モーダル（帳票をそのまま出して直接書いてもらう） ---- */
@@ -938,6 +945,7 @@ export default function Estimate({ user, switchTab }) {
   }
   const setItemQty = (key, v) => setForm(p => ({ ...p, items: { ...p.items, [key]: v } }))
   const setMemo = (key, v) => setForm(p => ({ ...p, memos: { ...(p.memos || {}), [key]: v } }))
+  const setItemPt = (key, v) => setForm(p => ({ ...p, pts: { ...(p.pts || {}), [key]: v } }))
   // 特殊家財（帳票の空き升に印刷する自由記入行）
   const addExtra = () => setForm(p => (p.extraKazai || []).length >= KZX_MAX ? p : ({ ...p, extraKazai: [...(p.extraKazai || []), { name: '', pt: '', qty: '1' }] }))
   const setExtra = (i, patch) => setForm(p => ({ ...p, extraKazai: (p.extraKazai || []).map((r, ix) => ix === i ? { ...r, ...patch } : r) }))
@@ -965,7 +973,8 @@ export default function Estimate({ user, switchTab }) {
   const totals = useMemo(() => {
     const points = ALL_ITEMS.reduce((s, it) => {
       const q = num(form.items[it.key])
-      return s + (it.pt ? q * it.pt : 0)
+      // 才数が印字されている行はその値、空の行（TVブラ等）は書き込まれた才数を使う
+      return s + q * (it.pt ? it.pt : (it.ptIn ? num(form.pts?.[it.key]) : 0))
     }, 0)
     const extraPt = (form.extraKazai || []).reduce((s, r) => s + num(r.pt) * num(r.qty), 0)
     const qtyTotal = ALL_ITEMS.reduce((s, it) => s + num(form.items[it.key]), 0)
@@ -1529,7 +1538,8 @@ export default function Estimate({ user, switchTab }) {
               return true
             })
             if (!visible.length) return null
-            const gPts = group.items.reduce((sum, it) => sum + (it.pt != null ? num(form.items[it.key]) * it.pt : 0), 0)
+            const gPts = group.items.reduce((sum, it) =>
+              sum + num(form.items[it.key]) * (it.pt != null ? it.pt : (it.ptIn ? num(form.pts?.[it.key]) : 0)), 0)
             return (
             <div key={group.title} style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
               <div style={{ background: '#F1F5FB', padding: '7px 10px', fontSize: 11, fontWeight: 800, color: '#334155', display: 'flex', justifyContent: 'space-between' }}>
@@ -1546,10 +1556,18 @@ export default function Estimate({ user, switchTab }) {
                     }}>
                       <div style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
                         {it.name}{it.size && <span style={{ color: '#94A3B8' }}> {it.size}</span>}
-                        <span style={{ color: '#CBD5E1', fontSize: 10 }}> {it.pt == null ? '(別途)' : `${it.pt}才`}</span>
+                        {it.ptIn ? (
+                          <span style={{ color: '#94A3B8', fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <input type="number" min={0} inputMode="numeric" title="才数（原本の才数欄が空の行）"
+                              value={form.pts?.[it.key] ?? ''} onChange={e => setItemPt(it.key, e.target.value)}
+                              style={{ width: 44, padding: '3px 4px', border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 12, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }} />才
+                          </span>
+                        ) : (
+                          <span style={{ color: '#CBD5E1', fontSize: 10 }}> {it.pt == null ? '(別途)' : `${it.pt}才`}</span>
+                        )}
                       </div>
-                      {q > 0 && it.pt != null && (
-                        <span style={{ fontSize: 10, color: '#1E5FA8', fontWeight: 700, whiteSpace: 'nowrap' }}>{(q * it.pt).toLocaleString('ja-JP')}才</span>
+                      {q > 0 && (it.pt != null || (it.ptIn && num(form.pts?.[it.key]) > 0)) && (
+                        <span style={{ fontSize: 10, color: '#1E5FA8', fontWeight: 700, whiteSpace: 'nowrap' }}>{(q * (it.pt != null ? it.pt : num(form.pts?.[it.key]))).toLocaleString('ja-JP')}才</span>
                       )}
                       <button type="button" onClick={() => setItemQty(it.key, Math.max(0, q - 1))}
                         style={{ width: 30, height: 30, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', color: q > 0 ? '#B91C1C' : '#CBD5E1', fontSize: 16, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }}>−</button>
@@ -1576,7 +1594,7 @@ export default function Estimate({ user, switchTab }) {
           <div style={{ padding: 20, textAlign: 'center', color: '#94A3B8', fontSize: 12 }}>まだ数量が入力されていません。「入力済みのみ」をOFFにしてください。</div>
         )}
         <div style={{ marginTop: 10, fontSize: 11, color: '#94A3B8' }}>
-          ※ ポイント（才数）は数量×単価の自動合計です。「(別途)」項目（ピアノ・TV等）はサイズ別のため合計に含めません。
+          ※ ポイント（才数）は数量×才数の自動合計です。TVブラ・TV薄型は原本の才数欄が空なので、その場で才数を入れてください（入れた分は合計に入ります）。「(別途)」項目（ピアノ等）は合計に含めません。
         </div>
 
         <SubHead>特殊家財（表に無い品目）</SubHead>

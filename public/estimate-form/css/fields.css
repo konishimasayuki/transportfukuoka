@@ -96,3 +96,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* 洗濯機（付）：印字の○の上から赤い輪を重ねる */
 .opt.tsuki { padding: 0; }
 .opt.tsuki .ring { inset: -0.25mm; }
+
+/* 原本で才数が空の行（TVブラ・TV薄型）に置く才数の入力欄。印字の数字と同じ見え方にする */
+.kz.pt .form-input.pt-in { width: 100%; height: 100%; text-align: right; font-size: 2.1mm; letter-spacing: 0; padding: 0; }
