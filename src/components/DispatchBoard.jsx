@@ -11,6 +11,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { DEFAULT_FLEET, DEFAULT_CREW, TRUCK_CLASSES } from '../lib/fleet'
 import ContractDetailModal, { EMPTY_CONTRACT } from './ContractDetailModal'
+import ModalPortal from './ModalPortal'
 
 const START = 8, END = 19, COLS = END - START // 08:00–19:00 = 11列
 const CAT_NAME = { move: '引っ越し', quote: '見積り', box: '段ボール配達' }
@@ -1254,7 +1255,7 @@ function VehicleModal({ vehicles, jobs, crewList = [], initialTab = 'veh', onClo
 
   return (
     // 枠外クリックでは閉じない（入力中の内容が消えないように）
-    <div style={ov}>
+    <ModalPortal><div style={ov}>
       <div style={bx}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div><div style={{ fontSize: 15, fontWeight: 800 }}>車両・ドライバーの設定</div><div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>号車・車両クラスと、運転手／助手のプルダウンに出す人を登録します</div></div>
@@ -1314,7 +1315,7 @@ function VehicleModal({ vehicles, jobs, crewList = [], initialTab = 'veh', onClo
           <button className="btn btn-primary" onClick={save}>保存</button>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   )
 }
 
@@ -1365,7 +1366,7 @@ function CreateModal({ onClose, onAdd }) {
 
   return (
     // 枠外クリックでは閉じない（入力中の内容が消えないように）
-    <div style={ov}>
+    <ModalPortal><div style={ov}>
       <div style={bx}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div><div style={{ fontSize: 15, fontWeight: 800 }}>予定を作成</div><div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>種別・荷量から概算見積を自動計算し、未手配に追加します</div></div>
@@ -1418,6 +1419,6 @@ function CreateModal({ onClose, onAdd }) {
           </div>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   )
 }

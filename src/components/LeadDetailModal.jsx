@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate } from '../lib/mailTemplate'
+import ModalPortal from './ModalPortal'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
 // 手入力で新規登録するときの初期値（査定サイト由来ではないので流入元は「その他」）
@@ -48,6 +49,21 @@ const box = { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 820
   display: 'flex', flexDirection: 'column', overflow: 'hidden',
   boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
 const bodyScroll = { flex: '1 1 auto', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }
+
+// スマホでは操作ボタンを見出しから下ろす。見出しにはお客様の名前だけを残し、
+// ボタンは「閉じる／変更を保存」のすぐ上にまとめる（大事な情報を隠さないため）。
+function useNarrow() {
+  const q = '(max-width: 640px)'
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches)
+  useEffect(() => {
+    const m = window.matchMedia(q)
+    const on = e => setNarrow(e.matches)
+    m.addEventListener ? m.addEventListener('change', on) : m.addListener(on)
+    setNarrow(m.matches)
+    return () => { m.removeEventListener ? m.removeEventListener('change', on) : m.removeListener(on) }
+  }, [])
+  return narrow
+}
 // セクション見出し：既存タブのカード見出し風（白背景＋青の左アクセント）に統一
 const sectionBar = {
   background: '#F8FAFC', color: '#1E293B', fontSize: 12, fontWeight: 800,
@@ -109,6 +125,8 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
   // ※フックは早期 return より前に置く（開閉のたびにフック数が変わると画面が真っ白になる）
   const [staffList, setStaffList] = useState(DEFAULT_STAFF)
   useEffect(() => { fetchStaffList().then(setStaffList).catch(() => {}) }, [])
+  // 画面が狭いかどうか（操作ボタンの置き場所を変える）
+  const narrow = useNarrow()
 
   useEffect(() => {
     if (!item) return
@@ -191,9 +209,53 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
     setTimeout(() => { document.title = prevTitle }, 300)
   }
 
+  // 操作ボタンの一式。PCは見出しの右、スマホは「閉じる／変更を保存」の上に置く
+  const actionButtons = (
+    <div className="no-print lead-hdr-btns" style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      {!isNew && <button className="btn btn-sm btn-outline" style={hdrBtn} onClick={doPrint}>{two('印刷', 'PDF')}</button>}
+      {/* 電話が繋がらなかったお客様へのメール。定型文を出してから送る */}
+      {!isNew && onSendMail && (
+        <button className="btn btn-sm" style={{ ...hdrBtn, background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
+          onClick={() => onSendMail({ ...item, ...draft })}
+          title={item.mailedAt ? `前回 ${new Date(item.mailedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} に送信` : 'お客様にメールを送る'}>
+          {/* 一度送ったお客様は、開いた瞬間に分かるようにする */}
+          {item.mailedAt ? two('メール', '送信済み') : 'メール'}
+        </button>
+      )}
+      {!isNew && onSave && (
+        <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`} style={hdrBtn}
+          onClick={() => setEdit(e => !e)}>
+          {edit ? two('閲覧', 'に戻す') : '編集'}
+        </button>
+      )}
+      {/* コピー：同じ内容をリード管理内に複製（流入元は「その他」） */}
+      {!isNew && onCopyLead && (
+        <button className="btn btn-sm" style={{ ...hdrBtn, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}
+          onClick={() => onCopyLead(item)}>コピー</button>
+      )}
+      {/* コピー：成約管理へ複製（元のリードはそのまま残る） */}
+      {!isNew && onCopyToContract && (
+        <button className="btn btn-sm" style={{ ...hdrBtn, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}
+          onClick={() => onCopyToContract(item)}>{two('成約', 'コピー')}</button>
+      )}
+      {!isNew && onCreateContract && (
+        (item.status === '成約' || item.contracted)
+          ? <button className="btn btn-sm" disabled title="このリードは成約登録済みです。編集は成約管理で行えます。"
+              style={{ ...hdrBtn, background: '#E2E8F0', color: '#64748B', cursor: 'default' }}>{two('成約', '済み')}</button>
+          : <button className="btn btn-sm" style={{ ...hdrBtn, background: '#16A34A', color: '#fff' }} onClick={() => onCreateContract(item)}>{two('成約', '登録')}</button>
+      )}
+      {/* 編集中の家財も渡す（保存前に追加した家財が消えないように） */}
+      {!isNew && onCreateEstimate && (
+        <button className="btn btn-primary btn-sm" style={hdrBtn} onClick={() => onCreateEstimate({ ...item, kazai })}>{two('見積書', '作成')}</button>
+      )}
+      {/* スマホでは下の保存バーにも「閉じる」が出るので、二重にしない */}
+      {(!narrow || !onSave) && <button className="btn btn-sm btn-outline" style={hdrBtn} onClick={onClose}>閉じる</button>}
+    </div>
+  )
+
   return (
     // 枠外クリックでは閉じない（入力中の内容が消えないように）。閉じるはヘッダー/フッターのボタンから
-    <div style={overlay}>
+    <ModalPortal><div style={overlay}>
       <div style={box} className="print-area lead-modal-box">
         {/* ヘッダー */}
         <div style={{ padding: '12px 14px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fff', flex: '0 0 auto' }}>
@@ -205,45 +267,7 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
             </div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{item.site || ''}{item.orderId ? ` ／ 依頼番号 ${item.orderId}` : ''}</div>
           </div>
-          <div className="no-print lead-hdr-btns" style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {!isNew && <button className="btn btn-sm btn-outline" style={hdrBtn} onClick={doPrint}>{two('印刷', 'PDF')}</button>}
-            {/* 電話が繋がらなかったお客様へのメール。定型文を出してから送る */}
-            {!isNew && onSendMail && (
-              <button className="btn btn-sm" style={{ ...hdrBtn, background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
-                onClick={() => onSendMail({ ...item, ...draft })}
-                title={item.mailedAt ? `前回 ${new Date(item.mailedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} に送信` : 'お客様にメールを送る'}>
-                {/* 一度送ったお客様は、開いた瞬間に分かるようにする */}
-                {item.mailedAt ? two('メール', '送信済み') : 'メール'}
-              </button>
-            )}
-            {!isNew && onSave && (
-              <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`} style={hdrBtn}
-                onClick={() => setEdit(e => !e)}>
-                {edit ? two('閲覧', 'に戻す') : '編集'}
-              </button>
-            )}
-            {/* コピー：同じ内容をリード管理内に複製（流入元は「その他」） */}
-            {!isNew && onCopyLead && (
-              <button className="btn btn-sm" style={{ ...hdrBtn, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}
-                onClick={() => onCopyLead(item)}>コピー</button>
-            )}
-            {/* コピー：成約管理へ複製（元のリードはそのまま残る） */}
-            {!isNew && onCopyToContract && (
-              <button className="btn btn-sm" style={{ ...hdrBtn, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}
-                onClick={() => onCopyToContract(item)}>{two('成約', 'コピー')}</button>
-            )}
-            {!isNew && onCreateContract && (
-              (item.status === '成約' || item.contracted)
-                ? <button className="btn btn-sm" disabled title="このリードは成約登録済みです。編集は成約管理で行えます。"
-                    style={{ ...hdrBtn, background: '#E2E8F0', color: '#64748B', cursor: 'default' }}>{two('成約', '済み')}</button>
-                : <button className="btn btn-sm" style={{ ...hdrBtn, background: '#16A34A', color: '#fff' }} onClick={() => onCreateContract(item)}>{two('成約', '登録')}</button>
-            )}
-            {/* 編集中の家財も渡す（保存前に追加した家財が消えないように） */}
-            {!isNew && onCreateEstimate && (
-              <button className="btn btn-primary btn-sm" style={hdrBtn} onClick={() => onCreateEstimate({ ...item, kazai })}>{two('見積書', '作成')}</button>
-            )}
-            <button className="btn btn-sm btn-outline" style={hdrBtn} onClick={onClose}>閉じる</button>
-          </div>
+          {!narrow && actionButtons}
         </div>
 
         <div style={bodyScroll}>
@@ -412,6 +436,13 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
 
         </div>
 
+        {/* スマホでは操作ボタンをここへ。見出しを名前だけにして情報を読みやすくする */}
+        {narrow && (
+          <div className="lead-sp-btns" style={{ flex: '0 0 auto', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', padding: '8px 10px' }}>
+            {actionButtons}
+          </div>
+        )}
+
         {/* 保存バー */}
         {onSave && (
           <div className="no-print" style={{ flex: '0 0 auto', background: '#fff', borderTop: '1px solid #EEF2F7', padding: '10px 14px', display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
@@ -423,7 +454,7 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
           </div>
         )}
       </div>
-    </div>
+    </div></ModalPortal>
   )
 }
 
@@ -491,7 +522,7 @@ export function ConvertToContractModal({ lead, onClose, onConfirm, onGoCalendar 
 
   const formView = (
     // 枠外クリックでは閉じない（入力中の内容が消えないように）
-    <div style={ov}>
+    <ModalPortal><div style={ov}>
       <div style={bx}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -551,12 +582,12 @@ export function ConvertToContractModal({ lead, onClose, onConfirm, onGoCalendar 
           <div style={{ fontSize: 10, color: '#94A3B8' }}>※ 登録するとリードのステータスは「成約」に。売り上げ登録日は成約管理・売上管理・スケジュール・見積書に反映されます。</div>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   )
 
   // ---- 登録完了：次工程（配車の確認）へ気持ちよくつなぐハンドオフ ----
   const doneView = (
-    <div style={ov} onClick={e => e.target === e.currentTarget && onClose()}>
+    <ModalPortal><div style={ov} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={bx}>
         <div style={{ padding: '26px 22px 22px', textAlign: 'center' }}>
           <div style={{ width: 54, height: 54, borderRadius: '50%', background: '#F0FDF4', color: '#16A34A', fontSize: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>✓</div>
@@ -576,7 +607,7 @@ export function ConvertToContractModal({ lead, onClose, onConfirm, onGoCalendar 
           </div>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   )
 
   return done ? doneView : formView
@@ -653,7 +684,7 @@ export function MailPanel({ lead, onClose, onSent }) {
   const last = Array.isArray(lead.mailLog) && lead.mailLog.length ? lead.mailLog[lead.mailLog.length - 1] : null
 
   return (
-    <div style={{ ...overlay, zIndex: 1400 }} onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+    <ModalPortal><div style={{ ...overlay, zIndex: 1400 }} onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ ...box, maxWidth: 620 }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -706,6 +737,6 @@ export function MailPanel({ lead, onClose, onSent }) {
           )}
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   )
 }

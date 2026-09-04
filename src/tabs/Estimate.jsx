@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { DEMO_CONTRACTS } from '../lib/demoData'
 import { GMAPS_KEY, zipFromAddress } from '../lib/gmaps'
+import ModalPortal from '../components/ModalPortal'
 
 /* =========================================================================
  * 御見積書（株式会社トランスポーター）— 見積書タブ Phase A
@@ -710,7 +711,7 @@ function PaperModal({ form, saving, onSave, onClose, onOpenDetail }) {
   const save = () => { const a = api(); onSave(a ? a.read() : null) }
 
   return (
-    <div style={ovl} onMouseDown={e => { if (e.target === e.currentTarget) save() }}>
+    <ModalPortal><div style={ovl} onMouseDown={e => { if (e.target === e.currentTarget) save() }}>
       <div style={paperBox}>
         <div style={paperBar}>
           <b style={{ fontSize: 14 }}>御見積書</b>
@@ -735,7 +736,7 @@ function PaperModal({ form, saving, onSave, onClose, onOpenDetail }) {
             style={{ width: Math.round(A4_PX * z), maxWidth: 'none', height: h, border: 0, background: '#fff', display: 'block' }} />
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   )
 }
 const A4_PX = 210 * 96 / 25.4          // A4の幅（実寸）
@@ -1175,7 +1176,7 @@ export default function Estimate({ user, switchTab }) {
         )}
 
         {deleteConfirm && (
-          <div style={modalOverlay} onClick={e => e.target === e.currentTarget && setDeleteConfirm(null)}>
+          <ModalPortal><div style={modalOverlay} onClick={e => e.target === e.currentTarget && setDeleteConfirm(null)}>
             <div style={{ ...modalBox, maxWidth: 360 }}>
               <div style={{ padding: 24, textAlign: 'center' }}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>🗑️</div>
@@ -1187,7 +1188,7 @@ export default function Estimate({ user, switchTab }) {
                 </div>
               </div>
             </div>
-          </div>
+          </div></ModalPortal>
         )}
 
         {paperForm && (

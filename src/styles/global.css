@@ -664,10 +664,20 @@ button.db-week-cell:hover, label.db-week-cell:hover { border-color: var(--blueL)
 /* 見積書モーダルの操作列。画面が狭いときは説明と番号を隠して1行に収める */
 @media (max-width: 720px) { .pm-hint { display: none; } }
 
-/* リード詳細モーダル。スマホでは画面より高くならないようにし（iOSのvh対策で dvh）、
-   上部のボタンは4列のマス目に整えて指で押せる大きさにする。 */
+/* リード詳細モーダル。スマホでは画面より高くならないようにする（iOSのvh対策で dvh）。 */
 .lead-modal-box { max-height: 92vh; max-height: 92dvh; }
+/* スマホの操作ボタンは「閉じる／変更を保存」のすぐ上に4列で並べる。
+   見出しから下ろした分、1つずつは少し小さくして中身の表示を優先する。 */
 @media (max-width: 640px) {
-  .lead-hdr-btns { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; }
-  .lead-hdr-btns > button { width: 100%; min-height: 44px; padding: 4px 2px; }
+  /* display は JSX 側のインライン指定（flex）より強くする必要がある */
+  .lead-sp-btns .lead-hdr-btns { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 5px; width: 100%; }
+  .lead-sp-btns .lead-hdr-btns > button { width: 100%; min-height: 36px; padding: 3px 2px; font-size: 11px; line-height: 1.2; }
 }
+
+/* ===== モーダルが開いている間は背後を一切動かさない =====
+   モーダルは body の直下（ModalPortal）に出るので、触っても背後には届かない。
+   念のため裏の一覧・ページ自体のスクロールも止め、
+   モーダル内をスクロールし切ったときに背後へ流れる（スクロール連鎖）のも断つ。 */
+body.modal-open { overflow: hidden; overscroll-behavior: none; }
+body.modal-open .content { overflow: hidden !important; }
+.lead-modal-box, .lead-modal-box > div { overscroll-behavior: contain; }

@@ -7,6 +7,7 @@ import { receivedAtMs } from '../lib/sortLeads'
 import ContractDetailModal, { STATUS_LIST, STATUS_BADGE, SOURCE_LIST, AIRCON_OPTS, CARDBOARD_OPTS, EMPTY_CONTRACT } from '../components/ContractDetailModal'
 import LeadDetailModal, { MailPanel, MailSentMark } from '../components/LeadDetailModal'
 import { DEMO_DATA as DEMO_LEADS } from './Leads'
+import ModalPortal from '../components/ModalPortal'
 
 // すべて架空のサンプル（氏名は「サンプル＋名」で実在しないと一目でわかる形）。
 export const DEMO_DATA = [
@@ -849,7 +850,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
 
       {/* 削除確認 */}
       {deleteConfirm && (
-        <div style={modalOverlay} onClick={e => e.target === e.currentTarget && setDeleteConfirm(null)}>
+        <ModalPortal><div style={modalOverlay} onClick={e => e.target === e.currentTarget && setDeleteConfirm(null)}>
           <div style={{ ...modalBox, maxWidth: 360 }}>
             <div style={{ padding: 24, textAlign: 'center' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>🗑️</div>
@@ -861,7 +862,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
               </div>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
 
       {toast && (
