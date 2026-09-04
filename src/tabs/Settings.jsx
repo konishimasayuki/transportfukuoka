@@ -545,23 +545,21 @@ function MailSettings({ isDemo, bare }) {
                 : <>まだ送信できません。未設定：<b>{(st.missing || []).join(' / ')}</b></>}
             </div>
             <details style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.8 }}>
-              <summary style={{ cursor: 'pointer', color: 'var(--sub)', fontWeight: 700 }}>Vercelに入れる環境変数（ドメインができたら）</summary>
+              <summary style={{ cursor: 'pointer', color: 'var(--sub)', fontWeight: 700 }}>送信できるようにする手順（Resend）</summary>
               <div style={{ paddingTop: 6 }}>
-                どちらか一方でかまいません。<br />
-                <b>Google Workspace のメールを使う場合</b><br />
-                <code>SMTP_HOST</code>=<code>smtp.gmail.com</code>／<code>SMTP_PORT</code>=<code>587</code>／
-                <code>SMTP_USER</code>=送信に使うアドレス／<code>SMTP_PASS</code>=そのアカウントの<b>アプリパスワード</b><br />
-                <b>Resendを使う場合</b><br />
-                <code>RESEND_API_KEY</code><br />
-                <b>どちらでも必要</b><br />
-                <code>MAIL_FROM</code>（例 <code>株式会社トランスポーター &lt;info@transporter-hikkoshi.com&gt;</code>）<br />
+                <b>① Resend にドメインを登録する</b><br />
+                resend.com に登録し、Domains → Add Domain で <code>transporter-hikkoshi.com</code> を追加します。<br />
+                <b>② 出てきた3つのレコードを、ドメインのDNSに追加する</b><br />
+                <code>send</code>（MX・優先度10）／<code>send</code>（TXT・SPF）／<code>resend._domainkey</code>（TXT・DKIM）<br />
+                値はResendの画面に出るものをそのまま貼ります。名前は <code>send</code> のようにドメイン部分を除いて入れます。<br />
+                この3つは <code>send.</code> と <code>resend._domainkey</code> に付くので、<b>Google Workspace のメール受信（ルートのMX・SPF・google._domainkey）とはぶつかりません</b>。今のメールはそのまま使えます。<br />
+                <b>③ Vercel に環境変数を入れて再デプロイ</b><br />
+                <code>RESEND_API_KEY</code>（Resend の API Keys で作成。Vercel では <b>Secret</b> を選ぶ）<br />
+                <code>MAIL_FROM</code>（例 <code>株式会社トランスポーター &lt;info@transporter-hikkoshi.com&gt;</code>。Config でよい）<br />
                 任意：<code>MAIL_REPLY_TO</code>（返信先を別にする）／<code>MAIL_BCC</code>（送信控えを自社に残す）<br />
-                ※ アプリパスワードは、そのアカウントで2段階認証をONにしてから
-                <code>myaccount.google.com/apppasswords</code> で作ります（通常のパスワードでは送れません）。<br />
-                ※ <code>MAIL_FROM</code> のアドレスは <code>SMTP_USER</code> と同じにしてください。
-                違うと Gmail 側で差出人が書き換えられます。<br />
-                ※ <code>SMTP_PASS</code> と <code>RESEND_API_KEY</code> は Vercel で <b>Secret</b> を選んでください
-                （<code>MAIL_FROM</code> などは Config で構いません）。
+                <br />
+                ※ 返信は Google Workspace の <code>info@</code> に届きます（受信は今までどおり）。<br />
+                ※ SMTP（<code>SMTP_HOST</code> など）でも送れますが、両方入れると SMTP が優先されます。
               </div>
             </details>
 
