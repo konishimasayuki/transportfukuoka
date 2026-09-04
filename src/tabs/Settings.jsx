@@ -550,9 +550,11 @@ function MailSettings({ isDemo, bare }) {
                 <b>① Resend にドメインを登録する</b><br />
                 resend.com に登録し、Domains → Add Domain で <code>transporter-hikkoshi.com</code> を追加します。<br />
                 <b>② 出てきた3つのレコードを、ドメインのDNSに追加する</b><br />
-                <code>send</code>（MX・優先度10）／<code>send</code>（TXT・SPF）／<code>resend._domainkey</code>（TXT・DKIM）<br />
-                値はResendの画面に出るものをそのまま貼ります。名前は <code>send</code> のようにドメイン部分を除いて入れます。<br />
-                この3つは <code>send.</code> と <code>resend._domainkey</code> に付くので、<b>Google Workspace のメール受信（ルートのMX・SPF・google._domainkey）とはぶつかりません</b>。今のメールはそのまま使えます。<br />
+                <code>resend._domainkey</code>（TXT・DKIM）／<code>rsend</code>（CNAME）／<code>send</code>（CNAME）<br />
+                値はResendの画面のコピーボタンから貼ります（画面上は途中が省略されているので手打ちしない）。
+                名前は <code>send</code> のようにドメイン部分を除いて入れます。<br />
+                この3つは <code>resend._domainkey</code>・<code>rsend</code>・<code>send</code> に付くので、<b>Google Workspace のメール受信（ルートのMX・SPF・google._domainkey）とはぶつかりません</b>。今のメールはそのまま使えます。<br />
+                4つ目の <code>_dmarc</code>（TXT）は任意。<b>既に <code>_dmarc</code> がある場合は追加しないこと</b>（2つあると両方無効になる）。<br />
                 <b>③ Vercel に環境変数を入れて再デプロイ</b><br />
                 <code>RESEND_API_KEY</code>（Resend の API Keys で作成。Vercel では <b>Secret</b> を選ぶ）<br />
                 <code>MAIL_FROM</code>（例 <code>株式会社トランスポーター &lt;info@transporter-hikkoshi.com&gt;</code>。Config でよい）<br />
