@@ -6,6 +6,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import DispatchBoard from '../components/DispatchBoard'
 import { DEMO_CONTRACTS, DEMO_SCHEDULE_EXTRA } from '../lib/demoData'
+import ModalPortal from '../components/ModalPortal'
 
 const GENRES = ['引っ越し', '見積り', '段ボール配達']
 const GENRE_COLOR = { '引っ越し': '#1E5FA8', '見積り': '#EAB308', '段ボール配達': '#22C55E' }
@@ -335,7 +336,7 @@ function ScheduleModal({ mode, initial, onClose, onSave, onDelete }) {
 
   return (
     // 枠外クリックでは閉じない（入力中の内容が消えないように）
-    <div style={ov}>
+    <ModalPortal><div style={ov}>
       <div style={bx}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', borderRadius: '14px 14px 0 0' }}>
           <div style={{ fontSize: 15, fontWeight: 800 }}>{mode === 'add' ? '予定の作成' : '予定の編集'}</div>
@@ -437,6 +438,6 @@ function ScheduleModal({ mode, initial, onClose, onSave, onDelete }) {
           </div>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   )
 }

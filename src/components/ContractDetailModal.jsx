@@ -3,6 +3,7 @@
 // onSave(patch)：保存時に呼ばれる。呼び出し元が /api/contracts への POST/PUT を担当する。
 import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
+import ModalPortal from './ModalPortal'
 
 export const STATUS_LIST    = ['成約済み', '交渉中', '見積済み', '連絡待ち', '要追客', '失注']
 export const STATUS_BADGE   = { '成約済み': 'bg', '交渉中': 'bb', '見積済み': 'bo', '連絡待ち': 'bp', '要追客': 'by', '失注': 'br' }
@@ -111,7 +112,7 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
 
   return (
     // 枠外クリックでは閉じない（入力中の内容が消えないように）。閉じるはヘッダー/フッターのボタンから
-    <div style={overlay}>
+    <ModalPortal><div style={overlay}>
       <div style={box}>
         {/* ヘッダー */}
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
@@ -218,6 +219,6 @@ export default function ContractDetailModal({ item, isNew, onClose, onSave, onDe
           </button>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   )
 }

@@ -5,6 +5,7 @@ import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { receivedAtMs } from '../lib/sortLeads'
 import { SourceTag } from '../lib/source'
 import { shortArea } from '../lib/area'
+import ModalPortal from '../components/ModalPortal'
 
 const pad2 = n => String(n).padStart(2, '0')
 // 受付日時を「MM/DD HH:MM」に統一（価格.comの "2026/07/01 19:37:05" 等も他サイトに合わせる）
@@ -814,7 +815,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       )}
 
       {deleteConfirm && (
-        <div style={modalOverlay} onClick={e => e.target === e.currentTarget && setDeleteConfirm(null)}>
+        <ModalPortal><div style={modalOverlay} onClick={e => e.target === e.currentTarget && setDeleteConfirm(null)}>
           <div style={modalBox}>
             <div style={{ padding: 24, textAlign: 'center' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>🗑️</div>
@@ -826,7 +827,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
               </div>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
 
       {toast && (

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { DEFAULT_STAFF } from '../lib/staff'
 import { DEFAULT_FLEET, TRUCK_CLASSES, DEFAULT_CREW } from '../lib/fleet'
 import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate } from '../lib/mailTemplate'
+import ModalPortal from '../components/ModalPortal'
 
 // 設定の各項目の器。設定画面ではカード、モーダルの中では見出し無しの中身だけ出す。
 function Panel({ title, msg, bare, children }) {
@@ -17,7 +18,7 @@ function Panel({ title, msg, bare, children }) {
 // 設定項目のモーダル。枠の外・閉じるで閉じる。
 function SettingsModal({ title, onClose, children }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 1200,
+    <ModalPortal><div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 1200,
       display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflow: 'auto' }}
       onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 620, marginTop: 24,
@@ -29,7 +30,7 @@ function SettingsModal({ title, onClose, children }) {
         </div>
         {children}
       </div>
-    </div>
+    </div></ModalPortal>
   )
 }
 
