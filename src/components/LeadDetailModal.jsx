@@ -207,7 +207,8 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
               <button className="btn btn-sm" style={{ ...hdrBtn, background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
                 onClick={() => onSendMail({ ...item, ...draft })}
                 title={item.mailedAt ? `前回 ${new Date(item.mailedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} に送信` : 'お客様にメールを送る'}>
-                メール
+                {/* 一度送ったお客様は、開いた瞬間に分かるようにする */}
+                {item.mailedAt ? two('メール', '送信済み') : 'メール'}
               </button>
             )}
             {!isNew && onSave && (
