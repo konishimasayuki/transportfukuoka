@@ -42,7 +42,12 @@ function categoryOf(name) {
 const hdrBtn = { padding: '4px 8px', lineHeight: 1.25, whiteSpace: 'nowrap', textAlign: 'center', fontWeight: 700 }
 const two = (a, b) => <span style={{ display: 'block' }}>{a}<br />{b}</span>
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }
-const box     = { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 820, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
+// スマホ（iOS Safari）では 92vh が画面より高くなり、見出しと保存バーが画面外へ出て
+// 押せなくなる。dvh を使い、見出し・中身・保存バーの3段にして中身だけを送る。
+const box = { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 820,
+  display: 'flex', flexDirection: 'column', overflow: 'hidden',
+  boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
+const bodyScroll = { flex: '1 1 auto', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }
 // セクション見出し：既存タブのカード見出し風（白背景＋青の左アクセント）に統一
 const sectionBar = {
   background: '#F8FAFC', color: '#1E293B', fontSize: 12, fontWeight: 800,
@@ -189,9 +194,9 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
   return (
     // 枠外クリックでは閉じない（入力中の内容が消えないように）。閉じるはヘッダー/フッターのボタンから
     <div style={overlay}>
-      <div style={box} className="print-area">
+      <div style={box} className="print-area lead-modal-box">
         {/* ヘッダー */}
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fff', flex: '0 0 auto' }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 800 }}>
               {isNew ? '新規リード' : (v('name') || item.name || '（名前なし）')}
@@ -200,7 +205,7 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
             </div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{item.site || ''}{item.orderId ? ` ／ 依頼番号 ${item.orderId}` : ''}</div>
           </div>
-          <div className="no-print" style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div className="no-print lead-hdr-btns" style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {!isNew && <button className="btn btn-sm btn-outline" style={hdrBtn} onClick={doPrint}>{two('印刷', 'PDF')}</button>}
             {/* 電話が繋がらなかったお客様へのメール。定型文を出してから送る */}
             {!isNew && onSendMail && (
@@ -241,6 +246,7 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
           </div>
         </div>
 
+        <div style={bodyScroll}>
         {/* 基本情報 */}
         <div style={sectionBar}>基本情報</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid #EEF2F7' }}>
@@ -404,9 +410,11 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
           </div>
         )}
 
+        </div>
+
         {/* 保存バー */}
         {onSave && (
-          <div className="no-print" style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '1px solid #EEF2F7', padding: '10px 14px', display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+          <div className="no-print" style={{ flex: '0 0 auto', background: '#fff', borderTop: '1px solid #EEF2F7', padding: '10px 14px', display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
             {dirty && <span style={{ fontSize: 11, color: '#C2410C', marginRight: 'auto' }}>未保存の変更があります</span>}
             <button className="btn btn-outline btn-sm" onClick={onClose}>閉じる</button>
             <button className="btn btn-primary btn-sm" onClick={saveChanges} disabled={(!dirty && !isNew) || saving || (isNew && !v('name'))} style={{ opacity: ((!dirty && !isNew) || (isNew && !v('name'))) ? .55 : 1 }}>
