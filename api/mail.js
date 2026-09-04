@@ -4,7 +4,7 @@
 //   POST … 1通送る。送れたらリードに送信履歴を残す
 import { mailerStatus, sendMail, validAddress } from './_mailer.js'
 import { readItems, mutate, redisCmd } from './_kvstore.js'
-import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate } from '../src/lib/mailTemplate.js'
+import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate, hasAmountTag } from '../src/lib/mailTemplate.js'
 
 const LEADS_KEY = 'transportfukuoka:leads'
 const LEADS_VER = 'transportfukuoka:leads:ver'
@@ -54,6 +54,10 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const { to, subject, text, leadKey, phone, id } = req.body || {}
       if (!validAddress(to)) return res.status(400).json({ error: '宛先のメールアドレスが正しくありません' })
+      // 料金の差し込みが埋まらないまま送られないようにする（画面側でも止めているが二重に）
+      if (hasAmountTag(subject, text)) {
+        return res.status(400).json({ error: 'ご案内する料金が入っていません' })
+      }
       const sent = await sendMail({ to, subject, text })
       // 送れたことをリードに残す（画面が閉じても履歴が消えないようサーバ側で書く）
       const at = new Date().toISOString()

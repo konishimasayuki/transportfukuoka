@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { DEFAULT_STAFF } from '../lib/staff'
 import { DEFAULT_FLEET, TRUCK_CLASSES, DEFAULT_CREW } from '../lib/fleet'
-import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate } from '../lib/mailTemplate'
+import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate, fillAmount } from '../lib/mailTemplate'
 import ModalPortal from '../components/ModalPortal'
 
 // 設定の各項目の器。設定画面ではカード、モーダルの中では見出し無しの中身だけ出す。
@@ -496,6 +496,9 @@ const PREVIEW_LEAD = {
   name: 'サンプル 太郎', site: '引越し侍', moveDate: '10月15日 午前中',
   fromAddress: '福岡市中央区天神1-1-1', toAddress: '福岡市博多区博多駅前2-2-2',
 }
+// {amount} は本来「送る直前に1件ずつ入れる料金」。ここではサンプルの金額で見せる。
+const PREVIEW_AMOUNT = 45000
+const preview1 = (t) => fillAmount(fillMailTemplate(t, PREVIEW_LEAD), PREVIEW_AMOUNT)
 
 // メール設定：送信できる状態かを見せ、電話が繋がらなかったお客様への定型文を編集する。
 // 送信元（ドメイン・パスワード等）は Vercel の環境変数で持つ。ここには出さない。
@@ -562,8 +565,8 @@ function MailSettings({ isDemo, bare, registerBeforeClose }) {
         // いま編集中の定型文を、サンプルのお客様で差し込んで送る（保存前の内容でも試せる）。
         // リードには紐づけない（送信履歴を汚さない）
         body: JSON.stringify({ to: testTo.trim(),
-          subject: fillMailTemplate(subject, PREVIEW_LEAD),
-          text: fillMailTemplate(body, PREVIEW_LEAD) }),
+          subject: preview1(subject),
+          text: preview1(body) }),
       })
       const d = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(d.error || '送信できませんでした')
@@ -647,10 +650,10 @@ function MailSettings({ isDemo, bare, registerBeforeClose }) {
                   <div style={{ color: '#94A3B8', fontSize: 10.5 }}>差出人</div>
                   <div style={{ fontWeight: 700, marginBottom: 6 }}>{st.from || '（MAIL_FROM が未設定）'}</div>
                   <div style={{ color: '#94A3B8', fontSize: 10.5 }}>件名</div>
-                  <div style={{ fontWeight: 700 }}>{fillMailTemplate(subject, PREVIEW_LEAD)}</div>
+                  <div style={{ fontWeight: 700 }}>{preview1(subject)}</div>
                 </div>
                 <div style={{ padding: '12px 14px', fontSize: 12.5, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
-                  {fillMailTemplate(body, PREVIEW_LEAD)}
+                  {preview1(body)}
                 </div>
               </div>
             ) : (
@@ -661,6 +664,7 @@ function MailSettings({ isDemo, bare, registerBeforeClose }) {
                 <textarea style={{ ...ip, minHeight: 230, lineHeight: 1.7, resize: 'vertical' }} value={body} onChange={e => { setBody(e.target.value); setDirty(true) }} />
                 <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '6px 0 10px', lineHeight: 1.7 }}>
                   差し込み：<code>{'{name}'}</code> お客様名／<code>{'{moveDate}'}</code> 引越し希望日／<code>{'{from}'}</code> 現住所／<code>{'{to}'}</code> 引越し先／<code>{'{site}'}</code> 流入元<br />
+                  <code>{'{amount}'}</code> ご案内する料金 … これだけは他と違い、<b>送る画面で1件ずつ金額を入力</b>します（入れないと送信できません）。<br />
                   ※ 送る前に1件ずつ本文を確認・修正できます。ここは「毎回の下書き」の内容です。
                 </div>
               </>
