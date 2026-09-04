@@ -13,7 +13,7 @@
 //        RESEND_API_KEY
 //
 // どちらでも必要：
-//        MAIL_FROM      例 "株式会社トランスポーター <info@example.co.jp>"
+//        MAIL_FROM      例 "株式会社トランスポーター <info@transporter-hikkoshi.com>"
 //        MAIL_REPLY_TO  返信先を別にしたいとき（任意）
 //        MAIL_BCC       送った控えを自社に残したいとき（任意）
 //
