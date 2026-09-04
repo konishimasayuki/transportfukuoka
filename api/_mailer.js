@@ -2,13 +2,14 @@
 // 自社ドメインからお客様へメールを送る共通モジュール
 // （api/ 配下だが _ 始まりのためURLにはならない）
 //
-// 送信方法は環境変数で決まる。どちらか一方を入れれば動く。
+// 送信方法は環境変数で決まる。どちらか一方を入れれば動く。※本番は Resend を使う
 //   A) SMTP（取得したドメインのメールサーバーをそのまま使う）
 //        SMTP_HOST   例 smtp.lolipop.jp / smtp.gmail.com
 //        SMTP_PORT   例 587（STARTTLS）／465（SSL）
 //        SMTP_USER   メールアドレス（またはログインID）
 //        SMTP_PASS   パスワード（Google Workspaceは「アプリパスワード」）
 //        SMTP_SECURE 465のときだけ true（未指定なら PORT=465 で自動 true）
+//        SMTP_REQUIRE_TLS 既定 true。587でSTARTTLSを必須にする（暗号化できなければ送らない）
 //   B) Resend（メール配信サービス）
 //        RESEND_API_KEY
 //
@@ -26,6 +27,9 @@ const SMTP = {
   user: process.env.SMTP_USER,
   pass: process.env.SMTP_PASS,
   secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : Number(process.env.SMTP_PORT) === 465,
+  // お客様の氏名・住所を流すので、暗号化できない相手には送らない（587はSTARTTLS必須）。
+  // 暗号化に対応していない社内サーバー等でだけ SMTP_REQUIRE_TLS=false にする。
+  requireTLS: process.env.SMTP_REQUIRE_TLS !== 'false',
 }
 const RESEND_KEY = process.env.RESEND_API_KEY
 const FROM     = process.env.MAIL_FROM || ''
@@ -66,7 +70,10 @@ async function sendViaSmtp({ to, subject, text }) {
   const { default: nodemailer } = await import('nodemailer')
   const tp = nodemailer.createTransport({
     host: SMTP.host, port: SMTP.port, secure: SMTP.secure,
+    requireTLS: !SMTP.secure && SMTP.requireTLS,
     auth: { user: SMTP.user, pass: SMTP.pass },
+    // 相手が応答しないときに関数が固まらないよう、待ち時間に上限を付ける
+    connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000,
   })
   const info = await tp.sendMail({
     from: FROM, to, subject, text,
@@ -77,15 +84,22 @@ async function sendViaSmtp({ to, subject, text }) {
 }
 
 async function sendViaResend({ to, subject, text }) {
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: FROM, to: [to], subject, text,
-      ...(REPLY_TO ? { reply_to: REPLY_TO } : {}),
-      ...(BCC ? { bcc: [BCC] } : {}),
-    }),
-  })
+  // 応答が返らないときに関数が固まらないよう、20秒で打ち切る
+  let res
+  try {
+    res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: FROM, to: [to], subject, text,
+        ...(REPLY_TO ? { reply_to: REPLY_TO } : {}),
+        ...(BCC ? { bcc: [BCC] } : {}),
+      }),
+      signal: AbortSignal.timeout(20000),
+    })
+  } catch (e) {
+    throw new Error(e.name === 'TimeoutError' ? 'Resendから応答がありません（20秒）' : `Resendへ接続できません（${e.message}）`)
+  }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data?.message || `Resend ${res.status}`)
   return { id: data?.id || '' }
