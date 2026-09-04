@@ -1034,7 +1034,16 @@ export default function Estimate({ user, switchTab }) {
   if (view === 'list') {
     // 見積書 + 成約管理 をマージ表示。成約由来は見積書化されていないものだけ（contractId で重複排除）
     const issuedContractIds = new Set(items.map(i => i.contractId).filter(Boolean))
-    const fromEst = items.map(i => ({ ...i, _kind: 'estimate', _sortDate: i.estimateDate || i.moveDate || '' }))
+    // 成約から起こした見積書は、元の成約と同じ並び順（売上登録日＋成約の並び）のままにする。
+    // 見積日で並べ替えると「見積書として作成」を押した瞬間に行が別の場所へ飛ぶため。
+    const conById = {}
+    contracts.forEach((c, ix) => { conById[c.id] = { c, ix } })
+    const fromEst = items.map(i => {
+      const h = i.contractId ? conById[i.contractId] : null
+      return { ...i, _kind: 'estimate',
+        _sortDate: (h && (h.c.salesDate || h.c.date)) || i.estimateDate || i.moveDate || '',
+        _tie: h ? 1000 + h.ix : 0 }
+    })
     const fromCon = contracts
       .filter(c => !issuedContractIds.has(c.id))
       .map(c => ({
@@ -1050,7 +1059,11 @@ export default function Estimate({ user, switchTab }) {
         status: c.status || '成約',
         _sortDate: c.salesDate || c.date || '', // 売り上げ登録日を優先して並べ替え
       }))
-    const rows = [...fromEst, ...fromCon].sort((a, b) => String(b._sortDate).localeCompare(String(a._sortDate)))
+    // 同じ日付の中でも位置が変わらないよう、成約由来は成約一覧の並びを副キーにする
+    const conIx = Object.fromEntries(contracts.map((c, ix) => [c.id, ix]))
+    fromCon.forEach(r => { r._tie = 1000 + conIx[r._contract.id] })
+    const rows = [...fromEst, ...fromCon]
+      .sort((a, b) => String(b._sortDate).localeCompare(String(a._sortDate)) || (a._tie - b._tie))
     const estCount = items.length
     const conCount = fromCon.length
     const sumEst = items.reduce((s, i) => s + num(i.total), 0)
