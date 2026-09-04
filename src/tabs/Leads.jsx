@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import LeadDetailModal, { ConvertToContractModal, EMPTY_LEAD, MailPanel } from '../components/LeadDetailModal'
+import LeadDetailModal, { ConvertToContractModal, EMPTY_LEAD, MailPanel, MailSentMark } from '../components/LeadDetailModal'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { receivedAtMs } from '../lib/sortLeads'
@@ -677,7 +677,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr>{sortableTh('receivedAt', '受付日時')}<th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>訪問見積もり日</th><th>タイムツリー</th><th>メモ</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
+                <tr>{sortableTh('receivedAt', '受付日時')}<th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>訪問見積もり日</th><th>タイムツリー</th><th>メモ</th><th>ステータス</th><th>メール送信</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
@@ -727,6 +727,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
                         {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
+                    <td><MailSentMark lead={item} /></td>
                     <td>
                       <select
                         value={item.staff || ''}

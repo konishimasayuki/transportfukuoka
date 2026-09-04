@@ -5,7 +5,7 @@ import { SourceTag } from '../lib/source'
 import { shortArea, splitRoute } from '../lib/area'
 import { receivedAtMs } from '../lib/sortLeads'
 import ContractDetailModal, { STATUS_LIST, STATUS_BADGE, SOURCE_LIST, AIRCON_OPTS, CARDBOARD_OPTS, EMPTY_CONTRACT } from '../components/ContractDetailModal'
-import LeadDetailModal, { MailPanel } from '../components/LeadDetailModal'
+import LeadDetailModal, { MailPanel, MailSentMark } from '../components/LeadDetailModal'
 import { DEMO_DATA as DEMO_LEADS } from './Leads'
 
 // すべて架空のサンプル（氏名は「サンプル＋名」で実在しないと一目でわかる形）。
@@ -732,12 +732,12 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                   {sortableTh('date', '引越し日')}
                   <th>区間</th><th>見積金額</th>
                   {mode === 'follow' ? <><th>メモ</th><th>メモ最終更新日時</th></> : <><th>エアコン</th><th>段ボール</th></>}
-                  <th>タイムツリー</th><th>ステータス</th><th>担当者</th>{mode !== 'follow' && <th>操作</th>}
+                  <th>タイムツリー</th><th>ステータス</th>{mode === 'follow' && <th>メール送信</th>}<th>担当者</th>{mode !== 'follow' && <th>操作</th>}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={mode === 'follow' ? 11 : (!meta ? 12 : 11)} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
+                  <tr><td colSpan={mode === 'follow' ? 12 : (!meta ? 12 : 11)} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id}
                     onClick={() => item._isLead && setLeadDetailItem(item._lead)}
@@ -782,6 +782,9 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                         </select>
                       )}
                     </td>
+                    {mode === 'follow' && (
+                      <td>{item._isLead ? <MailSentMark lead={item._lead || item} /> : <span style={{ color: '#CBD5E1' }}>—</span>}</td>
+                    )}
                     <td>
                       <select
                         value={item.staff || ''}

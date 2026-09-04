@@ -362,7 +362,7 @@ function TruckSettings({ isDemo }) {
     // 号車が空の行は落とす（外注枠は除く）
     const cleaned = list.filter(v => String(v.id || '').trim() || v.ext).map(v => ({ ...v, id: String(v.id || '').trim() }))
     setList(cleaned)
-    if (isDemo) { flash('保存しました（デモ：保存なし）'); return }
+    if (isDemo) { setDirty(false); flash('保存しました（デモ：保存なし）'); return }
     setBusy(true)
     try {
       await fetch('/api/dispatch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fleet: cleaned }) })
@@ -445,7 +445,7 @@ function CrewSettings({ isDemo }) {
 
   const persist = async (next) => {
     setList(next)
-    if (isDemo) { flash('保存しました（デモ：保存なし）'); return }
+    if (isDemo) { setDirty(false); flash('保存しました（デモ：保存なし）'); return }
     setBusy(true)
     try {
       await fetch('/api/dispatch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ crew: next }) })
@@ -498,7 +498,7 @@ const PREVIEW_LEAD = {
 
 // メール設定：送信できる状態かを見せ、電話が繋がらなかったお客様への定型文を編集する。
 // 送信元（ドメイン・パスワード等）は Vercel の環境変数で持つ。ここには出さない。
-function MailSettings({ isDemo, bare }) {
+function MailSettings({ isDemo, bare, registerBeforeClose }) {
   const [st, setSt] = useState(null)
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
@@ -511,6 +511,9 @@ function MailSettings({ isDemo, bare }) {
   const [testing, setTesting] = useState(false)
   const [testMsg, setTestMsg] = useState(null)   // { ok, text }
   const [preview, setPreview] = useState(false)  // 定型文を差し込み後の見た目で見る
+  // 見積書モーダルと同じで、閉じたときに書きかけが消えないよう保存する
+  const [dirty, setDirty] = useState(false)
+  const latest = useRef({ subject: '', body: '', dirty: false })
 
   useEffect(() => {
     if (isDemo) {
@@ -521,7 +524,7 @@ function MailSettings({ isDemo, bare }) {
     fetch('/api/mail').then(r => r.json()).then(d => {
       setSt(d.status || { ready: false, missing: [] })
       setSubject((d.template || {}).subject || ''); setBody((d.template || {}).body || '')
-      setDefs(d.defaults || null)
+      setDefs(d.defaults || null); setDirty(false)
     }).catch(() => {
       setSt({ ready: false, missing: ['設定を読み込めませんでした'] })
       setSubject(DEFAULT_MAIL_TEMPLATE.subject); setBody(DEFAULT_MAIL_TEMPLATE.body); setDefs(DEFAULT_MAIL_TEMPLATE)
@@ -529,14 +532,26 @@ function MailSettings({ isDemo, bare }) {
   }, [isDemo])
 
   const save = async () => {
-    if (isDemo) { flash('保存しました（デモ：保存なし）'); return }
+    if (isDemo) { setDirty(false); flash('保存しました（デモ：保存なし）'); return }
     setBusy(true)
     try {
       const res = await fetch('/api/mail', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject, body }) })
+      if (res.ok) setDirty(false)
       flash(res.ok ? '保存しました' : '保存できませんでした')
     } catch { flash('保存できませんでした') }
     setBusy(false)
   }
+
+  latest.current = { subject, body, dirty }
+  useEffect(() => {
+    registerBeforeClose?.(async () => {
+      const { subject: sb, body: bd, dirty: dt } = latest.current
+      if (!dt || isDemo || !sb.trim() || !bd.trim()) return
+      try {
+        await fetch('/api/mail', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject: sb, body: bd }) })
+      } catch { /* 失敗しても閉じる。次に開けば元の内容が出る */ }
+    })
+  }, [])
 
   const sendTest = async () => {
     setTesting(true); setTestMsg(null)
@@ -640,9 +655,9 @@ function MailSettings({ isDemo, bare }) {
             ) : (
               <>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>件名（定型文）</div>
-                <input style={{ ...ip, marginBottom: 8 }} value={subject} onChange={e => setSubject(e.target.value)} />
+                <input style={{ ...ip, marginBottom: 8 }} value={subject} onChange={e => { setSubject(e.target.value); setDirty(true) }} />
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>本文（定型文）</div>
-                <textarea style={{ ...ip, minHeight: 230, lineHeight: 1.7, resize: 'vertical' }} value={body} onChange={e => setBody(e.target.value)} />
+                <textarea style={{ ...ip, minHeight: 230, lineHeight: 1.7, resize: 'vertical' }} value={body} onChange={e => { setBody(e.target.value); setDirty(true) }} />
                 <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '6px 0 10px', lineHeight: 1.7 }}>
                   差し込み：<code>{'{name}'}</code> お客様名／<code>{'{moveDate}'}</code> 引越し希望日／<code>{'{from}'}</code> 現住所／<code>{'{to}'}</code> 引越し先／<code>{'{site}'}</code> 流入元<br />
                   ※ 送る前に1件ずつ本文を確認・修正できます。ここは「毎回の下書き」の内容です。
@@ -651,7 +666,8 @@ function MailSettings({ isDemo, bare }) {
             )}
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-primary btn-sm" onClick={save} disabled={busy || !subject.trim() || !body.trim()}>保存</button>
-              {defs && <button className="btn btn-outline btn-sm" onClick={() => { setSubject(defs.subject); setBody(defs.body) }}>既定の文に戻す</button>}
+              {defs && <button className="btn btn-outline btn-sm" onClick={() => { setSubject(defs.subject); setBody(defs.body); setDirty(true) }}>既定の文に戻す</button>}
+              {dirty && <span style={{ alignSelf: 'center', fontSize: 11, color: '#C2410C', fontWeight: 700 }}>未保存（閉じると自動で保存します）</span>}
             </div>
           </>
         )}
@@ -675,10 +691,18 @@ export default function Settings({ user }) {
   const isDemo = user?.mode === 'demo'
   // 開いている設定項目（'' なら何も開いていない）
   const [open, setOpen] = useState('')
+  // モーダルを閉じる直前にやること（書きかけの保存）。項目側が登録する。
+  const beforeClose = useRef(null)
+  const closeOpened = async () => {
+    const fn = beforeClose.current
+    beforeClose.current = null
+    if (fn) { try { await fn() } catch { /* 失敗しても閉じる */ } }
+    setOpen('')
+  }
   // 一覧に出す設定項目。ボタンを押すとモーダルで開く。
   const ITEMS = [
     { id: 'staff',   label: '担当者設定', desc: '成約管理の担当者プルダウンに出る名前', el: <StaffSettings isDemo={isDemo} bare /> },
-    { id: 'mail',    label: 'メール設定', desc: 'お客様へ送るメールの差出人と定型文',  el: <MailSettings  isDemo={isDemo} bare /> },
+    { id: 'mail',    label: 'メール設定', desc: 'お客様へ送るメールの差出人と定型文',  el: <MailSettings  isDemo={isDemo} bare registerBeforeClose={fn => { beforeClose.current = fn }} /> },
     ...(isDemo ? [] : [{ id: 'company', label: '会社情報', desc: '会社名・代表電話・メール通知先', el: <CompanySettings bare /> }]),
   ]
   const opened = ITEMS.find(i => i.id === open)
@@ -720,7 +744,7 @@ export default function Settings({ user }) {
           （使わなくなったため。部品は残してあるので、必要になれば ITEMS に足すだけで戻せる） */}
 
       {opened && (
-        <SettingsModal title={opened.label} onClose={() => setOpen('')}>{opened.el}</SettingsModal>
+        <SettingsModal title={opened.label} onClose={closeOpened}>{opened.el}</SettingsModal>
       )}
     </div>
   )

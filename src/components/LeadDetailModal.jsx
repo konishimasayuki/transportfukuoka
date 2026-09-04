@@ -579,6 +579,21 @@ export function ConvertToContractModal({ lead, onClose, onConfirm, onGoCalendar 
  * メール送信パネル（電話が繋がらなかったお客様への連絡）
  * 定型文を差し込んだ下書きを出し、その場で直してから送る。
  * ------------------------------------------------------------------- */
+// 一覧の「メール送信」列。送っていれば「済」＋いつ送ったか、まだなら「—」
+export function MailSentMark({ lead }) {
+  const at = lead && lead.mailedAt
+  if (!at) return <span style={{ color: '#CBD5E1', fontSize: 12 }}>—</span>
+  const d = new Date(at)
+  const when = isNaN(d.getTime()) ? '' : d.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return (
+    <span title={when ? `${when} に送信` : '送信済み'}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+      <span className="badge bg">済</span>
+      {when && <span style={{ fontSize: 10.5, color: '#94A3B8' }}>{when}</span>}
+    </span>
+  )
+}
+
 // サーバに繋がらないときでも下書きが空にならないよう、同じ既定文を控えとして使う
 const FALLBACK_MAIL = DEFAULT_MAIL_TEMPLATE
 const fillMail = fillMailTemplate
