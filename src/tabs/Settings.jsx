@@ -3,8 +3,38 @@ import { DEFAULT_STAFF } from '../lib/staff'
 import { DEFAULT_FLEET, TRUCK_CLASSES, DEFAULT_CREW } from '../lib/fleet'
 import { DEFAULT_MAIL_TEMPLATE } from '../lib/mailTemplate'
 
+// 設定の各項目の器。設定画面ではカード、モーダルの中では見出し無しの中身だけ出す。
+function Panel({ title, msg, bare, children }) {
+  if (bare) return <div style={{ padding: 16 }}>{msg && <div style={{ fontSize: 12, color: '#15803D', marginBottom: 8 }}>{msg}</div>}{children}</div>
+  return (
+    <div className="card">
+      <div className="card-head"><h3>{title}</h3>{msg && <span className="c-sub" style={{ color: '#15803D' }}>{msg}</span>}</div>
+      <div className="card-body">{children}</div>
+    </div>
+  )
+}
+
+// 設定項目のモーダル。枠の外・閉じるで閉じる。
+function SettingsModal({ title, onClose, children }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 1200,
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflow: 'auto' }}
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 620, marginTop: 24,
+        boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 16px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+          <b style={{ fontSize: 15 }}>{title}</b>
+          <button className="btn btn-sm btn-outline" onClick={onClose}>閉じる</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 // 担当者設定：名前を入力→登録。成約管理・成約登録の担当者プルダウンに反映される。
-function StaffSettings({ isDemo }) {
+function StaffSettings({ isDemo, bare }) {
   const [list, setList]   = useState(DEFAULT_STAFF)
   const [name, setName]   = useState('')
   const [loading, setLoading] = useState(!isDemo)
@@ -48,9 +78,7 @@ function StaffSettings({ isDemo }) {
   }
 
   return (
-    <div className="card">
-      <div className="card-head"><h3>👥 担当者設定</h3>{msg && <span className="c-sub" style={{ color: '#15803D' }}>{msg}</span>}</div>
-      <div className="card-body">
+    <Panel title="担当者設定" msg={msg} bare={bare}>
         <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>
           名前を入力して「登録」すると、成約管理・成約登録の担当者プルダウンに表示されます。
         </div>
@@ -78,8 +106,7 @@ function StaffSettings({ isDemo }) {
             ))}
           </div>
         )}
-      </div>
-    </div>
+    </Panel>
   )
 }
 
@@ -465,7 +492,7 @@ function CrewSettings({ isDemo }) {
 
 // メール設定：送信できる状態かを見せ、電話が繋がらなかったお客様への定型文を編集する。
 // 送信元（ドメイン・パスワード等）は Vercel の環境変数で持つ。ここには出さない。
-function MailSettings({ isDemo }) {
+function MailSettings({ isDemo, bare }) {
   const [st, setSt] = useState(null)
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
@@ -504,11 +531,9 @@ function MailSettings({ isDemo }) {
     fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: '#fff' }
 
   return (
-    <div className="card">
-      <div className="card-head"><h3>✉ メール設定</h3>{msg && <span className="c-sub" style={{ color: '#15803D' }}>{msg}</span>}</div>
-      <div className="card-body">
+    <Panel title="メール設定" msg={msg} bare={bare}>
         <div style={{ fontSize: 12, color: 'var(--sub)', marginBottom: 8, lineHeight: 1.6 }}>
-          電話が繋がらなかったお客様へ、リード詳細の「✉ メール」から自社ドメインのメールを送ります。
+          電話が繋がらなかったお客様へ、リード詳細の「メール」から自社ドメインのメールを送ります。
         </div>
         {!st ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>読み込み中…</div> : (
           <>
@@ -548,82 +573,73 @@ function MailSettings({ isDemo }) {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Panel>
+  )
+}
+
+// 会社情報。※ 保存先が無く、押しても保存されない（元からの状態）
+function CompanySettings({ bare }) {
+  return (
+    <Panel title="会社情報" bare={bare}>
+      <SettingRow label="会社名"><input className="setting-input" defaultValue="トランスポーター" /></SettingRow>
+      <SettingRow label="代表電話番号"><input className="setting-input" defaultValue="092-XXX-XXXX" /></SettingRow>
+      <SettingRow label="メール通知先"><input className="setting-input" defaultValue="info@transport.jp" /></SettingRow>
+      <div style={{ marginTop: 14, textAlign: 'right' }}><button className="btn btn-primary">保存する</button></div>
+    </Panel>
   )
 }
 
 export default function Settings({ user }) {
   const isDemo = user?.mode === 'demo'
+  // 開いている設定項目（'' なら何も開いていない）
+  const [open, setOpen] = useState('')
+  // 一覧に出す設定項目。ボタンを押すとモーダルで開く。
+  const ITEMS = [
+    { id: 'staff',   label: '担当者設定', desc: '成約管理の担当者プルダウンに出る名前', el: <StaffSettings isDemo={isDemo} bare /> },
+    { id: 'mail',    label: 'メール設定', desc: 'お客様へ送るメールの差出人と定型文',  el: <MailSettings  isDemo={isDemo} bare /> },
+    ...(isDemo ? [] : [{ id: 'company', label: '会社情報', desc: '会社名・代表電話・メール通知先', el: <CompanySettings bare /> }]),
+  ]
+  const opened = ITEMS.find(i => i.id === open)
+
   return (
     <div>
       <div className="page-hdr"><h1>設定</h1><p>システムの各種設定を管理します</p></div>
 
-      <div className="two-col">
-        <div>
-          {/* デモでは非表示：通知メッセージ送信（実送信を伴う運用機能） */}
-          {!isDemo && <BroadcastSender isDemo={isDemo} />}
-
-          <StaffSettings isDemo={isDemo} />
-
-          <MailSettings isDemo={isDemo} />
-
-          {/* 架電設定は非表示（架電タブを止めているため） */}
-
-          <div className="card">
-            <div className="card-head"><h3>🔍 監視サイト</h3></div>
-            <div className="card-body">
-              <SettingRow label="ズバット"  desc="リロード間隔: 30秒"><Toggle defaultChecked /></SettingRow>
-              <SettingRow label="引越し侍" desc="リロード間隔: 30秒"><Toggle defaultChecked /></SettingRow>
-              <SettingRow label="価格.com" desc="リロード間隔: 45秒"><Toggle defaultChecked /></SettingRow>
-              <SettingRow label="SUUMO"    desc="リロード間隔: 60秒"><Toggle /></SettingRow>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <TruckSettings isDemo={isDemo} />
-
-          <CrewSettings isDemo={isDemo} />
-
-          {/* デモでは非表示：Googleマップ設定（APIキー入力を伴う） */}
-          {!isDemo && <GmapKeySettings />}
-
-          {/* デモでは非表示：会社情報 */}
-          {!isDemo && (
-          <div className="card">
-            <div className="card-head"><h3>🏢 会社情報</h3></div>
-            <div className="card-body">
-              <SettingRow label="会社名"><input className="setting-input" defaultValue="トランスポーター" /></SettingRow>
-              <SettingRow label="代表電話番号"><input className="setting-input" defaultValue="092-XXX-XXXX" /></SettingRow>
-              <SettingRow label="メール通知先"><input className="setting-input" defaultValue="info@transport.jp" /></SettingRow>
-              <div style={{ marginTop:14, textAlign:'right' }}><button className="btn btn-primary">保存する</button></div>
-            </div>
-          </div>
-          )}
-
-          {/* CSVインポートは非表示 */}
-          {false && (
-          <div className="card">
-            <div className="card-head"><h3>📊 CSVインポート</h3></div>
-            <div className="card-body">
-              {[
-                { label:'ズバット',  badge:'bo' },
-                { label:'引越し侍', badge:'bb' },
-                { label:'価格.com', badge:'bg' },
-                { label:'SUUMO',    badge:'bk' },
-              ].map(s => (
-                <div key={s.label} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                  <span className={`badge ${s.badge}`} style={{ minWidth:72, justifyContent:'center' }}>{s.label}</span>
-                  <span style={{ fontSize:11, color:'#16A34A' }}>✓ 対応済み</span>
-                  <button className="btn btn-outline btn-sm" style={{ marginLeft:'auto' }}>インポート</button>
-                </div>
-              ))}
-            </div>
-          </div>
-          )}
+      {/* 各項目はボタン。押すとモーダルで編集する */}
+      <div className="card">
+        <div className="card-body" style={{ display: 'grid', gap: 8 }}>
+          {ITEMS.map(it => (
+            <button key={it.id} className="btn btn-outline" onClick={() => setOpen(it.id)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: 12, padding: '12px 14px', textAlign: 'left', background: '#fff' }}>
+              <span>
+                <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: '#1E293B' }}>{it.label}</span>
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: '#94A3B8', marginTop: 2 }}>{it.desc}</span>
+              </span>
+              <span style={{ color: '#94A3B8', fontSize: 15 }}>›</span>
+            </button>
+          ))}
         </div>
       </div>
+
+      {/* 監視サイト：折りたたみ */}
+      <details className="card" style={{ padding: 0 }}>
+        <summary style={{ cursor: 'pointer', listStyle: 'revert', padding: '13px 16px', fontSize: 13, fontWeight: 800, color: '#1E293B' }}>
+          監視サイト
+        </summary>
+        <div className="card-body" style={{ paddingTop: 0 }}>
+          <SettingRow label="ズバット"  desc="リロード間隔: 30秒"><Toggle defaultChecked /></SettingRow>
+          <SettingRow label="引越し侍" desc="リロード間隔: 30秒"><Toggle defaultChecked /></SettingRow>
+          <SettingRow label="価格.com" desc="リロード間隔: 45秒"><Toggle defaultChecked /></SettingRow>
+        </div>
+      </details>
+
+      {/* 非表示：通知メッセージ送信・Googleマップ設定・トラック設定・乗務員設定・架電設定・CSVインポート
+          （使わなくなったため。部品は残してあるので、必要になれば ITEMS に足すだけで戻せる） */}
+
+      {opened && (
+        <SettingsModal title={opened.label} onClose={() => setOpen('')}>{opened.el}</SettingsModal>
+      )}
     </div>
   )
 }
