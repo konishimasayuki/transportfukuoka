@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { DEFAULT_STAFF } from '../lib/staff'
 import { DEFAULT_FLEET, TRUCK_CLASSES, DEFAULT_CREW } from '../lib/fleet'
-import { DEFAULT_MAIL_TEMPLATE } from '../lib/mailTemplate'
+import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate } from '../lib/mailTemplate'
 
 // 設定の各項目の器。設定画面ではカード、モーダルの中では見出し無しの中身だけ出す。
 function Panel({ title, msg, bare, children }) {
@@ -490,6 +490,12 @@ function CrewSettings({ isDemo }) {
 }
 
 
+// プレビューに使うサンプルのお客様（実際の差し込みと同じ関数で埋める）
+const PREVIEW_LEAD = {
+  name: 'サンプル 太郎', site: '引越し侍', moveDate: '10月15日 午前中',
+  fromAddress: '福岡市中央区天神1-1-1', toAddress: '福岡市博多区博多駅前2-2-2',
+}
+
 // メール設定：送信できる状態かを見せ、電話が繋がらなかったお客様への定型文を編集する。
 // 送信元（ドメイン・パスワード等）は Vercel の環境変数で持つ。ここには出さない。
 function MailSettings({ isDemo, bare }) {
@@ -500,6 +506,11 @@ function MailSettings({ isDemo, bare }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 2400) }
+  // テスト送信（実際に1通出してみる。設定の穴はここで分かる）
+  const [testTo, setTestTo] = useState('')
+  const [testing, setTesting] = useState(false)
+  const [testMsg, setTestMsg] = useState(null)   // { ok, text }
+  const [preview, setPreview] = useState(false)  // 定型文を差し込み後の見た目で見る
 
   useEffect(() => {
     if (isDemo) {
@@ -527,6 +538,22 @@ function MailSettings({ isDemo, bare }) {
     setBusy(false)
   }
 
+  const sendTest = async () => {
+    setTesting(true); setTestMsg(null)
+    try {
+      const res = await fetch('/api/mail', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // リードに紐づけない（送信履歴を汚さない）
+        body: JSON.stringify({ to: testTo.trim(), subject: '【テスト】メール送信の確認',
+          text: 'これは引越しCRMからのテスト送信です。\nこのメールが届いていれば、お客様へメールを送れます。' }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || '送信できませんでした')
+      setTestMsg({ ok: true, text: `送信しました。${testTo.trim()} の受信箱を確認してください（迷惑メールも）` })
+    } catch (e) { setTestMsg({ ok: false, text: e.message }) }
+    setTesting(false)
+  }
+
   const ip = { width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8,
     fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: '#fff' }
 
@@ -544,6 +571,26 @@ function MailSettings({ isDemo, bare }) {
                 ? <>送信できます（{st.provider === 'smtp' ? `SMTP ${st.host}` : 'Resend'}）<br />差出人：<b>{st.from}</b>{st.bcc ? <><br />控えの送り先：{st.bcc}</> : null}</>
                 : <>まだ送信できません。未設定：<b>{(st.missing || []).join(' / ')}</b></>}
             </div>
+            {/* 実際に1通出してみる。ドメイン認証が済んでいないなど、状態表示だけでは
+                分からない不備はここで初めて分かる（お客様宛で失敗する前に気づくため） */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>テスト送信（自分宛に1通出して確かめる）</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input style={ip} value={testTo} onChange={e => setTestTo(e.target.value)}
+                  placeholder="自分のメールアドレス" disabled={!st.ready || testing} />
+                <button className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }}
+                  disabled={!st.ready || testing || !testTo.trim()} onClick={sendTest}>
+                  {testing ? '送信中…' : '送信'}
+                </button>
+              </div>
+              {testMsg && (
+                <div style={{ marginTop: 6, fontSize: 11.5, lineHeight: 1.6, padding: '7px 10px', borderRadius: 8,
+                  background: testMsg.ok ? '#F0FDF4' : '#FEF2F2',
+                  border: `1px solid ${testMsg.ok ? '#BBF7D0' : '#FECACA'}`,
+                  color: testMsg.ok ? '#15803D' : '#B91C1C' }}>{testMsg.text}</div>
+              )}
+            </div>
+
             <details style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.8 }}>
               <summary style={{ cursor: 'pointer', color: 'var(--sub)', fontWeight: 700 }}>送信できるようにする手順（Resend）</summary>
               <div style={{ paddingTop: 6 }}>
@@ -565,14 +612,36 @@ function MailSettings({ isDemo, bare }) {
               </div>
             </details>
 
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>件名（定型文）</div>
-            <input style={{ ...ip, marginBottom: 8 }} value={subject} onChange={e => setSubject(e.target.value)} />
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>本文（定型文）</div>
-            <textarea style={{ ...ip, minHeight: 230, lineHeight: 1.7, resize: 'vertical' }} value={body} onChange={e => setBody(e.target.value)} />
-            <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '6px 0 10px', lineHeight: 1.7 }}>
-              差し込み：<code>{'{name}'}</code> お客様名／<code>{'{moveDate}'}</code> 引越し希望日／<code>{'{from}'}</code> 現住所／<code>{'{to}'}</code> 引越し先／<code>{'{site}'}</code> 流入元<br />
-              ※ 送る前に1件ずつ本文を確認・修正できます。ここは「毎回の下書き」の内容です。
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <button className={`btn btn-sm ${preview ? 'btn-outline' : 'btn-primary'}`} onClick={() => setPreview(false)}>編集</button>
+              <button className={`btn btn-sm ${preview ? 'btn-primary' : 'btn-outline'}`} onClick={() => setPreview(true)}>プレビュー</button>
+              {preview && <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>お客様に届く見え方（サンプルのお客様で差し込み）</span>}
             </div>
+
+            {preview ? (
+              <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 10 }}>
+                <div style={{ background: '#F8FAFC', borderBottom: '1px solid var(--border)', padding: '8px 12px', fontSize: 12 }}>
+                  <div style={{ color: '#94A3B8', fontSize: 10.5 }}>差出人</div>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>{st.from || '（MAIL_FROM が未設定）'}</div>
+                  <div style={{ color: '#94A3B8', fontSize: 10.5 }}>件名</div>
+                  <div style={{ fontWeight: 700 }}>{fillMailTemplate(subject, PREVIEW_LEAD)}</div>
+                </div>
+                <div style={{ padding: '12px 14px', fontSize: 12.5, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+                  {fillMailTemplate(body, PREVIEW_LEAD)}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>件名（定型文）</div>
+                <input style={{ ...ip, marginBottom: 8 }} value={subject} onChange={e => setSubject(e.target.value)} />
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>本文（定型文）</div>
+                <textarea style={{ ...ip, minHeight: 230, lineHeight: 1.7, resize: 'vertical' }} value={body} onChange={e => setBody(e.target.value)} />
+                <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '6px 0 10px', lineHeight: 1.7 }}>
+                  差し込み：<code>{'{name}'}</code> お客様名／<code>{'{moveDate}'}</code> 引越し希望日／<code>{'{from}'}</code> 現住所／<code>{'{to}'}</code> 引越し先／<code>{'{site}'}</code> 流入元<br />
+                  ※ 送る前に1件ずつ本文を確認・修正できます。ここは「毎回の下書き」の内容です。
+                </div>
+              </>
+            )}
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-primary btn-sm" onClick={save} disabled={busy || !subject.trim() || !body.trim()}>保存</button>
               {defs && <button className="btn btn-outline btn-sm" onClick={() => { setSubject(defs.subject); setBody(defs.body) }}>既定の文に戻す</button>}
