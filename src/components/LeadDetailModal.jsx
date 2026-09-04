@@ -4,7 +4,7 @@
 // onCreateEstimate(item)：「📝 見積書を作成」で見積書タブへプリフィル遷移
 import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
-import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate } from '../lib/mailTemplate'
+import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate, hasAmountTag, formatAmount, fillAmount } from '../lib/mailTemplate'
 import ModalPortal from './ModalPortal'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
@@ -644,6 +644,9 @@ export function MailPanel({ lead, onClose, onSent }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  // 定型文に {amount} があるときだけ使う「ご案内する料金」。
+  // 金額はリードの内容からは決まらないので、送る人がその場で入れる。
+  const [amount, setAmount] = useState('')
 
   useEffect(() => {
     let alive = true
@@ -666,9 +669,11 @@ export function MailPanel({ lead, onClose, onSent }) {
   const send = async () => {
     setErr(''); setBusy(true)
     try {
+      // {amount} は送る直前に入力された料金へ置き換える
       const res = await fetch('/api/mail', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, subject, text, leadKey: lead.key, phone: lead.phone, id: lead.id }),
+        body: JSON.stringify({ to, subject: fillAmount(subject, amount), text: fillAmount(text, amount),
+          leadKey: lead.key, phone: lead.phone, id: lead.id }),
       })
       const d = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(d.error || '送信できませんでした')
@@ -682,11 +687,14 @@ export function MailPanel({ lead, onClose, onSent }) {
     fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: '#fff' }
   const lb = { fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }
   const last = Array.isArray(lead.mailLog) && lead.mailLog.length ? lead.mailLog[lead.mailLog.length - 1] : null
+  const needAmount = hasAmountTag(subject, text)   // 本文か件名に {amount} がある
+  const shownAmount = formatAmount(amount)         // 実際に入る文字（空なら未入力）
+  const blocked = busy || !state.ready || !to || !subject || !text || (needAmount && !shownAmount)
 
   return (
     <ModalPortal><div style={{ ...overlay, zIndex: 1400 }} onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ ...box, maxWidth: 620 }}>
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ ...box, maxWidth: 620 }} className="lead-modal-box">
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flex: '0 0 auto' }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 800 }}>✉ メールを送る</div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
@@ -696,7 +704,7 @@ export function MailPanel({ lead, onClose, onSent }) {
           <button className="btn btn-sm btn-outline" onClick={onClose}>閉じる</button>
         </div>
 
-        <div style={{ padding: 16 }}>
+        <div style={{ ...bodyScroll, padding: 16 }}>
           {state.loading ? <div style={{ color: '#94A3B8', fontSize: 12 }}>読み込み中…</div> : (
             <>
               {!state.ready && (
@@ -726,16 +734,43 @@ export function MailPanel({ lead, onClose, onSent }) {
                   value={text} onChange={e => setText(e.target.value)} />
               </div>
               {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C',
-                borderRadius: 8, padding: '8px 11px', fontSize: 12, marginBottom: 10 }}>{err}</div>}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button className="btn btn-outline btn-sm" onClick={onClose}>やめる</button>
-                <button className="btn btn-primary btn-sm" disabled={busy || !state.ready || !to || !subject || !text}
-                  style={{ opacity: (busy || !state.ready || !to || !subject || !text) ? .55 : 1 }}
-                  onClick={send}>{busy ? '送信中…' : '送信する'}</button>
-              </div>
+                borderRadius: 8, padding: '8px 11px', fontSize: 12 }}>{err}</div>}
             </>
           )}
         </div>
+
+        {/* 下の固定バー。左下に料金、右に「やめる／送信する」 */}
+        {!state.loading && (
+          <div style={{ flex: '0 0 auto', borderTop: '1px solid #EEF2F7', background: '#fff',
+            padding: '10px 16px', display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            {/* 定型文に {amount} があるときだけ出す。入れないと送れない */}
+            {needAmount && (
+              <div style={{ flex: '1 1 220px' }}>
+                <label style={{ ...lb, color: shownAmount ? '#64748B' : '#C2410C' }}>
+                  ご案内する料金{shownAmount ? '' : '（必須）'}
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input style={{ ...ip, width: 130, textAlign: 'right',
+                      borderColor: shownAmount ? '#E2E8F0' : '#FCA5A5', background: shownAmount ? '#fff' : '#FFF7ED' }}
+                    value={amount} onChange={e => setAmount(e.target.value.replace(/[^\d]/g, ''))}
+                    inputMode="numeric" placeholder="例 45000" />
+                  <span style={{ fontSize: 12, color: '#64748B' }}>円</span>
+                </div>
+                <div style={{ fontSize: 10.5, color: shownAmount ? '#94A3B8' : '#C2410C', marginTop: 4 }}>
+                  {shownAmount
+                    ? <>本文の <code>{'{amount}'}</code> が「{shownAmount}」になります</>
+                    : <>本文に <code>{'{amount}'}</code> があります。入れないと送れません</>}
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+              <button className="btn btn-outline btn-sm" onClick={onClose}>やめる</button>
+              <button className="btn btn-primary btn-sm" disabled={blocked}
+                style={{ opacity: blocked ? .55 : 1 }}
+                onClick={send}>{busy ? '送信中…' : '送信する'}</button>
+            </div>
+          </div>
+        )}
       </div>
     </div></ModalPortal>
   )
