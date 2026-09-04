@@ -9,6 +9,7 @@
 //        SMTP_USER   メールアドレス（またはログインID）
 //        SMTP_PASS   パスワード（Google Workspaceは「アプリパスワード」）
 //        SMTP_SECURE 465のときだけ true（未指定なら PORT=465 で自動 true）
+//        SMTP_REQUIRE_TLS 既定 true。587でSTARTTLSを必須にする（暗号化できなければ送らない）
 //   B) Resend（メール配信サービス）
 //        RESEND_API_KEY
 //
@@ -26,6 +27,9 @@ const SMTP = {
   user: process.env.SMTP_USER,
   pass: process.env.SMTP_PASS,
   secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : Number(process.env.SMTP_PORT) === 465,
+  // お客様の氏名・住所を流すので、暗号化できない相手には送らない（587はSTARTTLS必須）。
+  // 暗号化に対応していない社内サーバー等でだけ SMTP_REQUIRE_TLS=false にする。
+  requireTLS: process.env.SMTP_REQUIRE_TLS !== 'false',
 }
 const RESEND_KEY = process.env.RESEND_API_KEY
 const FROM     = process.env.MAIL_FROM || ''
@@ -66,6 +70,7 @@ async function sendViaSmtp({ to, subject, text }) {
   const { default: nodemailer } = await import('nodemailer')
   const tp = nodemailer.createTransport({
     host: SMTP.host, port: SMTP.port, secure: SMTP.secure,
+    requireTLS: !SMTP.secure && SMTP.requireTLS,
     auth: { user: SMTP.user, pass: SMTP.pass },
   })
   const info = await tp.sendMail({

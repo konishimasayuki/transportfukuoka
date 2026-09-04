@@ -548,14 +548,20 @@ function MailSettings({ isDemo, bare }) {
               <summary style={{ cursor: 'pointer', color: 'var(--sub)', fontWeight: 700 }}>Vercelに入れる環境変数（ドメインができたら）</summary>
               <div style={{ paddingTop: 6 }}>
                 どちらか一方でかまいません。<br />
-                <b>ドメインのメールをそのまま使う場合</b><br />
-                <code>SMTP_HOST</code>／<code>SMTP_PORT</code>（587 か 465）／<code>SMTP_USER</code>／<code>SMTP_PASS</code><br />
+                <b>Google Workspace のメールを使う場合</b><br />
+                <code>SMTP_HOST</code>=<code>smtp.gmail.com</code>／<code>SMTP_PORT</code>=<code>587</code>／
+                <code>SMTP_USER</code>=送信に使うアドレス／<code>SMTP_PASS</code>=そのアカウントの<b>アプリパスワード</b><br />
                 <b>Resendを使う場合</b><br />
                 <code>RESEND_API_KEY</code><br />
                 <b>どちらでも必要</b><br />
                 <code>MAIL_FROM</code>（例 <code>株式会社トランスポーター &lt;info@transporter-hikkoshi.com&gt;</code>）<br />
                 任意：<code>MAIL_REPLY_TO</code>（返信先を別にする）／<code>MAIL_BCC</code>（送信控えを自社に残す）<br />
-                ※ Google Workspace の場合、<code>SMTP_PASS</code> は通常のパスワードではなく「アプリパスワード」です。
+                ※ アプリパスワードは、そのアカウントで2段階認証をONにしてから
+                <code>myaccount.google.com/apppasswords</code> で作ります（通常のパスワードでは送れません）。<br />
+                ※ <code>MAIL_FROM</code> のアドレスは <code>SMTP_USER</code> と同じにしてください。
+                違うと Gmail 側で差出人が書き換えられます。<br />
+                ※ <code>SMTP_PASS</code> と <code>RESEND_API_KEY</code> は Vercel で <b>Secret</b> を選んでください
+                （<code>MAIL_FROM</code> などは Config で構いません）。
               </div>
             </details>
 
