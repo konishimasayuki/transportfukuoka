@@ -5,7 +5,7 @@ import { SourceTag } from '../lib/source'
 import { shortArea, splitRoute } from '../lib/area'
 import { receivedAtMs } from '../lib/sortLeads'
 import ContractDetailModal, { STATUS_LIST, STATUS_BADGE, SOURCE_LIST, AIRCON_OPTS, CARDBOARD_OPTS, EMPTY_CONTRACT } from '../components/ContractDetailModal'
-import LeadDetailModal from '../components/LeadDetailModal'
+import LeadDetailModal, { MailPanel } from '../components/LeadDetailModal'
 import { DEMO_DATA as DEMO_LEADS } from './Leads'
 
 // すべて架空のサンプル（氏名は「サンプル＋名」で実在しないと一目でわかる形）。
@@ -193,6 +193,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const [toast, setToast] = useState('')
   const [followLeads, setFollowLeads] = useState([]) // 追客タブ用：ステータス「要追客」のリード（未成約）
   const [leadDetailItem, setLeadDetailItem] = useState(null) // 追客タブ：クリックしたリード行の詳細（リード管理と同じモーダル）
+  const [mailLead, setMailLead] = useState(null)                 // メール送信パネルで開いているリード
   const [pendingLeadConvert, setPendingLeadConvert] = useState(null) // 追客タブ：成約登録の確定待ちリード
   const fileRef = useRef(null)
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2600) }
@@ -828,7 +829,19 @@ export default function Contracts({ user, mode, onFollowDelta }) {
           item={leadDetailItem}
           onClose={() => setLeadDetailItem(null)}
           onSave={saveLeadPatch}
+          onSendMail={setMailLead}
         />
+      )}
+
+      {/* 電話が繋がらなかったお客様へのメール */}
+      {mailLead && (
+        <MailPanel lead={mailLead} onClose={() => setMailLead(null)}
+          onSent={({ at, to, subject }) => {
+            const stamp = (l) => ({ ...l, email: to, mailedAt: at, mailLog: [...(l.mailLog || []), { at, to, subject }] })
+            setFollowLeads(prev => prev.map(l => (l.id === mailLead.id ? stamp(l) : l)))
+            setLeadDetailItem(d => (d && d.id === mailLead.id ? stamp(d) : d))
+            showToast('メールを送信しました')
+          }} />
       )}
 
       {/* 削除確認 */}

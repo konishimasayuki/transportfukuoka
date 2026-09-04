@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import LeadDetailModal, { ConvertToContractModal } from '../components/LeadDetailModal'
+import LeadDetailModal, { ConvertToContractModal, MailPanel } from '../components/LeadDetailModal'
 import { receivedAtMs } from '../lib/sortLeads'
 
 // すべて架空のサンプル（氏名は「サンプル○」、番号はダミー）。
@@ -206,6 +206,13 @@ export default function Call({ user, switchTab }) {
 
   const [detailItem, setDetailItem] = useState(null)
   const [convertLead, setConvertLead] = useState(null)
+  // 電話が繋がらなかったお客様へのメール
+  const [mailLead, setMailLead] = useState(null)
+  const onMailSent = ({ at, to, subject }) => {
+    const stamp = (l) => ({ ...l, email: to, mailedAt: at, mailLog: [...(l.mailLog || []), { at, to, subject }] })
+    setLeads(prev => prev.map(l => (l.id === mailLead.id ? stamp(l) : l)))
+    setDetailItem(d => (d && d.id === mailLead.id ? stamp(d) : d))
+  }
 
   // 詳細モーダルからのステータス変更（楽観更新＋サーバ反映）
   const updateLeadStatus = async (item, status) => {
@@ -365,7 +372,10 @@ export default function Call({ user, switchTab }) {
         onSave={savePatch}
         onCreateEstimate={createEstimateFromLead}
         onCreateContract={(it) => setConvertLead(it)}
+        onSendMail={setMailLead}
       />
+
+      {mailLead && <MailPanel lead={mailLead} onClose={() => setMailLead(null)} onSent={onMailSent} />}
 
       {convertLead && (
         <ConvertToContractModal

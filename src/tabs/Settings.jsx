@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { DEFAULT_STAFF } from '../lib/staff'
 import { DEFAULT_FLEET, TRUCK_CLASSES, DEFAULT_CREW } from '../lib/fleet'
+import { DEFAULT_MAIL_TEMPLATE } from '../lib/mailTemplate'
 
 // 担当者設定：名前を入力→登録。成約管理・成約登録の担当者プルダウンに反映される。
 function StaffSettings({ isDemo }) {
@@ -461,6 +462,97 @@ function CrewSettings({ isDemo }) {
   )
 }
 
+
+// メール設定：送信できる状態かを見せ、電話が繋がらなかったお客様への定型文を編集する。
+// 送信元（ドメイン・パスワード等）は Vercel の環境変数で持つ。ここには出さない。
+function MailSettings({ isDemo }) {
+  const [st, setSt] = useState(null)
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [defs, setDefs] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 2400) }
+
+  useEffect(() => {
+    if (isDemo) {
+      setSt({ ready: false, provider: '', from: '', missing: ['デモでは送信しません'] })
+      setSubject(DEFAULT_MAIL_TEMPLATE.subject); setBody(DEFAULT_MAIL_TEMPLATE.body); setDefs(DEFAULT_MAIL_TEMPLATE)
+      return
+    }
+    fetch('/api/mail').then(r => r.json()).then(d => {
+      setSt(d.status || { ready: false, missing: [] })
+      setSubject((d.template || {}).subject || ''); setBody((d.template || {}).body || '')
+      setDefs(d.defaults || null)
+    }).catch(() => {
+      setSt({ ready: false, missing: ['設定を読み込めませんでした'] })
+      setSubject(DEFAULT_MAIL_TEMPLATE.subject); setBody(DEFAULT_MAIL_TEMPLATE.body); setDefs(DEFAULT_MAIL_TEMPLATE)
+    })
+  }, [isDemo])
+
+  const save = async () => {
+    if (isDemo) { flash('保存しました（デモ：保存なし）'); return }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/mail', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject, body }) })
+      flash(res.ok ? '保存しました' : '保存できませんでした')
+    } catch { flash('保存できませんでした') }
+    setBusy(false)
+  }
+
+  const ip = { width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8,
+    fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: '#fff' }
+
+  return (
+    <div className="card">
+      <div className="card-head"><h3>✉ メール設定</h3>{msg && <span className="c-sub" style={{ color: '#15803D' }}>{msg}</span>}</div>
+      <div className="card-body">
+        <div style={{ fontSize: 12, color: 'var(--sub)', marginBottom: 8, lineHeight: 1.6 }}>
+          電話が繋がらなかったお客様へ、リード詳細の「✉ メール」から自社ドメインのメールを送ります。
+        </div>
+        {!st ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>読み込み中…</div> : (
+          <>
+            <div style={{ fontSize: 11, marginBottom: 10, padding: '8px 11px', borderRadius: 8, lineHeight: 1.7,
+              background: st.ready ? '#F0FDF4' : '#FFF7ED', border: `1px solid ${st.ready ? '#BBF7D0' : '#FED7AA'}`,
+              color: st.ready ? '#15803D' : '#9A3412' }}>
+              {st.ready
+                ? <>送信できます（{st.provider === 'smtp' ? `SMTP ${st.host}` : 'Resend'}）<br />差出人：<b>{st.from}</b>{st.bcc ? <><br />控えの送り先：{st.bcc}</> : null}</>
+                : <>まだ送信できません。未設定：<b>{(st.missing || []).join(' / ')}</b></>}
+            </div>
+            <details style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.8 }}>
+              <summary style={{ cursor: 'pointer', color: 'var(--sub)', fontWeight: 700 }}>Vercelに入れる環境変数（ドメインができたら）</summary>
+              <div style={{ paddingTop: 6 }}>
+                どちらか一方でかまいません。<br />
+                <b>ドメインのメールをそのまま使う場合</b><br />
+                <code>SMTP_HOST</code>／<code>SMTP_PORT</code>（587 か 465）／<code>SMTP_USER</code>／<code>SMTP_PASS</code><br />
+                <b>Resendを使う場合</b><br />
+                <code>RESEND_API_KEY</code><br />
+                <b>どちらでも必要</b><br />
+                <code>MAIL_FROM</code>（例 <code>株式会社トランスポーター &lt;info@自社ドメイン&gt;</code>）<br />
+                任意：<code>MAIL_REPLY_TO</code>（返信先を別にする）／<code>MAIL_BCC</code>（送信控えを自社に残す）<br />
+                ※ Google Workspace の場合、<code>SMTP_PASS</code> は通常のパスワードではなく「アプリパスワード」です。
+              </div>
+            </details>
+
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>件名（定型文）</div>
+            <input style={{ ...ip, marginBottom: 8 }} value={subject} onChange={e => setSubject(e.target.value)} />
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>本文（定型文）</div>
+            <textarea style={{ ...ip, minHeight: 230, lineHeight: 1.7, resize: 'vertical' }} value={body} onChange={e => setBody(e.target.value)} />
+            <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '6px 0 10px', lineHeight: 1.7 }}>
+              差し込み：<code>{'{name}'}</code> お客様名／<code>{'{moveDate}'}</code> 引越し希望日／<code>{'{from}'}</code> 現住所／<code>{'{to}'}</code> 引越し先／<code>{'{site}'}</code> 流入元<br />
+              ※ 送る前に1件ずつ本文を確認・修正できます。ここは「毎回の下書き」の内容です。
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary btn-sm" onClick={save} disabled={busy || !subject.trim() || !body.trim()}>保存</button>
+              {defs && <button className="btn btn-outline btn-sm" onClick={() => { setSubject(defs.subject); setBody(defs.body) }}>既定の文に戻す</button>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Settings({ user }) {
   const isDemo = user?.mode === 'demo'
   return (
@@ -473,6 +565,8 @@ export default function Settings({ user }) {
           {!isDemo && <BroadcastSender isDemo={isDemo} />}
 
           <StaffSettings isDemo={isDemo} />
+
+          <MailSettings isDemo={isDemo} />
 
           {/* 架電設定は非表示（架電タブを止めているため） */}
 

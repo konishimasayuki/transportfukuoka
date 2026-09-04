@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import LeadDetailModal, { ConvertToContractModal, EMPTY_LEAD } from '../components/LeadDetailModal'
+import LeadDetailModal, { ConvertToContractModal, EMPTY_LEAD, MailPanel } from '../components/LeadDetailModal'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { receivedAtMs } from '../lib/sortLeads'
@@ -163,7 +163,15 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [detailItem, setDetailItem] = useState(null)
   const [newLead, setNewLead] = useState(null) // 手入力の新規リード登録モーダル
-  const [convertLead, setConvertLead] = useState(null) // ステータス「成約」変更時の登録モーダル
+  const [convertLead, setConvertLead] = useState(null)
+  // メール送信（サーバ側で履歴を残しているので、画面はその内容に合わせるだけ）
+  const [mailLead, setMailLead] = useState(null)
+  const onMailSent = ({ at, to, subject }) => {
+    const stamp = (l) => ({ ...l, email: to, mailedAt: at, mailLog: [...(l.mailLog || []), { at, to, subject }] })
+    setLeads(prev => prev.map(l => (l.id === mailLead.id ? stamp(l) : l)))
+    setDetailItem(d => (d && d.id === mailLead.id ? stamp(d) : d))
+    showToast('メールを送信しました')
+  } // ステータス「成約」変更時の登録モーダル
   const [importing, setImporting] = useState(false)
   const [toast, setToast] = useState('')
   const [staffList, setStaffList] = useState(DEFAULT_STAFF)
@@ -781,7 +789,13 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
         onCopyToContract={copyLeadToContract}
         onCreateEstimate={createEstimateFromLead}
         onCreateContract={(it) => setConvertLead(it)}
+        onSendMail={setMailLead}
       />
+
+      {/* 電話が繋がらなかったお客様へのメール */}
+      {mailLead && (
+        <MailPanel lead={mailLead} onClose={() => setMailLead(null)} onSent={onMailSent} />
+      )}
 
       {convertLead && (
         <ConvertToContractModal
