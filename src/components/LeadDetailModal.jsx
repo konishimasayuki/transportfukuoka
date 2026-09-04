@@ -4,6 +4,7 @@
 // onCreateEstimate(item)：「📝 見積書を作成」で見積書タブへプリフィル遷移
 import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
+import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate } from '../lib/mailTemplate'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
 // 手入力で新規登録するときの初期値（査定サイト由来ではないので流入元は「その他」）
@@ -86,7 +87,7 @@ function Row({ label, value, edit, onChange, type = 'text', options, placeholder
   )
 }
 
-export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, onSave, onCreateEstimate, onCreateContract, onCopyLead, onCopyToContract }) {
+export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, onSave, onCreateEstimate, onCreateContract, onCopyLead, onCopyToContract, onSendMail }) {
   const [edit, setEdit] = useState(!!isNew)
   const [draft, setDraft] = useState({})
   const [kazai, setKazai] = useState([])
@@ -198,6 +199,14 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
           </div>
           <div className="no-print" style={{ display: 'flex', gap: 6 }}>
             {!isNew && <button className="btn btn-sm btn-outline" onClick={doPrint}>🖨 印刷/PDF</button>}
+            {/* 電話が繋がらなかったお客様へのメール。定型文を出してから送る */}
+            {!isNew && onSendMail && (
+              <button className="btn btn-sm" style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', fontWeight: 700 }}
+                onClick={() => onSendMail({ ...item, ...draft })}
+                title={item.mailedAt ? `前回 ${new Date(item.mailedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} に送信` : 'お客様にメールを送る'}>
+                ✉ メール{item.mailedAt ? '（送信済）' : ''}
+              </button>
+            )}
             {!isNew && onSave && (
               <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`}
                 onClick={() => setEdit(e => !e)}>
@@ -559,4 +568,117 @@ export function ConvertToContractModal({ lead, onClose, onConfirm, onGoCalendar 
   )
 
   return done ? doneView : formView
+}
+
+
+/* ---------------------------------------------------------------------
+ * メール送信パネル（電話が繋がらなかったお客様への連絡）
+ * 定型文を差し込んだ下書きを出し、その場で直してから送る。
+ * ------------------------------------------------------------------- */
+// サーバに繋がらないときでも下書きが空にならないよう、同じ既定文を控えとして使う
+const FALLBACK_MAIL = DEFAULT_MAIL_TEMPLATE
+const fillMail = fillMailTemplate
+
+export function MailPanel({ lead, onClose, onSent }) {
+  const [state, setState] = useState({ loading: true, ready: false, why: '', from: '' })
+  const [to, setTo] = useState(lead.email || '')
+  const [subject, setSubject] = useState('')
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    const key = encodeURIComponent(lead.key || lead.id || lead.phone || '')
+    fetch(`/api/mail?lead=${key}`).then(r => r.json()).then(d => {
+      if (!alive) return
+      const st = d.status || {}
+      const f = d.filled || { to: lead.email || '', subject: (d.template || {}).subject || '', body: (d.template || {}).body || '' }
+      setTo(prev => prev || f.to || '')
+      setSubject(f.subject || ''); setText(f.body || '')
+      setState({ loading: false, ready: !!st.ready, why: (st.missing || []).join(' / '), from: st.from || '' })
+    }).catch(() => {
+      if (!alive) return
+      setSubject(fillMail(FALLBACK_MAIL.subject, lead)); setText(fillMail(FALLBACK_MAIL.body, lead))
+      setState({ loading: false, ready: false, why: 'サーバに繋がりませんでした', from: '' })
+    })
+    return () => { alive = false }
+  }, [lead])
+
+  const send = async () => {
+    setErr(''); setBusy(true)
+    try {
+      const res = await fetch('/api/mail', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, subject, text, leadKey: lead.key, phone: lead.phone, id: lead.id }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || '送信できませんでした')
+      onSent?.({ at: d.at, to, subject })
+      onClose()
+    } catch (e) { setErr(e.message) }
+    setBusy(false)
+  }
+
+  const ip = { width: '100%', padding: '8px 10px', border: '1px solid #E2E8F0', borderRadius: 8,
+    fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: '#fff' }
+  const lb = { fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }
+  const last = Array.isArray(lead.mailLog) && lead.mailLog.length ? lead.mailLog[lead.mailLog.length - 1] : null
+
+  return (
+    <div style={{ ...overlay, zIndex: 1400 }} onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ ...box, maxWidth: 620 }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF2F7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>✉ メールを送る</div>
+            <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+              {lead.name || '（名前なし）'} 様{state.from ? ` ／ 差出人 ${state.from}` : ''}
+            </div>
+          </div>
+          <button className="btn btn-sm btn-outline" onClick={onClose}>閉じる</button>
+        </div>
+
+        <div style={{ padding: 16 }}>
+          {state.loading ? <div style={{ color: '#94A3B8', fontSize: 12 }}>読み込み中…</div> : (
+            <>
+              {!state.ready && (
+                <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', color: '#9A3412',
+                  borderRadius: 8, padding: '9px 11px', fontSize: 12, lineHeight: 1.6, marginBottom: 12 }}>
+                  メールの送信設定がまだです。設定タブの「✉ メール設定」に必要な項目が出ています。<br />
+                  {state.why && <span style={{ fontSize: 11 }}>未設定：{state.why}</span>}
+                </div>
+              )}
+              {last && (
+                <div style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>
+                  前回の送信：{new Date(last.at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}　{last.subject}
+                </div>
+              )}
+              <div style={{ marginBottom: 10 }}>
+                <label style={lb}>宛先</label>
+                <input style={ip} value={to} onChange={e => setTo(e.target.value)} placeholder="お客様のメールアドレス" />
+                {!lead.email && <div style={{ fontSize: 10.5, color: '#94A3B8', marginTop: 4 }}>※ このリードにメールアドレスが無いので、手で入れてください（送ると保存されます）</div>}
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <label style={lb}>件名</label>
+                <input style={ip} value={subject} onChange={e => setSubject(e.target.value)} />
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <label style={lb}>本文</label>
+                <textarea style={{ ...ip, minHeight: 260, lineHeight: 1.7, resize: 'vertical' }}
+                  value={text} onChange={e => setText(e.target.value)} />
+              </div>
+              {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C',
+                borderRadius: 8, padding: '8px 11px', fontSize: 12, marginBottom: 10 }}>{err}</div>}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="btn btn-outline btn-sm" onClick={onClose}>やめる</button>
+                <button className="btn btn-primary btn-sm" disabled={busy || !state.ready || !to || !subject || !text}
+                  style={{ opacity: (busy || !state.ready || !to || !subject || !text) ? .55 : 1 }}
+                  onClick={send}>{busy ? '送信中…' : '送信する'}</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
