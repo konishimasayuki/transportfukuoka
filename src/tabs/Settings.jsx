@@ -543,13 +543,15 @@ function MailSettings({ isDemo, bare }) {
     try {
       const res = await fetch('/api/mail', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        // リードに紐づけない（送信履歴を汚さない）
-        body: JSON.stringify({ to: testTo.trim(), subject: '【テスト】メール送信の確認',
-          text: 'これは引越しCRMからのテスト送信です。\nこのメールが届いていれば、お客様へメールを送れます。' }),
+        // いま編集中の定型文を、サンプルのお客様で差し込んで送る（保存前の内容でも試せる）。
+        // リードには紐づけない（送信履歴を汚さない）
+        body: JSON.stringify({ to: testTo.trim(),
+          subject: fillMailTemplate(subject, PREVIEW_LEAD),
+          text: fillMailTemplate(body, PREVIEW_LEAD) }),
       })
       const d = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(d.error || '送信できませんでした')
-      setTestMsg({ ok: true, text: `送信しました。${testTo.trim()} の受信箱を確認してください（迷惑メールも）` })
+      setTestMsg({ ok: true, text: `定型文を1通送りました。${testTo.trim()} の受信箱を確認してください（迷惑メールも）` })
     } catch (e) { setTestMsg({ ok: false, text: e.message }) }
     setTesting(false)
   }
@@ -574,14 +576,19 @@ function MailSettings({ isDemo, bare }) {
             {/* 実際に1通出してみる。ドメイン認証が済んでいないなど、状態表示だけでは
                 分からない不備はここで初めて分かる（お客様宛で失敗する前に気づくため） */}
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>テスト送信（自分宛に1通出して確かめる）</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>
+                テスト送信（下の定型文を自分宛に1通出して確かめる）
+              </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <input style={ip} value={testTo} onChange={e => setTestTo(e.target.value)}
                   placeholder="自分のメールアドレス" disabled={!st.ready || testing} />
                 <button className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }}
-                  disabled={!st.ready || testing || !testTo.trim()} onClick={sendTest}>
+                  disabled={!st.ready || testing || !testTo.trim() || !subject.trim() || !body.trim()} onClick={sendTest}>
                   {testing ? '送信中…' : '送信'}
                 </button>
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
+                ※ 下の編集中の内容がそのまま送られます（保存前でも可）。お客様名などはサンプルで埋めます。
               </div>
               {testMsg && (
                 <div style={{ marginTop: 6, fontSize: 11.5, lineHeight: 1.6, padding: '7px 10px', borderRadius: 8,
