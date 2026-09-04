@@ -38,6 +38,9 @@ function categoryOf(name) {
   return 'その他'
 }
 
+// モーダル上部のボタン。文字数で幅が変わらないよう、改行位置を決め打ちして折り返させない
+const hdrBtn = { padding: '4px 8px', lineHeight: 1.25, whiteSpace: 'nowrap', textAlign: 'center', fontWeight: 700 }
+const two = (a, b) => <span style={{ display: 'block' }}>{a}<br />{b}</span>
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }
 const box     = { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 820, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
 // セクション見出し：既存タブのカード見出し風（白背景＋青の左アクセント）に統一
@@ -197,43 +200,43 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
             </div>
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{item.site || ''}{item.orderId ? ` ／ 依頼番号 ${item.orderId}` : ''}</div>
           </div>
-          <div className="no-print" style={{ display: 'flex', gap: 6 }}>
-            {!isNew && <button className="btn btn-sm btn-outline" onClick={doPrint}>🖨 印刷/PDF</button>}
+          <div className="no-print" style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {!isNew && <button className="btn btn-sm btn-outline" style={hdrBtn} onClick={doPrint}>{two('印刷', 'PDF')}</button>}
             {/* 電話が繋がらなかったお客様へのメール。定型文を出してから送る */}
             {!isNew && onSendMail && (
-              <button className="btn btn-sm" style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', fontWeight: 700 }}
+              <button className="btn btn-sm" style={{ ...hdrBtn, background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}
                 onClick={() => onSendMail({ ...item, ...draft })}
                 title={item.mailedAt ? `前回 ${new Date(item.mailedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} に送信` : 'お客様にメールを送る'}>
-                ✉ メール{item.mailedAt ? '（送信済）' : ''}
+                メール
               </button>
             )}
             {!isNew && onSave && (
-              <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`}
+              <button className={`btn btn-sm ${edit ? 'btn-outline' : 'btn-primary'}`} style={hdrBtn}
                 onClick={() => setEdit(e => !e)}>
-                {edit ? '閲覧に戻す' : '✏ 編集'}
+                {edit ? two('閲覧', 'に戻す') : '編集'}
               </button>
             )}
             {/* コピー：同じ内容をリード管理内に複製（流入元は「その他」） */}
             {!isNew && onCopyLead && (
-              <button className="btn btn-sm" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontWeight: 700 }}
-                onClick={() => onCopyLead(item)}>⧉ コピー</button>
+              <button className="btn btn-sm" style={{ ...hdrBtn, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}
+                onClick={() => onCopyLead(item)}>コピー</button>
             )}
             {/* コピー：成約管理へ複製（元のリードはそのまま残る） */}
             {!isNew && onCopyToContract && (
-              <button className="btn btn-sm" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', fontWeight: 700 }}
-                onClick={() => onCopyToContract(item)}>⧉ 成約へコピー</button>
+              <button className="btn btn-sm" style={{ ...hdrBtn, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}
+                onClick={() => onCopyToContract(item)}>{two('成約', 'コピー')}</button>
             )}
             {!isNew && onCreateContract && (
               (item.status === '成約' || item.contracted)
                 ? <button className="btn btn-sm" disabled title="このリードは成約登録済みです。編集は成約管理で行えます。"
-                    style={{ background: '#E2E8F0', color: '#64748B', fontWeight: 700, cursor: 'default' }}>✅ 成約済み</button>
-                : <button className="btn btn-sm" style={{ background: '#16A34A', color: '#fff', fontWeight: 700 }} onClick={() => onCreateContract(item)}>✅ 成約登録</button>
+                    style={{ ...hdrBtn, background: '#E2E8F0', color: '#64748B', cursor: 'default' }}>{two('成約', '済み')}</button>
+                : <button className="btn btn-sm" style={{ ...hdrBtn, background: '#16A34A', color: '#fff' }} onClick={() => onCreateContract(item)}>{two('成約', '登録')}</button>
             )}
             {/* 編集中の家財も渡す（保存前に追加した家財が消えないように） */}
             {!isNew && onCreateEstimate && (
-              <button className="btn btn-primary btn-sm" onClick={() => onCreateEstimate({ ...item, kazai })}>📝 見積書を作成</button>
+              <button className="btn btn-primary btn-sm" style={hdrBtn} onClick={() => onCreateEstimate({ ...item, kazai })}>{two('見積書', '作成')}</button>
             )}
-            <button className="btn btn-sm btn-outline" onClick={onClose}>閉じる</button>
+            <button className="btn btn-sm btn-outline" style={hdrBtn} onClick={onClose}>閉じる</button>
           </div>
         </div>
 
