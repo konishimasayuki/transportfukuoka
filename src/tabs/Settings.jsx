@@ -553,7 +553,7 @@ function MailSettings({ isDemo, bare }) {
                 <b>Resendを使う場合</b><br />
                 <code>RESEND_API_KEY</code><br />
                 <b>どちらでも必要</b><br />
-                <code>MAIL_FROM</code>（例 <code>株式会社トランスポーター &lt;info@自社ドメイン&gt;</code>）<br />
+                <code>MAIL_FROM</code>（例 <code>株式会社トランスポーター &lt;info@transporter-hikkoshi.com&gt;</code>）<br />
                 任意：<code>MAIL_REPLY_TO</code>（返信先を別にする）／<code>MAIL_BCC</code>（送信控えを自社に残す）<br />
                 ※ Google Workspace の場合、<code>SMTP_PASS</code> は通常のパスワードではなく「アプリパスワード」です。
               </div>
@@ -583,7 +583,7 @@ function CompanySettings({ bare }) {
     <Panel title="会社情報" bare={bare}>
       <SettingRow label="会社名"><input className="setting-input" defaultValue="トランスポーター" /></SettingRow>
       <SettingRow label="代表電話番号"><input className="setting-input" defaultValue="092-XXX-XXXX" /></SettingRow>
-      <SettingRow label="メール通知先"><input className="setting-input" defaultValue="info@transport.jp" /></SettingRow>
+      <SettingRow label="メール通知先"><input className="setting-input" defaultValue="info@transporter-hikkoshi.com" /></SettingRow>
       <div style={{ marginTop: 14, textAlign: 'right' }}><button className="btn btn-primary">保存する</button></div>
     </Panel>
   )
