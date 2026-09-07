@@ -244,7 +244,21 @@ function kakakuLoop(gen, today) {
   const LIST = '/hikkoshi/vender/admin/Index'
   const DETAIL = id => '/hikkoshi/vender/admin/userdetail/?orderid=' + id
   const STATUS = 'https://transportfukuoka.vercel.app/api/status'
-  const postStatus = (ok, reason, count) => { try { fetch(STATUS, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'kakaku', ok, reason: reason || '', count: count == null ? null : count }) }).catch(() => {}) } catch {} }
+  // 生存ハートビート。巡回は12〜16秒間隔のままだが、CRMへの送信は60秒に1回でよい。
+  // 毎回送るとサーバ側の書き込みが1日5千回を超え、無駄が大きい。
+  // ただし状態が変わったとき（正常⇄異常、理由が変わった）はすぐ送る＝異常の検知は遅れない。
+  // 画面表示に使う chrome.storage の最終巡回時刻は、これとは別に毎回更新している。
+  const HB_MIN_MS = 60000
+  const postStatus = (ok, reason, count) => {
+    try {
+      const now = Date.now()
+      const r = reason || ''
+      const same = window.__tfKakakuHbOk === ok && window.__tfKakakuHbReason === r
+      if (same && now - (window.__tfKakakuHbAt || 0) < HB_MIN_MS) return
+      window.__tfKakakuHbOk = ok; window.__tfKakakuHbReason = r; window.__tfKakakuHbAt = now
+      fetch(STATUS, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'kakaku', ok, reason: r, count: count == null ? null : count }) }).catch(() => {})
+    } catch {}
+  }
 
   // ===== 自動再ログイン（アカウントロック防止つき）=====（引越し侍と同方式・同ポリシー）
   //  ①ID/PW拒否で即停止（再保存まで再試行しない＝誤PW時は実質1回のみ）②絶対上限3回 ③5分に1回・全タブ共有。
@@ -515,7 +529,18 @@ function samuraiLoop(gen, todayMD) {
   const INBOUND = 'https://transportfukuoka.vercel.app/api/inbound'
   const STATUS  = 'https://transportfukuoka.vercel.app/api/status'
   const LIST    = '/admin/request/list'
-  const postStatus = (ok, reason, count) => { try { fetch(STATUS, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'samurai', ok, reason: reason || '', count: count == null ? null : count }) }).catch(() => {}) } catch {} }
+  // 生存ハートビート。価格.com と同じ考え方（巡回間隔はそのまま／送信は60秒に1回、状態変化は即時）
+  const HB_MIN_MS = 60000
+  const postStatus = (ok, reason, count) => {
+    try {
+      const now = Date.now()
+      const r = reason || ''
+      const same = window.__tfSamuraiHbOk === ok && window.__tfSamuraiHbReason === r
+      if (same && now - (window.__tfSamuraiHbAt || 0) < HB_MIN_MS) return
+      window.__tfSamuraiHbOk = ok; window.__tfSamuraiHbReason = r; window.__tfSamuraiHbAt = now
+      fetch(STATUS, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'samurai', ok, reason: r, count: count == null ? null : count }) }).catch(() => {})
+    } catch {}
+  }
 
   // ===== 自動再ログイン（アカウントロック防止つき）=====
   // セッション切れ時、ログインフォームを解析し保存ID/PW(samuraiCreds)でPOSTしてセッション再取得。

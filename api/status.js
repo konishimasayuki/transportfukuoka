@@ -55,7 +55,9 @@ export default async function handler(req, res) {
         at: new Date().toISOString(),
       }
       await redis(['HSET', MAP_KEY, source, JSON.stringify(status)])
-      if (source === 'zba') await redis(['SET', KEY, JSON.stringify(status)]) // 後方互換
+      // 旧キー(KEY)への二重書き込みはやめた。読む側はもう statuses.zba を見ており、
+      // ズバットだけ書き込みが2回になっていた（1日 約1,200コマンドの無駄）。
+      // 読み出し側の後方互換フォールバック（GET）は残してある。
       return res.json({ ok: true })
     }
 
