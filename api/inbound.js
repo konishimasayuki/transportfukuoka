@@ -194,13 +194,23 @@ export default async function handler(req, res) {
       // ★帯域対策：直近N件で足りるうちは軽量サマリだけ読む（リード全件を転送しない）。
       //   サマリが無い・壊れている・N が保持件数を超える場合だけ全件から作り直す。
       if (recent > 0 && recent <= META_MAX) {
-        const meta = await readMeta()
+        // 12秒ごとに叩かれる所なので、サマリとお知らせを MGET で1コマンドにまとめる。
+        // （以前は GET を2回。Upstash は1リクエスト＝1コマンド課金なので回数が倍だった）
+        let metaRaw = null, bcRaw = null
+        try { [metaRaw, bcRaw] = await redisCmd(['MGET', META_KEY, BROADCAST_KEY]) }
+        catch (e) { /* 失敗時は下の全件フォールバックへ */ }
+        let meta = null
+        try { const m = metaRaw ? JSON.parse(metaRaw) : null
+              if (m && Array.isArray(m.items) && typeof m.count === 'number') meta = m } catch { /* 壊れていたら全件へ */ }
         if (meta) {
           let bc = []
-          try { bc = (await readItems(BROADCAST_KEY)).map(b => ({
-            key: 'bc_' + b.id, site: b.title || 'お知らせ', name: '📢 ' + (b.body || ''),
-            savedAt: b.savedAt, broadcast: true,
-          })) } catch (e) { /* broadcast取得失敗は無視 */ }
+          try {
+            const arr = bcRaw ? JSON.parse(bcRaw) : []
+            if (Array.isArray(arr)) bc = arr.map(b => ({
+              key: 'bc_' + b.id, site: b.title || 'お知らせ', name: '📢 ' + (b.body || ''),
+              savedAt: b.savedAt, broadcast: true,
+            }))
+          } catch (e) { /* broadcast取得失敗は無視 */ }
           const merged = [...meta.items.slice(0, recent), ...bc]
             .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
           return res.json({ count: meta.count, items: merged })

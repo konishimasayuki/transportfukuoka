@@ -7,6 +7,9 @@
 import { useEffect, useRef, useState } from 'react'
 
 const POLL_MS = 12000
+// Web Push が効いているときの控えのポーリング。押し込みが届かなかった時の保険。
+// 通知そのものは Push が即時に出すので、この間隔は速さに関係しない。
+const POLL_BACKUP_MS = 60000
 
 function urlB64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -25,6 +28,7 @@ export default function LeadNotifier({ user, switchTab }) {
   const seenAtRef = useRef(null)   // これより新しい savedAt を新着とみなす
   const audioRef = useRef(null)
   const pushRef = useRef(false)    // Web Push 購読済みなら poll 側のOS通知を抑制（二重通知防止）
+  const [pushOn, setPushOn] = useState(false) // 購読できた＝ポーリングを控えめにする
 
   // Web Push 購読：SW登録→公開鍵取得→購読→サーバ保存。サーバ未設定/非対応ならポーリング通知にフォールバック。
   const setupPush = async () => {
@@ -41,6 +45,7 @@ export default function LeadNotifier({ user, switchTab }) {
       }
       await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub }) })
       pushRef.current = true
+      setPushOn(true)
     } catch (e) { /* フォールバック（ポーリング通知） */ }
   }
 
@@ -132,9 +137,11 @@ export default function LeadNotifier({ user, switchTab }) {
       } catch {}
     }
     poll()
-    timer = setInterval(poll, POLL_MS)
+    // Push が効いていれば通知は押し込みで届くので、ポーリングは保険の間隔まで落とす。
+    // 効いていなければ従来どおり12秒（新着に気づくまでの時間を延ばさない）。
+    timer = setInterval(poll, pushOn ? POLL_BACKUP_MS : POLL_MS)
     return () => { if (timer) clearInterval(timer) }
-  }, [isDemo])
+  }, [isDemo, pushOn])
 
   if (isDemo) return null
 
