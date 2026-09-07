@@ -193,6 +193,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const [importing, setImporting] = useState(false)
   const [toast, setToast] = useState('')
   const [followLeads, setFollowLeads] = useState([]) // 追客タブ用：ステータス「要追客」のリード（未成約）
+  const [followAll, setFollowAll] = useState(false)  // 追客タブ：50件を超える分も表示するか
   const [leadDetailItem, setLeadDetailItem] = useState(null) // 追客タブ：クリックしたリード行の詳細（リード管理と同じモーダル）
   const [mailLead, setMailLead] = useState(null)                 // メール送信パネルで開いているリード
   const [pendingLeadConvert, setPendingLeadConvert] = useState(null) // 追客タブ：成約登録の確定待ちリード
@@ -647,6 +648,12 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     return cmpDate(a, b, 'date', 'desc')                    // 既定：引越し日の新しい順（上が最新）
   })
 
+  // 追客タブは件数が多くなりがちなので、既定は並び順の上から50件だけ出す。
+  // （並び替えの結果に対して切るので「最新50件」は選んでいる並び順での最新）
+  const FOLLOW_MAX = 50
+  const limited = (mode === 'follow' && !followAll) ? filtered.slice(0, FOLLOW_MAX) : filtered
+  const hiddenCount = filtered.length - limited.length
+
   const countBy = (s) => items.filter(i => i.status === s).length
   const totalAmount = items.filter(i => i.status === '成約済み').reduce((s, i) => s + (i.amount || 0), 0)
   // ワークリスト用の集計（対象＝mode一致。追客タブは成約＋リードの合計）
@@ -739,9 +746,9 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {limited.length === 0 ? (
                   <tr><td colSpan={mode === 'follow' ? 12 : (!meta ? 12 : 11)} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>データがありません</td></tr>
-                ) : filtered.map(item => (
+                ) : limited.map(item => (
                   <tr key={item.id}
                     onClick={() => item._isLead && setLeadDetailItem(item._lead)}
                     style={{ ...(item._isLead ? { cursor: 'pointer' } : null), ...(item.isCopy ? { background: '#FEFCE8' } : null) }}>
@@ -810,6 +817,26 @@ export default function Contracts({ user, mode, onFollowDelta }) {
                     )}
                   </tr>
                 ))}
+                {/* 追客：50件で切ったときは残りの件数を出し、必要なら全部出せるようにする */}
+                {hiddenCount > 0 && (
+                  <tr>
+                    <td colSpan={mode === 'follow' ? 12 : (!meta ? 12 : 11)}
+                      style={{ textAlign: 'center', padding: '14px 8px', background: '#F8FAFC', color: '#64748B', fontSize: 12 }}>
+                      全 {filtered.length} 件のうち上から {limited.length} 件を表示しています（残り {hiddenCount} 件）
+                      <button className="btn btn-outline btn-sm" style={{ marginLeft: 10 }}
+                        onClick={() => setFollowAll(true)}>すべて表示</button>
+                    </td>
+                  </tr>
+                )}
+                {mode === 'follow' && followAll && filtered.length > FOLLOW_MAX && (
+                  <tr>
+                    <td colSpan={12} style={{ textAlign: 'center', padding: '14px 8px', background: '#F8FAFC', color: '#64748B', fontSize: 12 }}>
+                      全 {filtered.length} 件を表示中
+                      <button className="btn btn-outline btn-sm" style={{ marginLeft: 10 }}
+                        onClick={() => setFollowAll(false)}>上から{FOLLOW_MAX}件に戻す</button>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
