@@ -75,14 +75,14 @@ export default function App() {
       setFollowCount(n)
       return
     }
+    // バッジの数字ひとつのために全件（数MB）を落とさない。件数だけ返すAPIを使う。
     (async () => {
       try {
         const [leadsRes, contractsRes] = await Promise.all([
-          fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
-          fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
+          fetch('/api/inbound?counts=1').then(r => r.json()).catch(() => ({ follow: 0 })),
+          fetch('/api/contracts?counts=1').then(r => r.json()).catch(() => ({ follow: 0 })),
         ])
-        const n = (leadsRes.items || []).filter(l => l.status === '要追客').length +
-                  (contractsRes.items || []).filter(c => c.status === '要追客').length
+        const n = (leadsRes.follow || 0) + (contractsRes.follow || 0)
         if (!cancelled) setFollowCount(n)
       } catch { if (!cancelled) setFollowCount(0) }
     })()

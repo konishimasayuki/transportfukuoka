@@ -99,7 +99,8 @@ export default function AdCost({ user }) {
     try {
       const [eRes, lRes] = await Promise.all([
         fetch('/api/expenses').then(r => r.json()).catch(() => ({ data: {} })),
-        fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
+        // 広告費の自動算出にしか使わないので、必要な項目だけもらう（?view=ad）
+        fetch('/api/inbound?view=ad').then(r => r.json()).catch(() => ({ items: [] })),
       ])
       setExpenses(eRes.data || {})
       setLeads(lRes.items || [])

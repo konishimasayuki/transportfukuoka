@@ -148,7 +148,8 @@ export default function Sales({ user, switchTab }) {
       const [cRes, eRes, lRes] = await Promise.all([
         fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
         fetch('/api/expenses').then(r => r.json()).catch(() => ({ data: {} })),
-        fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
+        // 広告費の自動算出にしか使わないので、必要な項目だけもらう（?view=ad）
+        fetch('/api/inbound?view=ad').then(r => r.json()).catch(() => ({ items: [] })),
       ])
       setContracts(cRes.items || [])
       setExpenses(eRes.data || {})

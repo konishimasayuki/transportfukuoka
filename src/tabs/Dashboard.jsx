@@ -135,7 +135,8 @@ function LiveDashboard({ switchTab }) {
       try {
         const [c, l, e] = await Promise.all([
           fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
-          fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
+          // 件数と広告費の集計にしか使わないので、必要な項目だけもらう（?view=ad）
+          fetch('/api/inbound?view=ad').then(r => r.json()).catch(() => ({ items: [] })),
           fetch('/api/expenses').then(r => r.json()).catch(() => ({ data: {} })),
         ])
         if (!alive) return

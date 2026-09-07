@@ -828,7 +828,8 @@ export default function Estimate({ user, switchTab }) {
       const [eRes, cRes, lRes] = await Promise.all([
         fetch('/api/estimate').then(r => r.json()).catch(() => ({ items: [] })),
         fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
-        fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })), // 家財の後追い紐付け用
+        // 家財の後追い紐付け用。家財のあるリードの key/家財/箱数 だけでよい（?view=kazai）
+        fetch('/api/inbound?view=kazai').then(r => r.json()).catch(() => ({ items: [] })),
       ])
       setItems(eRes.items || [])
       setContracts(backfillContractKazai(cRes.items || [], lRes.items || []))

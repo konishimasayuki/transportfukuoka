@@ -7,6 +7,10 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const items = await readItems(KEY)
+      // 件数だけ返す（?counts=1）。サイドバーの追客バッジ用に本体を送らない。
+      if (req.query && req.query.counts) {
+        return res.json({ count: items.length, follow: items.filter(c => c && c.status === '要追客').length })
+      }
       return res.json({ items })
     }
 

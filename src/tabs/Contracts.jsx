@@ -237,8 +237,10 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   useEffect(() => {
     if (mode !== 'follow') return
     if (isDemo) { setFollowLeads(DEMO_LEADS.filter(l => l.status === '要追客')); return }
-    fetch('/api/inbound').then(r => r.json()).then(d => {
-      setFollowLeads((d.items || []).filter(l => l.status === '要追客'))
+    // 要追客のリードだけをサーバ側で絞り込んでもらう（全件を落とさない）
+    fetch('/api/inbound?status=' + encodeURIComponent('要追客')).then(r => r.json()).then(d => {
+      // サーバ側で絞り込み済み。念のためここでも絞る（古いAPIに当たっても一覧が壊れない）
+      setFollowLeads((d.items || []).filter(l => l && l.status === '要追客'))
     }).catch(() => setFollowLeads([]))
   }, [mode, isDemo])
   useEffect(() => {
@@ -393,8 +395,8 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   // 追客タブのリード一覧をサーバから取り直す
   const refetchFollowLeads = async () => {
     try {
-      const d = await fetch('/api/inbound').then(r => r.json())
-      setFollowLeads((d.items || []).filter(l => l.status === '要追客'))
+      const d = await fetch('/api/inbound?status=' + encodeURIComponent('要追客')).then(r => r.json())
+      setFollowLeads((d.items || []).filter(l => l && l.status === '要追客'))
     } catch (e) { console.error(e) }
   }
 

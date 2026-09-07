@@ -39,7 +39,10 @@ function buildMeta(items) {
     .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
     .slice(0, META_MAX)
     .map(slimLead)
-  return { count: items.length, items: recentLeads, at: new Date().toISOString() }
+  // 追客バッジの数もここに持たせる。これが無いと画面を開くたびに
+  // 全件(数MB)を読むことになるため。書き込みのたびに作り直されるので古くならない。
+  const follow = items.filter(l => l && l.status === '要追客').length
+  return { count: items.length, follow, items: recentLeads, at: new Date().toISOString() }
 }
 // サマリを保存（失敗しても本体には影響させない。次の機会に作り直される）
 async function writeMeta(items) {
@@ -154,7 +157,40 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       // 軽量モード：?recent=N で直近N件（savedAt降順）＋総数だけ返す（新着通知ポーリング用）
       // お知らせメッセージ（broadcast）も擬似リードとして混ぜ、子拡張(無改修)に通知させる。
-      const recent = parseInt((req.query && req.query.recent) || '', 10)
+      const q = req.query || {}
+      const recent = parseInt(q.recent || '', 10)
+
+      // ── 件数だけ返す（?counts=1）。サイドバーの追客バッジ用。
+      //    サマリに follow があればそれだけ読む＝全件(数MB)を読まない。
+      if (q.counts) {
+        const meta = await readMeta()
+        if (meta && typeof meta.follow === 'number') {
+          return res.json({ count: meta.count, follow: meta.follow })
+        }
+        const all = await readItems(KEY)
+        writeMeta(all) // 次回からサマリで済むように作り直す
+        return res.json({ count: all.length, follow: all.filter(l => l && l.status === '要追客').length })
+      }
+
+      // ── 用途別の間引き（?view=）／ステータス絞り込み（?status=）。
+      //    画面が使う項目だけを返して転送量を減らす。項目を増やすときは
+      //    使う画面側と必ず一緒に直すこと（足りないと画面が空欄になる）。
+      //      view=ad    … ダッシュボード／売上管理／広告費（件数と広告費の集計だけ）
+      //      view=kazai … 見積書（成約に家財を後から紐付けるためだけ）
+      const view = String(q.view || '')
+      const status = String(q.status || '')
+      if (view || status) {
+        let list = await readItems(KEY)
+        if (status) list = list.filter(l => l && l.status === status)
+        if (view === 'ad') {
+          list = list.map(l => ({ site: l.site, count: l.count, receivedAt: l.receivedAt,
+                                  requestedAt: l.requestedAt, savedAt: l.savedAt }))
+        } else if (view === 'kazai') {
+          list = list.filter(l => l && l.key && Array.isArray(l.kazai) && l.kazai.length)
+                     .map(l => ({ key: l.key, kazai: l.kazai, boxCount: l.boxCount }))
+        }
+        return res.json({ items: list })
+      }
       // ★帯域対策：直近N件で足りるうちは軽量サマリだけ読む（リード全件を転送しない）。
       //   サマリが無い・壊れている・N が保持件数を超える場合だけ全件から作り直す。
       if (recent > 0 && recent <= META_MAX) {
