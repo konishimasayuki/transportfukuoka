@@ -437,7 +437,11 @@ export default function DispatchBoard({ filter, onToast, contracts = [], onUpdat
           <div className="dw-date">{weekCounts.some(w => w.isToday)
             ? 'カレンダー'
             : `${boardDate.getMonth() + 1}月${boardDate.getDate()}日（${['日','月','火','水','木','金','土'][boardDate.getDay()]}）`}</div>
+          {/* PCのChromeは、日付入力を押しただけではカレンダーが開かない
+              （枠を消しているのでクリックすべきカレンダーのアイコンが無く、フォーカスが入るだけ）。
+              押されたら明示的に開く。showPicker が無い古いブラウザでは今までどおり何もしない。 */}
           <input className="cal-input" type="date" value={boardKey} aria-label="日付を選ぶ"
+            onClick={e => { try { e.currentTarget.showPicker && e.currentTarget.showPicker() } catch { /* 既に開いている等は無視 */ } }}
             onChange={e => { if (e.target.value && onChangeDate) { const d = new Date(e.target.value + 'T00:00:00'); if (!isNaN(d.getTime())) onChangeDate(d) } }} />
         </label>
       </div>
