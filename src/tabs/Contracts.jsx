@@ -193,9 +193,9 @@ function SalesCalendar({ value, onChange, byDay }) {
   }
   return (
     <div ref={box} style={{ position: 'relative', flexShrink: 0 }}>
-      <button className="btn btn-outline btn-sm" onClick={() => setOpen(v => !v)} title="売上登録日で絞り込む"
+      <button className="btn btn-outline btn-sm" onClick={() => setOpen(v => !v)} title="成約を売上登録日で絞り込む"
         style={{ whiteSpace: 'nowrap', ...(sel ? { borderColor: 'var(--blueL)', background: '#EFF6FF', color: '#1E5FA8' } : null) }}>
-        {sel ? `📅 ${sel.md} ${yen(sel.amt)}` : '📅 売上登録日'}
+        {sel ? `📅 ${sel.md} ${yen(sel.amt)}` : '📅 成約絞り込み日'}
       </button>
       {open && (
         <div ref={panel} style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 50, background: '#fff',
