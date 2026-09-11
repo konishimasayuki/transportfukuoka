@@ -131,6 +131,129 @@ function cmpDate(a, b, key, dir) {
   return dir === 'asc' ? ma - mb : mb - ma
 }
 
+// 日付（YYYY-MM-DD）に直す。手入力の「2026/9/11」なども同じ日として扱えるようにする。
+function dayKeyOf(v) {
+  const ms = moveDateMs(v)
+  if (!isFinite(ms)) return ''
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// 売上登録日カレンダー。
+// 日付の下にその日の成約額（失注は除く）を出し、日を押すとその日だけに絞り込む。
+function SalesCalendar({ value, onChange, byDay }) {
+  const [open, setOpen] = useState(false)
+  const base = value ? new Date(value + 'T00:00:00') : new Date()
+  const [ym, setYm] = useState({ y: base.getFullYear(), m: base.getMonth() })
+  const box = useRef(null)
+  const panel = useRef(null)
+  // 外側クリックで閉じる（絞り込みパネルと同じ挙動）
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+  // 画面の右端からはみ出す分だけ左へ寄せる（スマホでも右端の土曜が切れないように）
+  useEffect(() => {
+    if (!open || !panel.current) return
+    const fit = () => {
+      const el = panel.current; if (!el) return
+      el.style.transform = 'none'
+      const r = el.getBoundingClientRect()
+      const over = r.right - (window.innerWidth - 8)
+      const room = r.left - 8
+      if (over > 0) el.style.transform = `translateX(${-Math.min(over, room)}px)`
+    }
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [open, ym.y, ym.m])
+  // 外から日付が変わったら、その月を表示する
+  useEffect(() => {
+    if (!value) return
+    const d = new Date(value + 'T00:00:00')
+    if (!isNaN(d.getTime())) setYm({ y: d.getFullYear(), m: d.getMonth() })
+  }, [value])
+
+  const first = new Date(ym.y, ym.m, 1)
+  const days = new Date(ym.y, ym.m + 1, 0).getDate()
+  const pad = first.getDay()                       // 1日の曜日ぶんの空きマス
+  const cells = [...Array(pad).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)]
+  const key = (d) => `${ym.y}-${String(ym.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+  const todayKey = dayKeyOf(new Date().toISOString().slice(0, 10))
+  const yen = (n) => '¥' + Number(n || 0).toLocaleString('ja-JP')
+  const sel = value ? { md: `${Number(value.slice(5, 7))}/${Number(value.slice(8, 10))}`, amt: byDay[value] || 0 } : null
+
+  const move = (dm) => setYm(p => { const d = new Date(p.y, p.m + dm, 1); return { y: d.getFullYear(), m: d.getMonth() } })
+  const cell = {
+    border: '1px solid transparent', borderRadius: 8, background: 'none', cursor: 'pointer',
+    padding: '4px 1px 3px', fontFamily: 'inherit', display: 'flex', flexDirection: 'column',
+    alignItems: 'center', gap: 1, minHeight: 38,
+  }
+  return (
+    <div ref={box} style={{ position: 'relative', flexShrink: 0 }}>
+      <button className="btn btn-outline btn-sm" onClick={() => setOpen(v => !v)} title="売上登録日で絞り込む"
+        style={{ whiteSpace: 'nowrap', ...(sel ? { borderColor: 'var(--blueL)', background: '#EFF6FF', color: '#1E5FA8' } : null) }}>
+        {sel ? `📅 ${sel.md} ${yen(sel.amt)}` : '📅 売上登録日'}
+      </button>
+      {open && (
+        <div ref={panel} style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 50, background: '#fff',
+          border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 12px 34px rgba(0,0,0,.18)',
+          padding: 12, width: 430, maxWidth: 'calc(100vw - 16px)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <button className="btn btn-outline btn-sm" onClick={() => move(-1)} style={{ padding: '2px 8px' }}>‹</button>
+            <b style={{ fontSize: 13 }}>{ym.y}年{ym.m + 1}月</b>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="btn btn-outline btn-sm" onClick={() => { const t = new Date(); setYm({ y: t.getFullYear(), m: t.getMonth() }) }} style={{ padding: '2px 8px' }}>今月</button>
+              <button className="btn btn-outline btn-sm" onClick={() => move(1)} style={{ padding: '2px 8px' }}>›</button>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
+            {['日', '月', '火', '水', '木', '金', '土'].map((w, i) => (
+              <div key={w} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, padding: '2px 0',
+                color: i === 0 ? 'var(--red)' : i === 6 ? 'var(--blue)' : '#94A3B8' }}>{w}</div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+            {cells.map((d, i) => {
+              if (d == null) return <div key={'p' + i} />
+              const k = key(d)
+              const amt = byDay[k] || 0
+              const on = value === k
+              const wd = (pad + d - 1) % 7
+              return (
+                <button key={k} type="button" onClick={() => { onChange(k); setOpen(false) }}
+                  title={amt ? `${ym.m + 1}月${d}日　${yen(amt)}` : `${ym.m + 1}月${d}日　登録なし`}
+                  style={{ ...cell,
+                    background: on ? '#1E5FA8' : amt ? '#F8FAFC' : 'none',
+                    borderColor: on ? '#1E5FA8' : k === todayKey ? 'var(--blueL)' : 'transparent' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700,
+                    color: on ? '#fff' : wd === 0 ? 'var(--red)' : wd === 6 ? 'var(--blue)' : '#1E293B' }}>{d}</span>
+                  <span style={{ fontSize: 9, lineHeight: 1.1, fontWeight: 700,
+                    color: on ? 'rgba(255,255,255,.9)' : amt ? '#0E8A7A' : 'transparent' }}>
+                    {amt ? Number(amt).toLocaleString('ja-JP') : '—'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          {value && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10,
+              borderTop: '1px solid #EEF2F7', paddingTop: 8 }}>
+              <span style={{ fontSize: 12, color: '#475569' }}>
+                {sel.md}日の成約額　<b style={{ fontSize: 14, color: '#0E8A7A' }}>{yen(sel.amt)}</b>
+                <span style={{ fontSize: 10.5, color: '#94A3B8', marginLeft: 6 }}>（失注は含みません）</span>
+              </span>
+              <button className="btn btn-outline btn-sm" onClick={() => { onChange(''); setOpen(false) }}>解除</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const filterSelStyle = { width: '100%', padding: '6px 8px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', background: '#fff', outline: 'none', cursor: 'pointer' }
 
 // 絞り込み：単一選択プルダウン（流入元／ステータス／担当者）。選択肢が無ければ非表示。
@@ -182,6 +305,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const [fStaff, setFStaff] = useState('')       // ''＝全て（未割当は '__none__'）
   const [fMoveYear, setFMoveYear] = useState(''); const [fMoveMonth, setFMoveMonth] = useState('')
   const [fSalesYear, setFSalesYear] = useState(''); const [fSalesMonth, setFSalesMonth] = useState('')
+  const [fSalesDate, setFSalesDate] = useState('')   // 売上登録日カレンダーで選んだ日（YYYY-MM-DD）
   const [fRecvYear, setFRecvYear] = useState(''); const [fRecvMonth, setFRecvMonth] = useState('')
   // 年が「既定の当年」かどうか（利用者が自分で選んだら false）。matchYM の判定に使う。
   const [autoYear, setAutoYear] = useState({ sales: false, recv: false, move: false })
@@ -205,10 +329,10 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const showStatusFilter = mode !== 'follow'  // ステータス（追客以外。追客は要追客固定のため不要）
   const clearFilters = () => {
     setFStatus(''); setFSrc(''); setFStaff('')
-    setFMoveYear(''); setFMoveMonth(''); setFSalesYear(''); setFSalesMonth(''); setFRecvYear(''); setFRecvMonth('')
+    setFMoveYear(''); setFMoveMonth(''); setFSalesYear(''); setFSalesMonth(''); setFRecvYear(''); setFRecvMonth(''); setFSalesDate('')
     setAutoYear({ sales: false, recv: false, move: false })
   }
-  const activeFilterCount = [fStatus, fSrc, fStaff, fMoveYear, fMoveMonth, fSalesYear, fSalesMonth, fRecvYear, fRecvMonth].filter(Boolean).length
+  const activeFilterCount = [fStatus, fSrc, fStaff, fMoveYear, fMoveMonth, fSalesYear, fSalesMonth, fRecvYear, fRecvMonth, fSalesDate].filter(Boolean).length
 
   // 絞り込みパネルの外側クリックで閉じる
   useEffect(() => {
@@ -637,7 +761,8 @@ export default function Contracts({ user, mode, onFollowDelta }) {
            (!fSrc || (i.srcLabel || '') === fSrc) &&
            (!fStaff || (fStaff === '__none__' ? !i.staff : i.staff === fStaff)) &&
            matchYM(moveDateMs(i.date), fMoveYear, fMoveMonth, autoYear.move) &&
-           matchYM(moveDateMs(i.salesDate), fSalesYear, fSalesMonth, autoYear.sales) &&
+           (fSalesDate ? dayKeyOf(i.salesDate) === fSalesDate
+                       : matchYM(moveDateMs(i.salesDate), fSalesYear, fSalesMonth, autoYear.sales)) &&
            matchYM(receivedAtMs(i), fRecvYear, fRecvMonth, autoYear.recv)
   }).sort((a, b) => {
     if (sortKey === 'receivedAt') { const cmp = receivedAtMs(a) - receivedAtMs(b); return sortDir === 'asc' ? cmp : -cmp }
@@ -645,8 +770,15 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     return cmpDate(a, b, 'date', 'desc')                    // 既定：引越し日の新しい順（上が最新）
   })
 
+  // 売上登録日ごとの成約額。失注は数えない（カレンダーの表示と選択時の金額はここを見る）
+  const salesByDay = {}
+  for (const it of items) {
+    if (!it || it.status === '失注') continue
+    const k = dayKeyOf(it.salesDate)
+    if (k) salesByDay[k] = (salesByDay[k] || 0) + (Number(it.amount) || 0)
+  }
+
   const countBy = (s) => items.filter(i => i.status === s).length
-  const totalAmount = items.filter(i => i.status === '成約済み').reduce((s, i) => s + (i.amount || 0), 0)
   // ワークリスト用の集計（対象＝mode一致。追客タブは成約＋リードの合計）
   const modeItems = combined.filter(modeMatch)
   const flagCount = (field, val) => modeItems.filter(i => (i[field] || '必要なし') === val).length
@@ -679,17 +811,11 @@ export default function Contracts({ user, mode, onFollowDelta }) {
           <div className="kpi-card c-orange"><div className="kpi-label">未依頼</div><div className="kpi-val">{flagCount(mode, '未依頼')}<span>件</span></div></div>
           <div className="kpi-card c-green"><div className="kpi-label">依頼済み</div><div className="kpi-val">{flagCount(mode, '依頼済み')}<span>件</span></div></div>
         </div>
-      ) : (
-        <div className="kpi-row kpi-4">
-          <div className="kpi-card c-green"><div className="kpi-label">成約済み</div><div className="kpi-val">{countBy('成約済み')}<span>件</span></div><div className="kpi-change up">¥{totalAmount.toLocaleString()}</div></div>
-          <div className="kpi-card c-blue"><div className="kpi-label">交渉中</div><div className="kpi-val">{countBy('交渉中')}<span>件</span></div></div>
-          <div className="kpi-card c-orange"><div className="kpi-label">連絡待ち</div><div className="kpi-val">{countBy('連絡待ち')}<span>件</span></div></div>
-          <div className="kpi-card c-red"><div className="kpi-label">失注</div><div className="kpi-val">{countBy('失注')}<span>件</span></div></div>
-        </div>
-      )}
+      ) : null /* 成約管理のKPIカード（成約済み/交渉中/連絡待ち/失注）は使っていないので出さない */}
 
       <div className="filter-row">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 顧客名・エリアで検索..." />
+        {showSalesFilter && <SalesCalendar value={fSalesDate} onChange={setFSalesDate} byDay={salesByDay} />}
         <div ref={filterPanelRef} style={{ position: 'relative' }}>
           <button className="btn btn-outline btn-sm" onClick={() => setShowFilterPanel(v => !v)}>
             🔎 絞り込み{activeFilterCount > 0 ? `（${activeFilterCount}）` : ''}
