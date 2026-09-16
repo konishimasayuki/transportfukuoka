@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import LeadNotifier from './components/LeadNotifier'
+import SiteAlert from './components/SiteAlert'
 import Login from './tabs/Login'
 import Dashboard from './tabs/Dashboard'
 import Sales from './tabs/Sales'
@@ -135,6 +136,8 @@ export default function App() {
       <div className="main">
         <Topbar activeTab={activeTab} onMenuClick={() => setSidebarOpen(true)} onRefresh={refresh} loading={loading} user={user} />
         <div className="content">
+          {/* 巡回が止まったら各タブの上に警告を出す（設定タブは除く） */}
+          {safeTab !== 'settings' && <SiteAlert isDemo={user.mode === 'demo'} />}
           <ActiveTab user={user} switchTab={switchTab} view={safeTab === 'board' ? 'board' : 'month'} mode={['follow', 'aircon', 'cardboard', 'quotes'].includes(safeTab) ? safeTab : undefined} onFollowDelta={bumpFollowCount} />
         </div>
       </div>

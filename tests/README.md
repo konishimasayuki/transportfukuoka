@@ -10,6 +10,10 @@ node tests/run-all.mjs        # 全部まとめて
 node tests/dup.mjs            # 個別（詳細な内訳が出ます）
 ```
 
+## ブラウザが要るテスト（run-all には含めない）
+
+`node tests/sitealert.mjs` … 巡回停止の警告帯。**先に `npm run dev` を起動しておくこと**（Playwrightで実画面を操作するため）。
+
 ## 各スイートの内容
 
 | ファイル | 検証していること |
