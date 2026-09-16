@@ -298,18 +298,28 @@ let listFailStreak = 0 // 一覧取得の連続失敗（500等のセッション
 const RELOGIN_MIN_GAP = 5 * 60 * 1000
 const RELOGIN_MAX_FAILS = 2 // 失敗ログインの上限（厳しめ・毎朝6時にリセット）
 
-// 未ログインでも /csrf は取得できる前提（ログインに必要なため）。authError を投げない版。
-async function csrfForLogin() {
+// /csrf を1回叩いて「ログインできているか」と「トークン」を同時に返す共通プローブ。
+// 実測：未ログインでも HTTP 200 を返し、csrfToken だけが空になる。
+// つまり「トークンが空でない」＝「サーバが認めた有効なセッションがある」。
+// state: 'ok'（ログイン済み）/ 'no'（ログインできていない）/ 'unknown'（通信不良等で判定不能）
+async function csrfProbe() {
   try {
     const r = await fetch(`${ZBA_API}/csrf`, { credentials: 'include', headers: { accept: 'application/json' } })
-    if (!r.ok) return null
+    if (!r.ok) return { state: 'unknown', token: null }
     const j = await r.json().catch(() => null)
-    return (j && j.csrfToken) || null
-  } catch { return null }
+    const token = (j && j.csrfToken) || null
+    return { state: token ? 'ok' : 'no', token }
+  } catch { return { state: 'unknown', token: null } }
 }
 
-// 戻り値：成功=true / 失敗=理由文字列（'night','no-creds','no-csrf','http-XXX','fetch-error'）。
-// 呼び出し側は「拒否(4xx)・no-creds」をハード失敗として上限カウントする。
+// ログイン前のトークン取得（authError を投げない版）。空でもログインは試す。
+async function csrfForLogin() { return (await csrfProbe()).token }
+
+// 戻り値：成功=true / 失敗=理由文字列
+//   （'night','no-creds','invalid-creds','verify-unknown','http-XXX','fetch-error','storage-error'）。
+// 呼び出し側は「no-creds・invalid-creds・拒否(4xx)」をハード失敗として上限カウントする。
+// ★成否は「ログイン後に実際にデータ（＝CSRFトークン）が取れるか」で決める。
+//   HTTPステータスの解釈には頼らない（価格.com/引越し侍と同じ考え方）。
 async function relogin() {
   if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) { safeStorageSet({ zbaReloginReason: '夜間（22〜6時）は再ログイン休止' }); return 'night' } // 夜間22〜6時は再ログイン休止
   let creds = {}
@@ -329,11 +339,29 @@ async function relogin() {
       method: 'POST', credentials: 'include', headers,
       body: JSON.stringify({ loginId: creds.zbaLoginId, password: creds.zbaPassword }),
     })
-    // どちらの経路で失敗したか後から分かるように、CSRF無しの試行は理由に残す
-    if (!r.ok) { safeStorageSet({ zbaReloginReason: 'login-http-' + r.status + (token ? '' : '（CSRFなしで試行）') }); return 'http-' + r.status }
-    invalidateCsrf() // ログイン後はトークンを取り直す
-    safeStorageSet({ zbaReloginReason: 'ok' + (token ? '' : '（CSRFなしで成功）') })
-    return true
+    // ★HTTPステータスでは成否を決めない。
+    //   ズバットは誤ID/PWに404を返した（2026-09の事故）。何を返すかはサイト側の都合で
+    //   変わるため、価格.com/引越し侍と同じく「ログイン後に実際にデータが取れるか」で判定する。
+    //   ここでは /csrf がトークンを発行するかを見る（有効なセッションにしか発行されない）。
+    invalidateCsrf() // ログイン前のキャッシュを捨ててから確認する
+    const v = await csrfProbe()
+    const via = token ? '' : '（CSRFなしで試行）' // どちらの経路だったか後から分かるように残す
+    if (v.state === 'ok') {
+      csrfCache = { token: v.token, at: Date.now() } // 確認に使ったトークンをそのまま使う（無駄打ちしない）
+      safeStorageSet({ zbaReloginReason: 'ok' + (token ? '' : '（CSRFなしで成功）') })
+      return true
+    }
+    if (v.state === 'no') {
+      // ログインAPIが何を返していようと、セッションが有効になっていない＝ログインできていない。
+      // ID/PWが違う可能性が高いので、上限にカウントして止める。
+      safeStorageSet({ zbaReloginReason: 'invalid-creds（ログイン後もセッションが無効・HTTP ' + r.status + '）' + via })
+      return 'invalid-creds'
+    }
+    // 確認そのものができなかった（通信不良・サーバ5xx）。
+    // ただしログインAPIが4xxを返していたなら拒否とみなす（従来の安全装置を残す）。
+    if (r.status >= 400 && r.status < 500) { safeStorageSet({ zbaReloginReason: 'login-http-' + r.status + via }); return 'http-' + r.status }
+    safeStorageSet({ zbaReloginReason: 'verify-unknown（ログイン後の確認ができず・HTTP ' + r.status + '）' + via })
+    return 'verify-unknown'
   } catch (e) { safeStorageSet({ zbaReloginReason: 'fetch-error' }); return 'fetch-error' }
 }
 
@@ -356,12 +384,14 @@ async function tryRecoverAuth() {
     console.log(`[リード監視:${SITE}] ✓ 自動再ログイン成功`)
     return true
   }
-  // ロック防止：4xx（拒否）と資格情報未設定を“ハード失敗”として上限にカウントし停止。
-  // ★401/403だけを見ていたため、ズバットが誤ID/PWに返す404が素通りし、
-  //   「2回で止める」が働かず5分ごとに無限に試行していた（2026-09 の事故）。
-  //   どの4xxが返るかはサイト側の都合で変わるため、4xxはまとめて拒否とみなす。
-  // 一時的失敗(CSRF取得不可・通信エラー・サーバ5xx・夜間休止)は上限にカウントせず、5分ごとに自動リトライを継続する。
-  const hardFail = (res === 'no-creds' || /^http-4\d\d$/.test(String(res)))
+  // ロック防止：「ログインできなかったことが確認できた」ものを“ハード失敗”として上限カウントし停止。
+  //   invalid-creds … ログイン後もセッションが無効（＝ID/PWが違う）。本命の判定。
+  //   http-4xx      … 確認ができなかった時の保険。どの4xxが返るかはサイト都合で変わるためまとめて拒否扱い。
+  //   no-creds      … ID/PW未保存。
+  // ★以前はHTTPステータスだけで成否を決めていたため、ズバットが誤ID/PWに返す404を
+  //   一時的失敗と取り違え、5分ごとに無限に試行していた（2026-09 の事故）。
+  // 一時的失敗(verify-unknown・通信エラー・サーバ5xx・夜間休止)は上限にカウントせず、5分ごとに自動リトライを継続する。
+  const hardFail = (res === 'no-creds' || res === 'invalid-creds' || /^http-4\d\d$/.test(String(res)))
   if (hardFail) reloginFails++
   safeStorageSet({ zbaReloginResult: 'fail', zbaReloginAt: Date.now() })
   console.warn(`[リード監視:${SITE}] 自動再ログイン失敗 res=${res} hard=${hardFail} (${reloginFails}/${RELOGIN_MAX_FAILS})`)

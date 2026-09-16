@@ -15,6 +15,8 @@ for (const [res, want, why] of [
   ['http-400', true,  '4xxはまとめて拒否'],
   ['http-429', true,  '4xxはまとめて拒否'],
   ['no-creds', true,  'ID/PW未保存'],
+  ['invalid-creds', true, 'ログイン後もセッションが無効＝ID/PWが違う（本命の判定）'],
+  ['verify-unknown', false, '確認できなかっただけなので再試行を継続'],
   ['http-500', false, 'サーバ障害は一時的失敗'],
   ['http-503', false, 'サーバ障害は一時的失敗'],
   ['night',    false, '夜間休止は一時的失敗'],
@@ -79,43 +81,71 @@ t(d.includes('status:ng/auth'), '401 → auth報告（従来どおり）', d.joi
 
 
 // ===== #3: 完全ログアウト（CSRFトークンが空）でもログインを試すか =====
-console.log('\n--- #3 完全ログアウトからの復帰 ---')
+// ===== #4: ログイン成否を「実際にデータが取れるか」で判定しているか =====
+console.log('\n--- #3 完全ログアウトからの復帰 / #4 ログイン成否の判定 ---')
 {
   const body = content.match(/async function relogin\(\)[\s\S]*?\n\}/)[0]
   t(!/if \(!token\).*return 'no-csrf'/.test(body), 'トークンが空でも no-csrf で諦めない')
   t(/if \(token\) headers\['csrf-token'\]/.test(body), '空のときは csrf-token ヘッダを送らない')
+  t(/csrfProbe\(\)/.test(body.split('fetch(`${ZBA_API}/supplier-kanri/login`')[1] || ''),
+    'ログイン後に /csrf で成否を確認している（HTTPステータス任せにしない）')
 
-  // 実際に動かす：トークン有無 × サーバ応答
-  const run = async (token, status) => {
+  // 実際に動かす：ログイン前トークン × ログインAPIのHTTPステータス × ログイン後の確認結果
+  const run = async (token, status, probeState) => {
     const sent = []
-    const fn = new Function('csrfForLogin','fetch','safeStorageSet','ZBA_API','creds','invalidateCsrf','sent', `
+    const cached = []
+    const fn = new Function('csrfForLogin','csrfProbe','fetch','safeStorageSet','ZBA_API','creds','invalidateCsrf','csrfCache','sent', `
       return (async () => {
         ${body.split('\n').slice(4, -1).join('\n').replace(/await chrome\.storage\.local\.get\(\[[^\]]*\]\)/, '({...creds})')}
       })()`)
     let res
     try {
       res = await fn(
-        async () => token,
+        async () => token || null,
+        async () => ({ state: probeState, token: probeState === 'ok' ? 'newtok' : null }),
         async (url, opt) => { sent.push({ url, headers: opt.headers, body: JSON.parse(opt.body) }); return { ok: status>=200&&status<300, status } },
-        () => {}, 'API', { zbaLoginId: 'id', zbaPassword: 'pw' }, () => {}, sent)
+        o => cached.push(o), 'API', { zbaLoginId: 'id', zbaPassword: 'pw' }, () => {}, null, sent)
     } catch (e) { res = 'throw:' + e.message }
-    return { res, sent }
+    return { res, sent, reason: (cached.find(o => o.zbaReloginReason) || {}).zbaReloginReason }
   }
-  const a = await run('', 404)
+
+  // #3 完全ログアウト（ログイン前トークンが空）
+  const a = await run('', 404, 'no')
   t(a.sent.length === 1, 'トークン空でもログインAPIを叩く', `送信 ${a.sent.length}回`)
   t(a.sent[0] && !('csrf-token' in a.sent[0].headers), 'トークン空のとき csrf-token ヘッダが無い', JSON.stringify(Object.keys(a.sent[0]?.headers||{})))
-  t(a.res === 'http-404', '4xxはそのまま返る（上限にカウントされる）', String(a.res))
-  const b = await run('tok123', 200)
+  t(a.sent[0].body.loginId === 'id' && a.sent[0].body.password === 'pw', '本文の項目名は loginId / password のまま')
+  const b = await run('tok123', 200, 'ok')
   t(b.sent[0] && b.sent[0].headers['csrf-token'] === 'tok123', 'トークンがあれば従来どおり送る')
-  t(b.res === true, '成功なら true', String(b.res))
-  const c = await run('', 200)
-  t(c.res === true, 'トークン空でも200なら成功扱い（完全ログアウトから復帰できる）', String(c.res))
-  t(c.sent[0].body.loginId === 'id' && c.sent[0].body.password === 'pw', '本文の項目名は loginId / password のまま')
+  t(b.res === true, '通常経路：成功なら true', String(b.res))
+  const c = await run('', 200, 'ok')
+  t(c.res === true, 'トークン空でもログインできていれば成功（完全ログアウトから復帰できる）', String(c.res))
 
-  // 空振りの上限：4xxが2回で止まる
-  let fails = 0
-  for (let i = 0; i < 10; i++) { if (hardFail('http-404')) fails++; if (fails >= MAX) break }
-  t(fails === MAX, `完全ログアウトで弾かれ続けても ${MAX} 回で止まる`, `${fails}回`)
+  // #4 HTTPステータスと実態が食い違うケース
+  console.log('')
+  for (const [tok, st, probe, want, why] of [
+    ['', 200, 'no', 'invalid-creds', '★旧実装はここを「成功」と誤判定していた（200だが入れていない）'],
+    ['tok', 200, 'no', 'invalid-creds', 'トークンありでも実態で判定する'],
+    ['', 404, 'no', 'invalid-creds', '404でも理由は「拒否」ではなく実態で確定する'],
+    ['', 404, 'ok', true, '★404でも実際に入れていれば成功（ステータスを信用しない）'],
+    ['', 500, 'unknown', 'verify-unknown', 'サーバ障害で確認不能 → 上限にカウントせず再試行'],
+    ['', 404, 'unknown', 'http-404', '確認不能だが4xx → 従来どおり拒否扱い（保険）'],
+    ['', 200, 'unknown', 'verify-unknown', '確認不能・200 → 再試行を継続'],
+  ]) {
+    const r = await run(tok, st, probe)
+    t(r.res === want, `ログインAPI ${st} × 確認 ${probe} → ${String(want)}`, why + (r.res === want ? '' : ` 実際=${r.res}`))
+  }
+  const okrun = await run('', 404, 'ok')
+  t(okrun.reason && okrun.reason.startsWith('ok'), '成功時の理由は ok（CSRFなしで成功）', String(okrun.reason))
+  const ng = await run('', 200, 'no')
+  t(/invalid-creds/.test(String(ng.reason)), '失敗理由にポップアップ用の説明が残る', String(ng.reason))
+
+  // 誤ID/PWのとき何回で止まるか
+  let fails = 0, tries = 0
+  for (let i = 0; i < 20; i++) { tries++; if (hardFail('invalid-creds')) fails++; if (fails >= MAX) break }
+  t(tries === MAX, `誤ID/PWなら ${MAX} 回で止まる（ステータスが何であっても）`, `${tries}回`)
+  let vfails = 0
+  for (let i = 0; i < 20; i++) if (hardFail('verify-unknown')) vfails++
+  t(vfails === 0, '確認不能は何回起きても上限にカウントしない（障害復帰後に自動で戻る）')
 }
 
 console.log(`\n${ok} PASS / ${ng} FAIL`)
