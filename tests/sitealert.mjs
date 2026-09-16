@@ -36,6 +36,23 @@ const ALL_OK = { zba:S(true,'',30000), samurai:S(true,'',30000), kakaku:S(true,'
   t(!txt.includes('引越し侍') || !txt.includes('価格.com'), '正常なサイトは並べない', txt.slice(0,80))
   await p.close() }
 
+// ②-2 パスワード変更（ID/PWが拒否された）
+{ const { p } = await open({ ...ALL_OK, zba: S(false,'creds',30000) })
+  const txt = (await p.locator('.site-alert').innerText()).replace(/\s+/g,' ')
+  t(txt.includes('IDまたはパスワードが違います'), '★パスワード違いと分かる文言が出る', txt.slice(0,80))
+  t(txt.includes('ログインできずリードの取り込みが止まっています'), '見出しも原因に合わせて変わる')
+  t(await p.locator('.site-alert .sa-creds').count() === 1, '★復旧手順（拡張機能に保存し直す）が追加で出る')
+  t((await p.locator('.site-alert .sa-creds').innerText()).includes('新しいパスワードを保存し直して'), '何をすればいいか書いてある')
+  await p.close() }
+{ const { p } = await open({ ...ALL_OK, zba: S(false,'auth',30000) })
+  t(await p.locator('.site-alert .sa-creds').count() === 0, '通常のログイン切れでは復旧手順を出さない（誤解させない）')
+  await p.close() }
+{ const { p } = await open({ zba: S(false,'creds',30000), samurai: S(false,'auth',30000), kakaku: S(true,'',30000) })
+  const txt = (await p.locator('.site-alert').innerText()).replace(/\s+/g,' ')
+  t(txt.includes('ズバット') && txt.includes('引越し侍') && !txt.includes('価格.com'), '複数サイトが同時に落ちても両方出る', txt.slice(0,90))
+  t(await p.locator('.site-alert .sa-creds').count() === 1, '1サイトでもパスワード違いがあれば手順は1回だけ出る')
+  await p.close() }
+
 // ③ ハートビート途絶（PCが落ちている等）
 { const { p } = await open({ ...ALL_OK, kakaku: S(true,'',25*60*1000) })
   const txt = (await p.locator('.site-alert').innerText()).replace(/\s+/g,' ')

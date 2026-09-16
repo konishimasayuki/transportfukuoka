@@ -422,6 +422,10 @@ function ago(ts) {
   if (s < 86400) return `${Math.floor(s / 3600)}時間${Math.floor((s % 3600) / 60)}分前`
   return `${Math.floor(s / 86400)}日前`
 }
+// 保存中のID/PWがサイトに拒否された時の案内（全サイト共通）。
+// セッション切れと違い、人が新しいパスワードを保存し直すまで直らない。
+const CREDS_BAD_MSG = '🔑 IDまたはパスワードが違います（サイト側で変更された可能性）\n　　新しいパスワードを下に入力して保存してください'
+
 // 「最終巡回（稼働）」「最終取り込み（新規）」の2行を組み立てる（全サイト共通）
 function activityLines(pollAt, pollCount, leadAt) {
   const out = []
@@ -433,8 +437,9 @@ const statusRefreshers = [] // ポップアップを開いている間、定期�
 async function renderZbaStatus() {
   const el = document.getElementById('zbaStatus')
   if (!el) return
-  const s = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword', 'zbaAuthOk', 'zbaAuthAt', 'zbaReloginResult', 'zbaReloginAt', 'zbaReloginReason', 'lastBeatAt', 'zbaLastLeadAt'])
+  const s = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword', 'zbaAuthOk', 'zbaAuthAt', 'zbaReloginResult', 'zbaReloginAt', 'zbaReloginReason', 'lastBeatAt', 'zbaLastLeadAt', 'zbaCredsBad'])
   const lines = []
+  if (s.zbaCredsBad === true) lines.push(CREDS_BAD_MSG)
   lines.push('自動再ログイン: ' + (s.zbaLoginId && s.zbaPassword ? '設定済み ✓' : '未設定（ID/PWを保存してください）'))
   if (s.zbaAuthAt != null) {
     lines.push('監視状態: ' + (s.zbaAuthOk === false ? 'ログイン切れ' : '正常') + `（最終確認 ${hhmm(s.zbaAuthAt)}）`)
@@ -463,6 +468,7 @@ document.getElementById('zbaSave').addEventListener('click', async () => {
   const id = await saveCredsFromFields()
   if (!id) { res.style.color = '#dc2626'; res.textContent = 'IDを入力してください'; return }
   document.getElementById('zbaPw').value = ''
+  await chrome.storage.local.set({ zbaCredsBad: false }) // 保存し直したら「パスワード違い」を解除して再試行できるようにする
   res.style.color = '#16a34a'; res.textContent = '保存しました'
   renderZbaStatus()
 })
@@ -474,16 +480,38 @@ document.getElementById('zbaTest').addEventListener('click', async () => {
   const { zbaLoginId, zbaPassword } = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword'])
   if (!zbaLoginId || !zbaPassword) { res.style.color = '#dc2626'; res.textContent = 'ID/PWを入力してください'; return }
   try {
-    const cj = await fetch(`${ZBA_API}/csrf`, { credentials: 'include', headers: { accept: 'application/json' } }).then(r => r.json()).catch(() => null)
-    const token = cj && cj.csrfToken
-    if (!token) { res.style.color = '#dc2626'; res.textContent = 'CSRF取得失敗（ズバットに一度アクセスしてから再試行）'; return }
+    // /csrf は未ログインでも200を返し、csrfToken だけが空になる（実測）。
+    // ＝「トークンが空でない」＝「サーバが認めた有効なセッションがある」。
+    const probe = async () => {
+      try {
+        const r = await fetch(`${ZBA_API}/csrf`, { credentials: 'include', headers: { accept: 'application/json' } })
+        if (!r.ok) return { state: 'unknown', token: null }
+        const j = await r.json().catch(() => null)
+        const tk = (j && j.csrfToken) || null
+        return { state: tk ? 'ok' : 'no', token: tk }
+      } catch { return { state: 'unknown', token: null } }
+    }
+    // トークンが空でもログインは試す（完全ログアウト状態でもテストできるようにする）
+    const token = (await probe()).token
+    const headers = { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja' }
+    if (token) headers['csrf-token'] = token
     const r = await fetch(`${ZBA_API}/supplier-kanri/login`, {
-      method: 'POST', credentials: 'include',
-      headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
+      method: 'POST', credentials: 'include', headers,
       body: JSON.stringify({ loginId: zbaLoginId, password: zbaPassword }),
     })
-    if (r.ok) { res.style.color = '#16a34a'; res.textContent = '✓ ログイン成功（自動再ログイン有効）'; document.getElementById('zbaPw').value = ''; await chrome.storage.local.set({ zbaReloginResult: 'success', zbaReloginAt: Date.now() }) }
-    else { res.style.color = '#dc2626'; res.textContent = '✕ ログイン失敗（ID/PW要確認）: HTTP ' + r.status }
+    // ★HTTPステータスでは判定しない。ズバットは誤ID/PWに404を返す（2026-09の事故）。
+    //   実際にログインできたか（＝トークンが発行されるか）で判定する。
+    const v = await probe()
+    if (v.state === 'ok') {
+      res.style.color = '#16a34a'; res.textContent = '✓ ログイン成功（自動再ログイン有効）'
+      document.getElementById('zbaPw').value = ''
+      await chrome.storage.local.set({ zbaReloginResult: 'success', zbaReloginAt: Date.now(), zbaCredsBad: false })
+    } else if (v.state === 'no') {
+      res.style.color = '#dc2626'; res.textContent = '✕ ログインできません。IDとパスワードを確認してください（HTTP ' + r.status + '）'
+      await chrome.storage.local.set({ zbaCredsBad: true, zbaCredsBadAt: Date.now() })
+    } else {
+      res.style.color = '#dc2626'; res.textContent = '✕ 確認できませんでした（通信かサイト側の不調。HTTP ' + r.status + '）'
+    }
     renderZbaStatus()
   } catch (e) { res.style.color = '#dc2626'; res.textContent = '通信エラー: ' + (e && e.message ? e.message : String(e)) }
 })
@@ -492,7 +520,7 @@ document.getElementById('zbaTest').addEventListener('click', async () => {
 // ズバットと違い専用ログインAPIが無いため、拡張のループがセッション切れ時に
 // ログインフォームを解析してPOSTする方式（background.js:relogin）。ここでは保存のみ。
 function makeSiteCreds(cfg) {
-  // cfg: { credsKey, idEl, pwEl, saveBtn, resultEl, statusEl, resultKey, reasonKey, atKey, blockedKey, triesKey, siteLabel }
+  // cfg: { credsKey, idEl, pwEl, saveBtn, resultEl, statusEl, resultKey, reasonKey, atKey, blockedKey, triesKey, credsBadKey, siteLabel }
   const REASONS = {
     'no-creds': 'ID/PW未設定', 'no-form': 'ログインフォーム未検出',
     'no-userfield': 'ID入力欄を特定できず', 'invalid-creds': 'ID/PWが違う可能性',
@@ -505,9 +533,10 @@ function makeSiteCreds(cfg) {
   }
   async function renderStatus() {
     const el = document.getElementById(cfg.statusEl); if (!el) return
-    const s = await chrome.storage.local.get([cfg.credsKey, cfg.resultKey, cfg.reasonKey, cfg.atKey, cfg.blockedKey, cfg.pollKey, cfg.pollCountKey, cfg.leadKey])
+    const s = await chrome.storage.local.get([cfg.credsKey, cfg.resultKey, cfg.reasonKey, cfg.atKey, cfg.blockedKey, cfg.pollKey, cfg.pollCountKey, cfg.leadKey, cfg.credsBadKey])
     const c = s[cfg.credsKey]
     const lines = []
+    if (s[cfg.credsBadKey] === true) lines.push(CREDS_BAD_MSG)
     lines.push('自動再ログイン: ' + (c && c.username && c.password ? '設定済み ✓' : '未設定（ID/PWを保存してください）'))
     activityLines(s[cfg.pollKey], s[cfg.pollCountKey], s[cfg.leadKey]).forEach(l => lines.push(l))
     if (s[cfg.blockedKey]) lines.push('⛔ 停止中（ロック防止のため自動試行を停止中。翌朝6時に自動再開、またはID/PWを保存し直すと再開）')
@@ -529,7 +558,7 @@ function makeSiteCreds(cfg) {
     if (prev.userField) creds.userField = prev.userField
     if (!creds.password) { res.style.color = '#dc2626'; res.textContent = 'パスワードを入力してください'; return }
     // 保存し直したら「停止中」を解除し、試行回数をリセット（再びロック配慮つきで試行可に）
-    await chrome.storage.local.set({ [cfg.credsKey]: creds, [cfg.blockedKey]: false, [cfg.triesKey]: 0 })
+    await chrome.storage.local.set({ [cfg.credsKey]: creds, [cfg.blockedKey]: false, [cfg.triesKey]: 0, [cfg.credsBadKey]: false })
     document.getElementById(cfg.pwEl).value = ''
     res.style.color = '#16a34a'; res.textContent = '保存しました（セッション切れ時に自動でログインし直します）'
     renderStatus()
@@ -537,8 +566,8 @@ function makeSiteCreds(cfg) {
   load(); renderStatus()
 }
 
-makeSiteCreds({ credsKey: 'samuraiCreds', idEl: 'samuraiId', pwEl: 'samuraiPw', saveBtn: 'samuraiSave', resultEl: 'samuraiResult', statusEl: 'samuraiStatus', resultKey: 'samuraiReloginResult', reasonKey: 'samuraiReloginReason', atKey: 'samuraiReloginAt', blockedKey: 'samuraiReloginBlocked', triesKey: 'samuraiReloginTries', pollKey: 'samuraiLastPollAt', pollCountKey: 'samuraiLastPollCount', leadKey: 'samuraiLastLeadAt', siteLabel: '引越し侍' })
-makeSiteCreds({ credsKey: 'kakakuCreds', idEl: 'kakakuId', pwEl: 'kakakuPw', saveBtn: 'kakakuSave', resultEl: 'kakakuResult', statusEl: 'kakakuStatus', resultKey: 'kakakuReloginResult', reasonKey: 'kakakuReloginReason', atKey: 'kakakuReloginAt', blockedKey: 'kakakuReloginBlocked', triesKey: 'kakakuReloginTries', pollKey: 'kakakuLastPollAt', pollCountKey: 'kakakuLastPollCount', leadKey: 'kakakuLastLeadAt', siteLabel: '価格.com' })
+makeSiteCreds({ credsKey: 'samuraiCreds', idEl: 'samuraiId', pwEl: 'samuraiPw', saveBtn: 'samuraiSave', resultEl: 'samuraiResult', statusEl: 'samuraiStatus', resultKey: 'samuraiReloginResult', reasonKey: 'samuraiReloginReason', atKey: 'samuraiReloginAt', blockedKey: 'samuraiReloginBlocked', triesKey: 'samuraiReloginTries', credsBadKey: 'samuraiCredsBad', pollKey: 'samuraiLastPollAt', pollCountKey: 'samuraiLastPollCount', leadKey: 'samuraiLastLeadAt', siteLabel: '引越し侍' })
+makeSiteCreds({ credsKey: 'kakakuCreds', idEl: 'kakakuId', pwEl: 'kakakuPw', saveBtn: 'kakakuSave', resultEl: 'kakakuResult', statusEl: 'kakakuStatus', resultKey: 'kakakuReloginResult', reasonKey: 'kakakuReloginReason', atKey: 'kakakuReloginAt', blockedKey: 'kakakuReloginBlocked', triesKey: 'kakakuReloginTries', credsBadKey: 'kakakuCredsBad', pollKey: 'kakakuLastPollAt', pollCountKey: 'kakakuLastPollCount', leadKey: 'kakakuLastLeadAt', siteLabel: '価格.com' })
 
 // ズバットのステータスも定期更新に登録し、開いている間は数秒ごとに「◯分前」を更新する。
 statusRefreshers.push(renderZbaStatus)

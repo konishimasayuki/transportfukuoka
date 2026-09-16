@@ -44,7 +44,9 @@ ensureKakakuLoop()
 // ===== ズバット セッション・キープアライブ =====
 async function keepAlive() {
   try {
-    const { lastBeatAt, zbaLastReloadAt } = await chrome.storage.local.get(['lastBeatAt', 'zbaLastReloadAt'])
+    const { lastBeatAt, zbaLastReloadAt, zbaCredsBad } = await chrome.storage.local.get(['lastBeatAt', 'zbaLastReloadAt', 'zbaCredsBad'])
+    // 保存中のID/PWが拒否された状態なら、ただのログイン切れではなく「パスワード違い」として報告する
+    const authReason = zbaCredsBad === true ? 'creds' : 'auth'
     const beatStale = !lastBeatAt || (Date.now() - lastBeatAt) > STALE_RELOAD_MS
     const _h = new Date().getHours(); const business = _h >= 6 && _h < 24
     // ズバットのタブが休止(discarded)、または長時間ハートビート途絶(frozen/停止)なら再読込してcontent.jsを再起動。
@@ -59,7 +61,7 @@ async function keepAlive() {
     } catch {}
     if (lastBeatAt && (Date.now() - lastBeatAt) < KEEPALIVE_STALE_MS) return // タブが生存ポーリング中
     const r = await fetch(ZBA_CSRF, { method: 'GET', credentials: 'include', headers: { accept: 'application/json' } })
-    if (r.status === 401 || r.status === 403) { setAuthBadge(false); await postStatus(false, 'auth'); return }
+    if (r.status === 401 || r.status === 403) { setAuthBadge(false); await postStatus(false, authReason); return }
     if (!r.ok) { await postStatus(false, 'error'); return }
     // ★/csrf は未ログインでも 200 を返し、csrfToken だけが空になる（実測）。
     //   HTTPステータスだけで生存判定すると、ログイン切れを永久に検知できず
@@ -67,7 +69,7 @@ async function keepAlive() {
     const j = await r.json().catch(() => null)
     if (!(j && j.csrfToken)) {
       // lastBeatAt は更新しない。更新するとタブ再読込の安全網が作動しなくなる。
-      setAuthBadge(false); await postStatus(false, 'auth'); return
+      setAuthBadge(false); await postStatus(false, authReason); return
     }
     await chrome.storage.local.set({ lastBeatAt: Date.now() })
     setAuthBadge(true)
@@ -287,22 +289,27 @@ function kakakuLoop(gen, today) {
     if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) return false // 夜間22〜6時は再ログイン休止
     const set = p => { try { chrome.storage.local.set(p) } catch {} }
     let st = {}
-    try { st = await chrome.storage.local.get(['kakakuCreds', 'kakakuReloginBlocked', 'kakakuReloginLastAt', 'kakakuReloginTries', 'kakakuReloginMorning']) } catch {}
+    try { st = await chrome.storage.local.get(['kakakuCreds', 'kakakuReloginBlocked', 'kakakuReloginLastAt', 'kakakuReloginTries', 'kakakuReloginMorning', 'kakakuCredsBad']) } catch {}
     // 朝5時以降の初回：前日までの停止・試行回数をリセットして監視を再開（毎朝ログインし直す）
     const _md = new Date(); const _mkey = _md.getFullYear() + '-' + String(_md.getMonth() + 1).padStart(2, '0') + '-' + String(_md.getDate()).padStart(2, '0')
     if (st.kakakuReloginMorning !== _mkey) {
       st.kakakuReloginBlocked = false; st.kakakuReloginTries = 0; st.kakakuReloginLastAt = 0
       set({ kakakuReloginBlocked: false, kakakuReloginTries: 0, kakakuReloginLastAt: 0, kakakuReloginMorning: _mkey })
     }
+    // ===== パスワード変更の検知 =====
+    // 「保存しているID/PWが拒否された」状態。セッション切れと違い、人が保存し直すまで直らない。
+    // ★毎朝のリセット（上）では消さない。消えるのは ①ログイン成功 ②ポップアップで保存し直し の2つだけ。
+    let credsBad = st.kakakuCredsBad === true
+    const authNg = () => postStatus(false, credsBad ? 'creds' : 'auth')
     const creds = st.kakakuCreds
-    if (!creds || !creds.username || !creds.password) { postStatus(false, 'auth'); set({ kakakuReloginResult: 'failed', kakakuReloginReason: 'no-creds', kakakuReloginAt: Date.now() }); return false }
-    if (st.kakakuReloginBlocked) { postStatus(false, 'auth'); return false } // 停止中（ID/PWを保存し直すと解除）
+    if (!creds || !creds.username || !creds.password) { authNg(); set({ kakakuReloginResult: 'failed', kakakuReloginReason: 'no-creds', kakakuReloginAt: Date.now() }); return false }
+    if (st.kakakuReloginBlocked) { authNg(); return false } // 停止中（ID/PWを保存し直すと解除）
     const now = Date.now()
     if (st.kakakuReloginLastAt && now - st.kakakuReloginLastAt < 5 * 60 * 1000) return false // 5分に1回まで（全タブ共有）
-    if ((st.kakakuReloginTries || 0) >= MAX_TRIES) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'max-tries', kakakuReloginAt: now }); postStatus(false, 'auth'); return false }
+    if ((st.kakakuReloginTries || 0) >= MAX_TRIES) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'max-tries', kakakuReloginAt: now }); authNg(); return false }
     const pw = loginDoc.querySelector('input[type="password"]')
     const form = pw && pw.closest('form')
-    if (!form) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'no-form', kakakuReloginAt: now }); postStatus(false, 'auth'); return false }
+    if (!form) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'no-form', kakakuReloginAt: now }); authNg(); return false }
     const base = loginDoc.__srcUrl || location.href // リダイレクト後のログインページURLを基準にaction解決
     const action = new URL(form.getAttribute('action') || base, base).href
     const method = (form.getAttribute('method') || 'POST').toUpperCase()
@@ -326,15 +333,16 @@ function kakakuLoop(gen, today) {
       const t = inputs.find(el => { const ty = (el.getAttribute('type') || 'text').toLowerCase(); return el.getAttribute('name') && ['text', 'email', 'tel'].includes(ty) })
       if (t) { params.set(t.getAttribute('name'), creds.username); userSet = true }
     }
-    if (!userSet) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'no-userfield', kakakuReloginAt: now }); postStatus(false, 'auth'); return false }
+    if (!userSet) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'no-userfield', kakakuReloginAt: now }); authNg(); return false }
     set({ kakakuReloginLastAt: now, kakakuReloginTries: (st.kakakuReloginTries || 0) + 1 }) // 認証を投げる直前に回数記録
     try {
       await fetch(action, { method, credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() })
       const check = await fetchDoc(LIST, 'no-cache')
-      if (!check.querySelector('input[type="password"]')) { set({ kakakuReloginBlocked: false, kakakuReloginTries: 0, kakakuReloginResult: 'success', kakakuReloginReason: '', kakakuReloginAt: Date.now() }); return true }
-      set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'invalid-creds', kakakuReloginAt: Date.now() }); postStatus(false, 'auth'); return false // ID/PW拒否→即停止
+      if (!check.querySelector('input[type="password"]')) { set({ kakakuReloginBlocked: false, kakakuReloginTries: 0, kakakuReloginResult: 'success', kakakuReloginReason: '', kakakuReloginAt: Date.now(), kakakuCredsBad: false }); return true } // ログインできた＝保存中のID/PWは正しい
+      // ★パスワード変更の検知：ログインし直しても一覧にログイン画面が返る＝ID/PWが通らない
+      credsBad = true; set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'invalid-creds', kakakuReloginAt: Date.now(), kakakuCredsBad: true, kakakuCredsBadAt: Date.now() }); postStatus(false, 'creds'); return false // ID/PW拒否→即停止
     } catch (e) {
-      set({ kakakuReloginResult: 'failed', kakakuReloginReason: 'fetch-error', kakakuReloginAt: Date.now() }); postStatus(false, 'auth'); return false // 通信エラーは停止せず上限内で再試行
+      set({ kakakuReloginResult: 'failed', kakakuReloginReason: 'fetch-error', kakakuReloginAt: Date.now() }); authNg(); return false // 通信エラーは停止せず上限内で再試行
     }
   }
 
@@ -589,22 +597,27 @@ function samuraiLoop(gen, todayMD) {
     if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) return false // 夜間22〜6時は再ログイン休止
     const set = p => { try { chrome.storage.local.set(p) } catch {} }
     let st = {}
-    try { st = await chrome.storage.local.get(['samuraiCreds', 'samuraiReloginBlocked', 'samuraiReloginLastAt', 'samuraiReloginTries', 'samuraiReloginMorning']) } catch {}
+    try { st = await chrome.storage.local.get(['samuraiCreds', 'samuraiReloginBlocked', 'samuraiReloginLastAt', 'samuraiReloginTries', 'samuraiReloginMorning', 'samuraiCredsBad']) } catch {}
     // 朝5時以降の初回：前日までの停止・試行回数をリセットして監視を再開（毎朝ログインし直す）
     const _md = new Date(); const _mkey = _md.getFullYear() + '-' + String(_md.getMonth() + 1).padStart(2, '0') + '-' + String(_md.getDate()).padStart(2, '0')
     if (st.samuraiReloginMorning !== _mkey) {
       st.samuraiReloginBlocked = false; st.samuraiReloginTries = 0; st.samuraiReloginLastAt = 0
       set({ samuraiReloginBlocked: false, samuraiReloginTries: 0, samuraiReloginLastAt: 0, samuraiReloginMorning: _mkey })
     }
+    // ===== パスワード変更の検知 =====
+    // 「保存しているID/PWが拒否された」状態。セッション切れと違い、人が保存し直すまで直らない。
+    // ★毎朝のリセット（上）では消さない。消えるのは ①ログイン成功 ②ポップアップで保存し直し の2つだけ。
+    let credsBad = st.samuraiCredsBad === true
+    const authNg = () => postStatus(false, credsBad ? 'creds' : 'auth')
     const creds = st.samuraiCreds
-    if (!creds || !creds.username || !creds.password) { postStatus(false, 'auth'); set({ samuraiReloginResult: 'failed', samuraiReloginReason: 'no-creds', samuraiReloginAt: Date.now() }); return false }
-    if (st.samuraiReloginBlocked) { postStatus(false, 'auth'); return false } // 停止中（ID/PWを保存し直すと解除）
+    if (!creds || !creds.username || !creds.password) { authNg(); set({ samuraiReloginResult: 'failed', samuraiReloginReason: 'no-creds', samuraiReloginAt: Date.now() }); return false }
+    if (st.samuraiReloginBlocked) { authNg(); return false } // 停止中（ID/PWを保存し直すと解除）
     const now = Date.now()
     if (st.samuraiReloginLastAt && now - st.samuraiReloginLastAt < 5 * 60 * 1000) return false // 5分に1回まで（全タブ共有）
-    if ((st.samuraiReloginTries || 0) >= MAX_TRIES) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'max-tries', samuraiReloginAt: now }); postStatus(false, 'auth'); return false }
+    if ((st.samuraiReloginTries || 0) >= MAX_TRIES) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'max-tries', samuraiReloginAt: now }); authNg(); return false }
     const pw = loginDoc.querySelector('input[type="password"]')
     const form = pw && pw.closest('form')
-    if (!form) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'no-form', samuraiReloginAt: now }); postStatus(false, 'auth'); return false }
+    if (!form) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'no-form', samuraiReloginAt: now }); authNg(); return false }
     const base = loginDoc.__srcUrl || location.href // リダイレクト後のログインページURLを基準にaction解決
     const action = new URL(form.getAttribute('action') || base, base).href
     const method = (form.getAttribute('method') || 'POST').toUpperCase()
@@ -628,18 +641,19 @@ function samuraiLoop(gen, todayMD) {
       const t = inputs.find(el => { const ty = (el.getAttribute('type') || 'text').toLowerCase(); return el.getAttribute('name') && ['text', 'email', 'tel'].includes(ty) })
       if (t) { params.set(t.getAttribute('name'), creds.username); userSet = true }
     }
-    if (!userSet) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'no-userfield', samuraiReloginAt: now }); postStatus(false, 'auth'); return false }
+    if (!userSet) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'no-userfield', samuraiReloginAt: now }); authNg(); return false }
     // 実際にサーバーへ認証を投げる直前に、回数と時刻を記録して多重・連打を封じる。
     set({ samuraiReloginLastAt: now, samuraiReloginTries: (st.samuraiReloginTries || 0) + 1 })
     try {
       await fetch(action, { method, credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() })
       const check = await fetchDoc(LIST, 'no-cache') // 再ログイン後に一覧を取り直して成否判定
-      if (!check.querySelector('input[type="password"]')) { set({ samuraiReloginBlocked: false, samuraiReloginTries: 0, samuraiReloginResult: 'success', samuraiReloginReason: '', samuraiReloginAt: Date.now() }); return true }
+      if (!check.querySelector('input[type="password"]')) { set({ samuraiReloginBlocked: false, samuraiReloginTries: 0, samuraiReloginResult: 'success', samuraiReloginReason: '', samuraiReloginAt: Date.now(), samuraiCredsBad: false }); return true } // ログインできた＝保存中のID/PWは正しい
       // サーバーがID/PWを拒否＝これ以上試すとロックの恐れ。即停止（再保存まで自動試行しない）。
-      set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'invalid-creds', samuraiReloginAt: Date.now() }); postStatus(false, 'auth'); return false
+      // ★パスワード変更の検知：ログインし直しても一覧にログイン画面が返る＝ID/PWが通らない
+      credsBad = true; set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'invalid-creds', samuraiReloginAt: Date.now(), samuraiCredsBad: true, samuraiCredsBadAt: Date.now() }); postStatus(false, 'creds'); return false
     } catch (e) {
       // 通信エラーはID/PW拒否ではない→停止はせず、5分後・上限内で再試行可
-      set({ samuraiReloginResult: 'failed', samuraiReloginReason: 'fetch-error', samuraiReloginAt: Date.now() }); postStatus(false, 'auth'); return false
+      set({ samuraiReloginResult: 'failed', samuraiReloginReason: 'fetch-error', samuraiReloginAt: Date.now() }); authNg(); return false
     }
   }
 

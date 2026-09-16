@@ -296,6 +296,20 @@ async function getCsrfToken() {
 // ロック/BAN対策：最短5分に1回まで・連続失敗で停止。資格情報はこのPCのローカルのみ。
 let lastReloginAt = 0
 let reloginFails = 0
+// ===== パスワード変更の検知 =====
+// 「保存しているID/PWがサーバに拒否された」状態。セッション切れ（時間が経てば
+// 自動で戻る）とは別物で、人が拡張機能にパスワードを保存し直すまで直らない。
+// 2026-09の事故は「お客様がサイト側でパスワードを変更した」ことが原因だったが、
+// CRM上は普通のログイン切れと同じ表示だったため、原因に気づくのが遅れた。
+// ★毎朝のリセットでは消さない。消すと「パスワードが違う」表示が毎朝消えてしまう。
+//   消えるのは ①ログインに成功した時 ②ポップアップでID/PWを保存し直した時 の2つだけ。
+let credsBad = false
+function markCredsBad(bad) {
+  credsBad = bad
+  safeStorageSet(bad ? { zbaCredsBad: true, zbaCredsBadAt: Date.now() } : { zbaCredsBad: false })
+}
+// ログインできない時の報告。原因が「パスワード違い」なら別の理由で送る。
+function postAuthProblem() { return postStatus(false, credsBad ? 'creds' : 'auth') }
 let morningResetDate = '' // 朝5時に失敗回数をリセットして再開した日（YYYY-MM-DD）
 let listFailStreak = 0 // 一覧取得の連続失敗（500等のセッション不正を再ログインで回復するため）
 const RELOGIN_MIN_GAP = 5 * 60 * 1000
@@ -381,6 +395,7 @@ async function tryRecoverAuth() {
   const res = await relogin()
   if (res === true) {
     reloginFails = 0
+    markCredsBad(false) // ログインできた＝保存中のID/PWは正しい
     setAuthState(true)
     postStatus(true, '')
     safeStorageSet({ zbaReloginResult: 'success', zbaReloginAt: Date.now() })
@@ -396,6 +411,9 @@ async function tryRecoverAuth() {
   // 一時的失敗(verify-unknown・通信エラー・サーバ5xx・夜間休止)は上限にカウントせず、5分ごとに自動リトライを継続する。
   const hardFail = (res === 'no-creds' || res === 'invalid-creds' || /^http-4\d\d$/.test(String(res)))
   if (hardFail) reloginFails++
+  // ★パスワード変更の検知：ログインは通ったのにセッションが有効にならない、
+  //   またはサーバに4xxで拒否された＝保存しているID/PWが通らない。
+  if (res === 'invalid-creds' || /^http-4\d\d$/.test(String(res))) markCredsBad(true)
   safeStorageSet({ zbaReloginResult: 'fail', zbaReloginAt: Date.now() })
   console.warn(`[リード監視:${SITE}] 自動再ログイン失敗 res=${res} hard=${hardFail} (${reloginFails}/${RELOGIN_MAX_FAILS})`)
   return false
@@ -472,7 +490,7 @@ async function fetchTodayCount() {
     )
   } catch (e) {
     noteWatchFail() // 通信エラー・ログイン切れ → 次回以降の間隔を延ばす
-    if (e && e.auth) { const ok = await tryRecoverAuth(); if (!ok) { setAuthState(false); postStatus(false, 'auth') } }
+    if (e && e.auth) { const ok = await tryRecoverAuth(); if (!ok) { setAuthState(false); postAuthProblem() } }
     return null
   }
 }
@@ -572,7 +590,7 @@ async function fetchDetailViaApi(orderId, companyId) {
       headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
       body: JSON.stringify({ orderId, companyId }),
     })
-    if (r.status === 401 || r.status === 403) { invalidateCsrf(); setAuthState(false); postStatus(false, 'auth'); return false }
+    if (r.status === 401 || r.status === 403) { invalidateCsrf(); setAuthState(false); postAuthProblem(); return false }
     if (!r.ok) { console.log(`[リード監視:${SITE}] 詳細API失敗（リトライ対象）`, orderId, r.status); return false }
     const j = await r.json()
     const o = j && j.response
@@ -602,7 +620,7 @@ async function apiSync() {
         if (!ok) {
           console.warn(`[リード監視:${SITE}] ⚠ ログイン切れ。自動再ログイン未設定/失敗 → 手動で再ログインしてください`)
           setAuthState(false)
-          postStatus(false, 'auth')
+          postAuthProblem()
         }
       } else {
         // 500等の連続失敗はセッション不正のことがあるため、2回続いたら自動再ログインを試みる
@@ -735,8 +753,9 @@ function kickNow(reason) {
 }
 
 async function init() {
-  const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined', 'detailDoneIds', 'detailVersion'])
+  const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined', 'detailDoneIds', 'detailVersion', 'zbaCredsBad'])
   enabled = st.enabled !== false
+  credsBad = st.zbaCredsBad === true // 拡張/タブを再起動しても「パスワード違い」を忘れない
   everBaselined = st.everBaselined === true
   ;(st.seenKeys || []).forEach(k => seen.add(k))
   // 詳細ロジックのバージョンが上がっていたら取得済みフラグを破棄し、新ロジックで全件取り直す
@@ -824,6 +843,11 @@ async function doScan() {
 
 chrome.storage.onChanged.addListener(ch => {
   if (ch.enabled) enabled = ch.enabled.newValue !== false
+  // ポップアップでID/PWを保存し直したら、その場で「パスワード違い」を解除して再試行できるようにする
+  if (ch.zbaCredsBad) {
+    credsBad = ch.zbaCredsBad.newValue === true
+    if (!credsBad) { reloginFails = 0; lastReloginAt = 0 }
+  }
 })
 
 init()

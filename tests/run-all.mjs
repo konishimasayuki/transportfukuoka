@@ -11,6 +11,7 @@ const SUITES = [
   ['exttest3',  '拡張：再送の優先順位と上限'],
   ['zbafix',    '拡張：ズバットの再ログイン判定と生存判定'],
   ['seenpersist','拡張：取込済みの保存（再読込後の再送防止）'],
+  ['credschange','パスワード変更の検知（3サイト＋CRM画面＋ポップアップ）'],
 ]
 let total = 0, failed = 0, bad = []
 for (const [name, desc] of SUITES) {

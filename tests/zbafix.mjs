@@ -43,21 +43,23 @@ const idxCheck = ka.indexOf('j.csrfToken')
 const idxBeat  = ka.indexOf('lastBeatAt: Date.now()')
 t(idxCheck !== -1 && idxBeat > idxCheck, '未ログイン判定が lastBeatAt 更新より前にある', `判定@${idxCheck} < 更新@${idxBeat}`)
 const branch = ka.slice(idxCheck, idxBeat)
-t(/postStatus\(false, 'auth'\)/.test(branch) && /return/.test(branch), '未ログインなら auth を報告して抜ける（正常と言わない）')
+t(/postStatus\(false, authReason\)/.test(branch) && /return/.test(branch), '未ログインなら異常を報告して抜ける（正常と言わない）')
+t(/zbaCredsBad === true \? 'creds' : 'auth'/.test(ka), 'その理由は auth か creds（パスワード違い）を出し分ける')
 const codeOnly = branch.split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
 t(!/lastBeatAt/.test(codeOnly), '未ログインの分岐では lastBeatAt を更新しない（コメント除く）')
 
 // 実際に動かす：/csrf の応答3種でどう判定されるか
 console.log('\n--- #2 応答パターン別の動き ---')
-const sim = async (status, body) => {
+const sim = async (status, body, credsBad = false) => {
   const calls = []
-  const fn = new Function('fetch','chrome','setAuthBadge','postStatus','ZBA_CSRF','calls', `
+  const fn = new Function('fetch','chrome','setAuthBadge','postStatus','ZBA_CSRF','calls','zbaCredsBad', `
     return (async () => {
+      const authReason = zbaCredsBad === true ? 'creds' : 'auth'
       const r = await fetch(ZBA_CSRF, {})
-      if (r.status === 401 || r.status === 403) { setAuthBadge(false); await postStatus(false, 'auth'); return }
+      if (r.status === 401 || r.status === 403) { setAuthBadge(false); await postStatus(false, authReason); return }
       if (!r.ok) { await postStatus(false, 'error'); return }
       const j = await r.json().catch(() => null)
-      if (!(j && j.csrfToken)) { setAuthBadge(false); await postStatus(false, 'auth'); return }
+      if (!(j && j.csrfToken)) { setAuthBadge(false); await postStatus(false, authReason); return }
       await chrome.storage.local.set({ lastBeatAt: Date.now() })
       setAuthBadge(true)
       await postStatus(true, '')
@@ -67,7 +69,7 @@ const sim = async (status, body) => {
     { storage: { local: { set: async o => calls.push('beat:' + Object.keys(o)[0]) } } },
     v => calls.push('badge:' + v),
     (o, r) => calls.push(`status:${o?'ok':'ng'}${r?'/'+r:''}`),
-    'x', calls)
+    'x', calls, credsBad)
   return calls
 }
 const a = await sim(200, { status: 'SUCCESS', csrfToken: '' })      // 未ログイン（実測の形）
@@ -78,6 +80,8 @@ const c = await sim(500, null)                                       // サー�
 t(c.includes('status:ng/error'), 'サーバ障害(500) → error報告', c.join(' '))
 const d = await sim(401, null)
 t(d.includes('status:ng/auth'), '401 → auth報告（従来どおり）', d.join(' '))
+const e = await sim(200, { status: 'SUCCESS', csrfToken: '' }, true) // パスワード違いが記録済み
+t(e.includes('status:ng/creds'), '★パスワード違いが分かっている時は creds報告', e.join(' '))
 
 
 // ===== #3: 完全ログアウト（CSRFトークンが空）でもログインを試すか =====

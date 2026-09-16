@@ -27,10 +27,13 @@ function judge(key, s) {
     return { key, name, why: `${min >= 60 ? Math.floor(min / 60) + '時間' : min + '分'}前から巡回が止まっています`, at: ms }
   }
   if (s.ok === false) {
-    const why = s.reason === 'auth' ? 'ログインが切れています（手動でログインし直してください）'
+    // 'creds' は「保存しているID/PWがサイトに拒否された」＝パスワードが変更された可能性。
+    // セッション切れ（待てば自動で戻る）と違い、人が保存し直すまで絶対に直らないので分けて出す。
+    const why = s.reason === 'creds' ? 'IDまたはパスワードが違います（サイト側で変更された可能性）'
+              : s.reason === 'auth' ? 'ログインが切れています（手動でログインし直してください）'
               : s.reason === 'error' ? '取得に失敗しています'
               : '異常を報告しています'
-    return { key, name, why, at: ms }
+    return { key, name, why, at: ms, creds: s.reason === 'creds' }
   }
   return null
 }
@@ -70,7 +73,8 @@ export default function SiteAlert({ isDemo }) {
       <span className="sa-icon">⚠</span>
       <div className="sa-body">
         <div className="sa-head">
-          リードの取り込みが止まっています（{down.map(d => d.name).join('・')}）
+          {down.some(d => d.creds) ? 'ログインできずリードの取り込みが止まっています' : 'リードの取り込みが止まっています'}
+          （{down.map(d => d.name).join('・')}）
         </div>
         {down.map(d => (
           <div key={d.key} className="sa-line">
@@ -81,6 +85,12 @@ export default function SiteAlert({ isDemo }) {
         <div className="sa-note">
           この間に届いたリードは取り込まれません。巡回PCのChromeと拡張機能を確認してください。
         </div>
+        {down.some(d => d.creds) && (
+          <div className="sa-note sa-creds">
+            パスワードが変更されている可能性があります。巡回PCのChrome右上の拡張機能アイコンを開き、
+            該当サイトに<b>新しいパスワードを保存し直して</b>ください。保存するだけで巡回は自動で再開します。
+          </div>
+        )}
       </div>
     </div>
   )

@@ -700,3 +700,7 @@ body.modal-open .content { overflow: hidden !important; }
   .site-alert .sa-head { font-size: 12.5px; }
   .site-alert .sa-line, .site-alert .sa-note { font-size: 11px; }
 }
+
+/* パスワード変更が疑われる時の追加案内（通常の注意書きより強く見せる） */
+.site-alert .sa-creds { margin-top: 6px; font-weight: 600; color: var(--red); }
+.site-alert .sa-creds b { text-decoration: underline; }
