@@ -309,7 +309,7 @@ async function csrfForLogin() {
 }
 
 // 戻り値：成功=true / 失敗=理由文字列（'night','no-creds','no-csrf','http-XXX','fetch-error'）。
-// 呼び出し側は「誤ID/PWによる拒否(http-401/403)・no-creds」だけをハード失敗として上限カウントする。
+// 呼び出し側は「拒否(4xx)・no-creds」をハード失敗として上限カウントする。
 async function relogin() {
   if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) { safeStorageSet({ zbaReloginReason: '夜間（22〜6時）は再ログイン休止' }); return 'night' } // 夜間22〜6時は再ログイン休止
   let creds = {}
@@ -349,9 +349,12 @@ async function tryRecoverAuth() {
     console.log(`[リード監視:${SITE}] ✓ 自動再ログイン成功`)
     return true
   }
-  // ロック防止：誤ID/PWによる拒否(http-401/403)・資格情報未設定のみ“ハード失敗”として上限にカウントし停止。
+  // ロック防止：4xx（拒否）と資格情報未設定を“ハード失敗”として上限にカウントし停止。
+  // ★401/403だけを見ていたため、ズバットが誤ID/PWに返す404が素通りし、
+  //   「2回で止める」が働かず5分ごとに無限に試行していた（2026-09 の事故）。
+  //   どの4xxが返るかはサイト側の都合で変わるため、4xxはまとめて拒否とみなす。
   // 一時的失敗(CSRF取得不可・通信エラー・サーバ5xx・夜間休止)は上限にカウントせず、5分ごとに自動リトライを継続する。
-  const hardFail = (res === 'no-creds' || res === 'http-401' || res === 'http-403')
+  const hardFail = (res === 'no-creds' || /^http-4\d\d$/.test(String(res)))
   if (hardFail) reloginFails++
   safeStorageSet({ zbaReloginResult: 'fail', zbaReloginAt: Date.now() })
   console.warn(`[リード監視:${SITE}] 自動再ログイン失敗 res=${res} hard=${hardFail} (${reloginFails}/${RELOGIN_MAX_FAILS})`)

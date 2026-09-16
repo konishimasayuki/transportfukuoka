@@ -61,6 +61,14 @@ async function keepAlive() {
     const r = await fetch(ZBA_CSRF, { method: 'GET', credentials: 'include', headers: { accept: 'application/json' } })
     if (r.status === 401 || r.status === 403) { setAuthBadge(false); await postStatus(false, 'auth'); return }
     if (!r.ok) { await postStatus(false, 'error'); return }
+    // ★/csrf は未ログインでも 200 を返し、csrfToken だけが空になる（実測）。
+    //   HTTPステータスだけで生存判定すると、ログイン切れを永久に検知できず
+    //   「監視：正常」と嘘を報告し続ける。トークンの中身で判定する（2026-09 の事故）。
+    const j = await r.json().catch(() => null)
+    if (!(j && j.csrfToken)) {
+      // lastBeatAt は更新しない。更新するとタブ再読込の安全網が作動しなくなる。
+      setAuthBadge(false); await postStatus(false, 'auth'); return
+    }
     await chrome.storage.local.set({ lastBeatAt: Date.now() })
     setAuthBadge(true)
     await postStatus(true, '')
