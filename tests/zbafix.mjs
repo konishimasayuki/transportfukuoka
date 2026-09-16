@@ -148,5 +148,56 @@ console.log('\n--- #3 完全ログアウトからの復帰 / #4 ログイン成�
   t(vfails === 0, '確認不能は何回起きても上限にカウントしない（障害復帰後に自動で戻る）')
 }
 
+// ===== #5: 巡回の指数バックオフ（優先中）=====
+console.log('\n--- #5 連続失敗時だけ間隔を延ばす ---')
+{
+  const sched = content.match(/function scheduleNextWatch\(\)[\s\S]*?\n\}/)[0]
+  const C = k => eval(content.match(new RegExp(k + '\\s*=\\s*([\\d\\s*]+)'))[1])
+  const FAST = C('WATCH_FAST_MS'), SLOW = C('WATCH_SLOW_MS'), CAP = C('WATCH_BACKOFF_MAX_MS')
+  const delayOf = (streak, busy) => {
+    let ms = null
+    new Function('watchTimer','clearTimeout','inBusyHours','WATCH_FAST_MS','WATCH_SLOW_MS','WATCH_BACKOFF_MAX_MS','watchFailStreak','setTimeout','watchTick', `
+      ${sched.replace('function scheduleNextWatch()', 'return (function scheduleNextWatch()')}
+      )()`)(null, () => {}, () => busy, FAST, SLOW, CAP, streak, (fn, d) => { ms = d }, () => {})
+    return ms
+  }
+  t(delayOf(0, true) === FAST, `正常時は ${FAST/1000}秒のまま（速さを落とさない）`, `${delayOf(0,true)}ms`)
+  t(delayOf(0, false) === SLOW, `夜間は ${SLOW/1000}秒のまま`, `${delayOf(0,false)}ms`)
+  const want = [FAST*2, FAST*4, FAST*8, CAP, CAP]
+  for (let f = 1; f <= 5; f++) {
+    const g = delayOf(f, true)
+    t(g === Math.min(want[f-1], CAP), `連続失敗${f}回 → ${Math.min(want[f-1],CAP)/1000}秒`, `${g}ms`)
+  }
+  t(delayOf(5, true) <= CAP, `上限 ${CAP/1000}秒を超えない（新着検知が止まりっぱなしにならない）`)
+
+  // 失敗カウンタの増減
+  const fns = content.match(/function noteWatchOk\(\)[\s\S]*?function noteWatchFail\(\)[^\n]*/)[0]
+  const st = new Function(`let watchFailStreak = 0; ${fns}; return { ok: noteWatchOk, ng: noteWatchFail, get: () => watchFailStreak }`)()
+  for (let i = 0; i < 10; i++) st.ng()
+  t(st.get() === 5, '失敗カウンタは5で頭打ち', `${st.get()}`)
+  st.ok()
+  t(st.get() === 0, '1回成功すれば即座に通常速度へ戻る')
+
+  // ★0件の日に減速しないこと（実際に fetchTodayCount を動かす）
+  const ftc = content.match(/async function fetchTodayCount\(\)[\s\S]*?\n\}/)[0]
+  const runCount = async (status, body) => {
+    let streak = 0
+    const fn = new Function('getCsrfToken','fetch','markBeat','noteWatchOk','noteWatchFail','invalidateCsrf','authError','tryRecoverAuth','setAuthState','postStatus','ZBA_API','SITE', `
+      ${ftc.replace('async function fetchTodayCount()', 'return (async function fetchTodayCount()')}
+      )()`)
+    const res = await fn(
+      async () => 'tok', async () => ({ status, ok: status >= 200 && status < 300, json: async () => body }),
+      () => {}, () => { streak = 0 }, () => { streak++ }, () => {},
+      () => { const e = new Error('AUTH'); e.auth = true; return e }, async () => false, () => {}, () => {}, 'API', 'zba')
+    return { res, streak }
+  }
+  const zero = await runCount(200, { response: { count: 0 } })
+  t(zero.streak === 0, '★件数0件でも失敗に数えない（朝の空の時間帯に減速しない）', `streak=${zero.streak}`)
+  const five = await runCount(200, { response: { count: 5 } })
+  t(five.streak === 0 && five.res === 5, '件数が取れたら成功・値もそのまま', `res=${five.res}`)
+  const err = await runCount(503, null)
+  t(err.streak === 1, 'サーバ障害(503)は失敗に数える', `streak=${err.streak}`)
+}
+
 console.log(`\n${ok} PASS / ${ng} FAIL`)
 process.exit(ng ? 1 : 0)

@@ -230,7 +230,7 @@ async function ensureKakakuLoop() {
 // 当日(依頼日=今日)で未送信のものだけ詳細取得して background(NEW_LEAD) へ送る。
 function kakakuLoop(gen, today) {
   window.__tfKakakuGen = gen
-  window.__tfKakakuSeen = window.__tfKakakuSeen || [] // ページ存続中の取込済みorderid（リロードで自然リセット→当日分は再送・サーバ重複除外）
+  window.__tfKakakuSeen = window.__tfKakakuSeen || [] // 取込済みorderid（当日ぶんは chrome.storage にも保存し、タブ再読込後も引き継ぐ）
   const seen = new Set(window.__tfKakakuSeen)
   // 送信に失敗したidを保持する。日付が変わっても「非当日」として取込済み扱いにせず、
   // 復旧後に再送できるようにする。※これが無いと、深夜0時をまたいだ瞬間に
@@ -244,7 +244,33 @@ function kakakuLoop(gen, today) {
   // 上限を設ける理由：恒久的に失敗するリードが残ると、毎巡回で詳細ページを取得し続け
   //   （取得元サイトへの負荷）、かつ1巡回の送信枠(PER)を占有して新着リードが送れなくなる。
   const MAX_RETRY = 60 // 約12〜15秒間隔 → 10〜15分ぶん再送して駄目なら諦める
-  const persist = () => { window.__tfKakakuSeen = Array.from(seen).slice(-5000); window.__tfKakakuFailed = Array.from(failed).slice(-500) }
+  // ===== 取込済み/再送待ちの保存（chrome.storage.local）=====
+  // 以前は window だけに持っていたため、タブを再読込すると当日ぶんを全部「新着」とみなして
+  // 再送していた（CRM側で重複除外されるが、詳細ページを取り直すぶん 価格.com への負荷が増える）。
+  // ・seen … その日ぶんだけ引き継ぐ（日付が変われば破棄。当日判定で弾かれるので困らない）
+  // ・failed … 日付をまたいで残す（0時をまたいだ未送信リードを取りこぼさないため）
+  const SEEN_KEY = 'kakakuSeenKeys', FAILED_KEY = 'kakakuFailedKeys'
+  const dayKey = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
+  // 再送上限で諦めたidは保存しない。タブを再読込すれば再送を試せる逃げ道を残す。
+  const gaveUp = new Set()
+  let saveTimer = null
+  const persist = () => {
+    window.__tfKakakuSeen = Array.from(seen).slice(-5000); window.__tfKakakuFailed = Array.from(failed).slice(-500)
+    if (saveTimer) return // 5秒に1回にまとめる（1リードごとに大きな配列を書かない）
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      try { chrome.storage.local.set({ [SEEN_KEY]: { day: dayKey(), ids: window.__tfKakakuSeen.filter(id => !gaveUp.has(id)) }, [FAILED_KEY]: window.__tfKakakuFailed }) } catch {}
+    }, 5000)
+  }
+  // 開始前に復元する。読めなくても動けるように、失敗しても必ず tick() へ進む。
+  async function restoreSeen() {
+    try {
+      const st = await chrome.storage.local.get([SEEN_KEY, FAILED_KEY])
+      const sv = st[SEEN_KEY]
+      if (sv && sv.day === dayKey()) (sv.ids || []).forEach(id => seen.add(id))
+      ;(st[FAILED_KEY] || []).forEach(e => { const pr = Array.isArray(e) ? e : [e, 1]; if (!failed.has(pr[0])) failed.set(pr[0], pr[1]) })
+    } catch {}
+  }
   const PER = 8, GAP = 300, FAST_MS = 12000, SLOW_MS = 120000
   // 巡回間隔：ほぼ終日(7-24時)は12秒＋0〜4秒ジッター（最速12秒・最遅16秒）、深夜(0-7時)は120秒に減速（負荷・BAN配慮）
   const nextDelay = () => { const h = new Date().getHours(); const base = (h >= 7 && h < 24) ? FAST_MS : SLOW_MS; return base + Math.floor(Math.random() * 4000) }
@@ -472,7 +498,7 @@ function kakakuLoop(gen, today) {
             else {
               // 上限まで再送し、それでも駄目なら諦めて取込済みにする（無限再送・枠の占有を防ぐ）。
               const t = (failed.get(base.id) || 0) + 1
-              if (t >= MAX_RETRY) { console.warn('[リード監視] 再送上限に達したため打ち切ります', base.id); seen.add(base.id); failed.delete(base.id) }
+              if (t >= MAX_RETRY) { console.warn('[リード監視] 再送上限に達したため打ち切ります', base.id); seen.add(base.id); gaveUp.add(base.id); failed.delete(base.id) }
               else failed.set(base.id, t)
               changed = true
             }
@@ -493,14 +519,14 @@ function kakakuLoop(gen, today) {
       setTimeout(tick, delay)
     }
   }
-  tick()
+  restoreSeen().then(tick, tick)
 }
 
 // ページに注入される自己完結ループ。約8秒ごとに一覧(no-store)を取得し、
 // 当日(依頼日=今日)で未送信のものだけ詳細取得して background(NEW_LEAD) へ送る。
 function samuraiLoop(gen, todayMD) {
   window.__tfSamuraiGen = gen
-  window.__tfSamuraiSeen = window.__tfSamuraiSeen || [] // ページ存続中の取込済みid（リロードで自然リセット→当日分は再送・サーバ重複除外）
+  window.__tfSamuraiSeen = window.__tfSamuraiSeen || [] // 取込済みid（当日ぶんは chrome.storage にも保存し、タブ再読込後も引き継ぐ）
   const seen = new Set(window.__tfSamuraiSeen)
   // 送信に失敗したidを保持する。日付が変わっても「非当日」として取込済み扱いにせず、
   // 復旧後に再送できるようにする。※これが無いと、深夜0時をまたいだ瞬間に
@@ -514,7 +540,33 @@ function samuraiLoop(gen, todayMD) {
   // 上限を設ける理由：恒久的に失敗するリードが残ると、毎巡回で詳細ページを取得し続け
   //   （取得元サイトへの負荷）、かつ1巡回の送信枠(PER)を占有して新着リードが送れなくなる。
   const MAX_RETRY = 60 // 約12〜15秒間隔 → 10〜15分ぶん再送して駄目なら諦める
-  const persist = () => { window.__tfSamuraiSeen = Array.from(seen).slice(-5000); window.__tfSamuraiFailed = Array.from(failed).slice(-500) }
+  // ===== 取込済み/再送待ちの保存（chrome.storage.local）=====
+  // 以前は window だけに持っていたため、タブを再読込すると当日ぶんを全部「新着」とみなして
+  // 再送していた（CRM側で重複除外されるが、詳細ページを取り直すぶん 引越し侍 への負荷が増える）。
+  // ・seen … その日ぶんだけ引き継ぐ（日付が変われば破棄。当日判定で弾かれるので困らない）
+  // ・failed … 日付をまたいで残す（0時をまたいだ未送信リードを取りこぼさないため）
+  const SEEN_KEY = 'samuraiSeenKeys', FAILED_KEY = 'samuraiFailedKeys'
+  const dayKey = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
+  // 再送上限で諦めたidは保存しない。タブを再読込すれば再送を試せる逃げ道を残す。
+  const gaveUp = new Set()
+  let saveTimer = null
+  const persist = () => {
+    window.__tfSamuraiSeen = Array.from(seen).slice(-5000); window.__tfSamuraiFailed = Array.from(failed).slice(-500)
+    if (saveTimer) return // 5秒に1回にまとめる（1リードごとに大きな配列を書かない）
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      try { chrome.storage.local.set({ [SEEN_KEY]: { day: dayKey(), ids: window.__tfSamuraiSeen.filter(id => !gaveUp.has(id)) }, [FAILED_KEY]: window.__tfSamuraiFailed }) } catch {}
+    }, 5000)
+  }
+  // 開始前に復元する。読めなくても動けるように、失敗しても必ず tick() へ進む。
+  async function restoreSeen() {
+    try {
+      const st = await chrome.storage.local.get([SEEN_KEY, FAILED_KEY])
+      const sv = st[SEEN_KEY]
+      if (sv && sv.day === dayKey()) (sv.ids || []).forEach(id => seen.add(id))
+      ;(st[FAILED_KEY] || []).forEach(e => { const pr = Array.isArray(e) ? e : [e, 1]; if (!failed.has(pr[0])) failed.set(pr[0], pr[1]) })
+    } catch {}
+  }
   // 巡回間隔：当日フィルターPOSTで軽く取れる時は日中約15秒。空/失敗で重い全件GETを使った回だけ、
   // 次回を45秒以上に空ける（tick末尾でheavy判定・最悪でも50秒以内）。深夜は120秒。
   const PER = 8, GAP = 300, FAST_MS = 15000, SLOW_MS = 120000
@@ -759,7 +811,7 @@ function samuraiLoop(gen, todayMD) {
             else {
               // 上限まで再送し、それでも駄目なら諦めて取込済みにする（無限再送・枠の占有を防ぐ）。
               const t = (failed.get(base.id) || 0) + 1
-              if (t >= MAX_RETRY) { console.warn('[リード監視] 再送上限に達したため打ち切ります', base.id); seen.add(base.id); failed.delete(base.id) }
+              if (t >= MAX_RETRY) { console.warn('[リード監視] 再送上限に達したため打ち切ります', base.id); seen.add(base.id); gaveUp.add(base.id); failed.delete(base.id) }
               else failed.set(base.id, t)
               changed = true
             }
@@ -782,5 +834,5 @@ function samuraiLoop(gen, todayMD) {
       setTimeout(tick, delay)
     }
   }
-  tick()
+  restoreSeen().then(tick, tick)
 }

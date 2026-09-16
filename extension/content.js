@@ -252,6 +252,9 @@ const API_SYNC_MS      = 15000     // 旧：固定間隔同期。現在は watch
 const WATCH_FAST_MS    = 5000      // 営業時間中のヒートビート（5秒・軽量API）
 const WATCH_SLOW_MS    = 60000     // 営業時間外（60秒）
 const WATCH_FORCE_MS   = 45000     // 取りこぼし防止＆最終取得時刻更新の強制同期（45秒・最悪でも45秒以内に取得/表示更新）
+// 連続失敗時だけ間隔を延ばす（価格.com／引越し侍と同じ考え方）。上限は夜間間隔と同じ60秒。
+// ★正常時の間隔は一切変えない。成功した瞬間に元の速度へ戻すので、新着検知の速さは落ちない。
+const WATCH_BACKOFF_MAX_MS = 60000
 const BUSY_HOUR_FROM   = 8         // 営業時間（JST）
 const BUSY_HOUR_TO     = 23
 // 詳細取り込みロジックを変えたら +1。既存の取得済みフラグをリセットして全件取り直す。
@@ -456,8 +459,9 @@ async function fetchTodayCount() {
       headers: { accept: 'application/json', 'accept-language': 'ja', 'csrf-token': token },
     })
     if (r.status === 401 || r.status === 403) { invalidateCsrf(); throw authError() }
-    if (!r.ok) return null
+    if (!r.ok) { noteWatchFail(); return null }
     markBeat() // セッション生存
+    noteWatchOk() // ★HTTPが通った時点で成功。件数が0でも減速させない
     const j = await r.json().catch(() => null)
     if (!j) return null
     // レスポンス形状は不確定。よくありそうなプロパティを順に探す。
@@ -467,6 +471,7 @@ async function fetchTodayCount() {
       j.count || j.dataNum || j.total || null
     )
   } catch (e) {
+    noteWatchFail() // 通信エラー・ログイン切れ → 次回以降の間隔を延ばす
     if (e && e.auth) { const ok = await tryRecoverAuth(); if (!ok) { setAuthState(false); postStatus(false, 'auth') } }
     return null
   }
@@ -591,6 +596,7 @@ async function apiSync() {
     try {
       list = await fetchOrderList()
     } catch (e) {
+      noteWatchFail() // 一覧取得に失敗 → 次回以降の間隔を延ばす
       if (e && e.auth) {
         const ok = await tryRecoverAuth() // 保存資格情報で自動再ログイン（5分に1回まで）
         if (!ok) {
@@ -615,6 +621,7 @@ async function apiSync() {
       return
     }
     listFailStreak = 0
+    noteWatchOk() // 一覧が取れた＝正常。通常速度に戻す
     setAuthState(true)
     markBeat() // セッション生存
     postStatus(true, '', list.length) // 生存ハートビート
@@ -661,6 +668,12 @@ async function apiSync() {
 let lastDailyCount = null
 let lastForceAt = 0
 let watchTimer = null
+// 巡回の連続失敗回数。0 なら通常速度。
+// ★「件数0件」は失敗ではない。HTTPが通った時点で成功として数える（下の noteWatchOk の位置）。
+//   ここを取り違えると、朝の0件の時間帯に勝手に減速して新着が遅れる。
+let watchFailStreak = 0
+function noteWatchOk() { watchFailStreak = 0 }
+function noteWatchFail() { if (watchFailStreak < 5) watchFailStreak++ }
 function inBusyHours() {
   // JST時刻で営業時間判定（content.jsはブラウザ実行で標準TZ。日本以外で動かす想定は無いのでローカル時刻）
   const h = new Date().getHours()
@@ -698,7 +711,9 @@ async function watchTick() {
 }
 function scheduleNextWatch() {
   if (watchTimer) clearTimeout(watchTimer)
-  const ms = inBusyHours() ? WATCH_FAST_MS : WATCH_SLOW_MS
+  const base = inBusyHours() ? WATCH_FAST_MS : WATCH_SLOW_MS
+  // 5秒 → 10 → 20 → 40 → 60(上限)。成功したら次は即 5秒に戻る。
+  const ms = watchFailStreak > 0 ? Math.min(base * Math.pow(2, watchFailStreak), WATCH_BACKOFF_MAX_MS) : base
   watchTimer = setTimeout(watchTick, ms)
 }
 
