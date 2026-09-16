@@ -315,17 +315,24 @@ async function relogin() {
   let creds = {}
   try { creds = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword']) } catch { safeStorageSet({ zbaReloginReason: 'storage-error' }); return 'storage-error' }
   if (!creds.zbaLoginId || !creds.zbaPassword) { safeStorageSet({ zbaReloginReason: 'no-creds（ID/PW未保存）' }); return 'no-creds' }
+  // ★CSRFトークンが空でもログインだけは試す。
+  //   /csrf は「サーバが認めた有効なセッション」がある時しかトークンを発行しない（実測）。
+  //   8時間以上アクセスが途切れてセッションCookieが消えると必ず空になるため、
+  //   ここで諦めると完全ログアウトから自力で復帰できない。
+  //   手動ログインはログアウト状態から成功しているので、トークン無しでも通るはず。
+  //   空振りしても 4xx は上限（2回）にカウントされて止まる。
   const token = await csrfForLogin()
-  if (!token) { safeStorageSet({ zbaReloginReason: 'no-csrf（CSRF取得不可）' }); return 'no-csrf' }
+  const headers = { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja' }
+  if (token) headers['csrf-token'] = token   // 空のヘッダは送らない（ログイン画面と同じ形にする）
   try {
     const r = await fetch(`${ZBA_API}/supplier-kanri/login`, {
-      method: 'POST', credentials: 'include',
-      headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
+      method: 'POST', credentials: 'include', headers,
       body: JSON.stringify({ loginId: creds.zbaLoginId, password: creds.zbaPassword }),
     })
-    if (!r.ok) { safeStorageSet({ zbaReloginReason: 'login-http-' + r.status }); return 'http-' + r.status }
+    // どちらの経路で失敗したか後から分かるように、CSRF無しの試行は理由に残す
+    if (!r.ok) { safeStorageSet({ zbaReloginReason: 'login-http-' + r.status + (token ? '' : '（CSRFなしで試行）') }); return 'http-' + r.status }
     invalidateCsrf() // ログイン後はトークンを取り直す
-    safeStorageSet({ zbaReloginReason: 'ok' })
+    safeStorageSet({ zbaReloginReason: 'ok' + (token ? '' : '（CSRFなしで成功）') })
     return true
   } catch (e) { safeStorageSet({ zbaReloginReason: 'fetch-error' }); return 'fetch-error' }
 }

@@ -77,5 +77,46 @@ t(c.includes('status:ng/error'), 'サーバ障害(500) → error報告', c.join(
 const d = await sim(401, null)
 t(d.includes('status:ng/auth'), '401 → auth報告（従来どおり）', d.join(' '))
 
+
+// ===== #3: 完全ログアウト（CSRFトークンが空）でもログインを試すか =====
+console.log('\n--- #3 完全ログアウトからの復帰 ---')
+{
+  const body = content.match(/async function relogin\(\)[\s\S]*?\n\}/)[0]
+  t(!/if \(!token\).*return 'no-csrf'/.test(body), 'トークンが空でも no-csrf で諦めない')
+  t(/if \(token\) headers\['csrf-token'\]/.test(body), '空のときは csrf-token ヘッダを送らない')
+
+  // 実際に動かす：トークン有無 × サーバ応答
+  const run = async (token, status) => {
+    const sent = []
+    const fn = new Function('csrfForLogin','fetch','safeStorageSet','ZBA_API','creds','invalidateCsrf','sent', `
+      return (async () => {
+        ${body.split('\n').slice(4, -1).join('\n').replace(/await chrome\.storage\.local\.get\(\[[^\]]*\]\)/, '({...creds})')}
+      })()`)
+    let res
+    try {
+      res = await fn(
+        async () => token,
+        async (url, opt) => { sent.push({ url, headers: opt.headers, body: JSON.parse(opt.body) }); return { ok: status>=200&&status<300, status } },
+        () => {}, 'API', { zbaLoginId: 'id', zbaPassword: 'pw' }, () => {}, sent)
+    } catch (e) { res = 'throw:' + e.message }
+    return { res, sent }
+  }
+  const a = await run('', 404)
+  t(a.sent.length === 1, 'トークン空でもログインAPIを叩く', `送信 ${a.sent.length}回`)
+  t(a.sent[0] && !('csrf-token' in a.sent[0].headers), 'トークン空のとき csrf-token ヘッダが無い', JSON.stringify(Object.keys(a.sent[0]?.headers||{})))
+  t(a.res === 'http-404', '4xxはそのまま返る（上限にカウントされる）', String(a.res))
+  const b = await run('tok123', 200)
+  t(b.sent[0] && b.sent[0].headers['csrf-token'] === 'tok123', 'トークンがあれば従来どおり送る')
+  t(b.res === true, '成功なら true', String(b.res))
+  const c = await run('', 200)
+  t(c.res === true, 'トークン空でも200なら成功扱い（完全ログアウトから復帰できる）', String(c.res))
+  t(c.sent[0].body.loginId === 'id' && c.sent[0].body.password === 'pw', '本文の項目名は loginId / password のまま')
+
+  // 空振りの上限：4xxが2回で止まる
+  let fails = 0
+  for (let i = 0; i < 10; i++) { if (hardFail('http-404')) fails++; if (fails >= MAX) break }
+  t(fails === MAX, `完全ログアウトで弾かれ続けても ${MAX} 回で止まる`, `${fails}回`)
+}
+
 console.log(`\n${ok} PASS / ${ng} FAIL`)
 process.exit(ng ? 1 : 0)
