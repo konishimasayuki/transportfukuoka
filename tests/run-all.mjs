@@ -9,6 +9,8 @@ const SUITES = [
   ['kvtest',    '同時書き込みでの取りこぼし防止'],
   ['exttest',   '拡張：送信失敗の判定（4経路）'],
   ['exttest3',  '拡張：再送の優先順位と上限'],
+  ['zbafix',    '拡張：ズバットの再ログイン判定と生存判定'],
+  ['credschange','パスワード変更の検知（3サイト＋CRM画面＋ポップアップ）'],
 ]
 let total = 0, failed = 0, bad = []
 for (const [name, desc] of SUITES) {

@@ -252,6 +252,9 @@ const API_SYNC_MS      = 15000     // 旧：固定間隔同期。現在は watch
 const WATCH_FAST_MS    = 5000      // 営業時間中のヒートビート（5秒・軽量API）
 const WATCH_SLOW_MS    = 60000     // 営業時間外（60秒）
 const WATCH_FORCE_MS   = 45000     // 取りこぼし防止＆最終取得時刻更新の強制同期（45秒・最悪でも45秒以内に取得/表示更新）
+// 連続失敗時だけ間隔を延ばす（価格.com／引越し侍と同じ考え方）。上限は夜間間隔と同じ60秒。
+// ★正常時の間隔は一切変えない。成功した瞬間に元の速度へ戻すので、新着検知の速さは落ちない。
+const WATCH_BACKOFF_MAX_MS = 60000
 const BUSY_HOUR_FROM   = 8         // 営業時間（JST）
 const BUSY_HOUR_TO     = 23
 // 詳細取り込みロジックを変えたら +1。既存の取得済みフラグをリセットして全件取り直す。
@@ -293,40 +296,96 @@ async function getCsrfToken() {
 // ロック/BAN対策：最短5分に1回まで・連続失敗で停止。資格情報はこのPCのローカルのみ。
 let lastReloginAt = 0
 let reloginFails = 0
+// ===== パスワード変更の検知 =====
+// 「保存しているID/PWがサーバに拒否された」状態。セッション切れ（時間が経てば
+// 自動で戻る）とは別物で、人が拡張機能にパスワードを保存し直すまで直らない。
+// 2026-09の事故は「お客様がサイト側でパスワードを変更した」ことが原因だったが、
+// CRM上は普通のログイン切れと同じ表示だったため、原因に気づくのが遅れた。
+// ★毎朝のリセットでは消さない。消すと「パスワードが違う」表示が毎朝消えてしまう。
+//   消えるのは ①ログインに成功した時 ②ポップアップでID/PWを保存し直した時 の2つだけ。
+let credsBad = false
+function markCredsBad(bad) {
+  credsBad = bad
+  safeStorageSet(bad ? { zbaCredsBad: true, zbaCredsBadAt: Date.now() } : { zbaCredsBad: false })
+}
+// ログインできない時の報告。原因が「パスワード違い」なら別の理由で送る。
+function postAuthProblem() { return postStatus(false, credsBad ? 'creds' : 'auth') }
 let morningResetDate = '' // 朝5時に失敗回数をリセットして再開した日（YYYY-MM-DD）
 let listFailStreak = 0 // 一覧取得の連続失敗（500等のセッション不正を再ログインで回復するため）
 const RELOGIN_MIN_GAP = 5 * 60 * 1000
 const RELOGIN_MAX_FAILS = 2 // 失敗ログインの上限（厳しめ・毎朝6時にリセット）
+// 「後でやり直せ」を意味するHTTPステータス。拒否として上限にカウントしない。
+// 408=タイムアウト / 425=早すぎる再送 / 429=アクセス過多
+const RETRY_STATUS = [408, 425, 429]
 
-// 未ログインでも /csrf は取得できる前提（ログインに必要なため）。authError を投げない版。
-async function csrfForLogin() {
+// /csrf を1回叩いて「ログインできているか」と「トークン」を同時に返す共通プローブ。
+// 実測：未ログインでも HTTP 200 を返し、csrfToken だけが空になる。
+// つまり「トークンが空でない」＝「サーバが認めた有効なセッションがある」。
+// state: 'ok'（ログイン済み）/ 'no'（ログインできていない）/ 'unknown'（通信不良等で判定不能）
+async function csrfProbe() {
   try {
     const r = await fetch(`${ZBA_API}/csrf`, { credentials: 'include', headers: { accept: 'application/json' } })
-    if (!r.ok) return null
+    if (!r.ok) return { state: 'unknown', token: null }
     const j = await r.json().catch(() => null)
-    return (j && j.csrfToken) || null
-  } catch { return null }
+    const token = (j && j.csrfToken) || null
+    return { state: token ? 'ok' : 'no', token }
+  } catch { return { state: 'unknown', token: null } }
 }
 
-// 戻り値：成功=true / 失敗=理由文字列（'night','no-creds','no-csrf','http-XXX','fetch-error'）。
-// 呼び出し側は「誤ID/PWによる拒否(http-401/403)・no-creds」だけをハード失敗として上限カウントする。
+// ログイン前のトークン取得（authError を投げない版）。空でもログインは試す。
+async function csrfForLogin() { return (await csrfProbe()).token }
+
+// 戻り値：成功=true / 失敗=理由文字列
+//   （'night','no-creds','invalid-creds','verify-unknown','http-XXX','fetch-error','storage-error'）。
+// 呼び出し側は「no-creds・invalid-creds・拒否(4xx)」をハード失敗として上限カウントする。
+// ★成否は「ログイン後に実際にデータ（＝CSRFトークン）が取れるか」で決める。
+//   HTTPステータスの解釈には頼らない（価格.com/引越し侍と同じ考え方）。
 async function relogin() {
   if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) { safeStorageSet({ zbaReloginReason: '夜間（22〜6時）は再ログイン休止' }); return 'night' } // 夜間22〜6時は再ログイン休止
   let creds = {}
   try { creds = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword']) } catch { safeStorageSet({ zbaReloginReason: 'storage-error' }); return 'storage-error' }
   if (!creds.zbaLoginId || !creds.zbaPassword) { safeStorageSet({ zbaReloginReason: 'no-creds（ID/PW未保存）' }); return 'no-creds' }
+  // ★CSRFトークンが空でもログインだけは試す。
+  //   /csrf は「サーバが認めた有効なセッション」がある時しかトークンを発行しない（実測）。
+  //   8時間以上アクセスが途切れてセッションCookieが消えると必ず空になるため、
+  //   ここで諦めると完全ログアウトから自力で復帰できない。
+  //   手動ログインはログアウト状態から成功しているので、トークン無しでも通るはず。
+  //   空振りしても 4xx は上限（2回）にカウントされて止まる。
   const token = await csrfForLogin()
-  if (!token) { safeStorageSet({ zbaReloginReason: 'no-csrf（CSRF取得不可）' }); return 'no-csrf' }
+  const headers = { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja' }
+  if (token) headers['csrf-token'] = token   // 空のヘッダは送らない（ログイン画面と同じ形にする）
   try {
     const r = await fetch(`${ZBA_API}/supplier-kanri/login`, {
-      method: 'POST', credentials: 'include',
-      headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
+      method: 'POST', credentials: 'include', headers,
       body: JSON.stringify({ loginId: creds.zbaLoginId, password: creds.zbaPassword }),
     })
-    if (!r.ok) { safeStorageSet({ zbaReloginReason: 'login-http-' + r.status }); return 'http-' + r.status }
-    invalidateCsrf() // ログイン後はトークンを取り直す
-    safeStorageSet({ zbaReloginReason: 'ok' })
-    return true
+    // ★HTTPステータスでは成否を決めない。
+    //   ズバットは誤ID/PWに404を返した（2026-09の事故）。何を返すかはサイト側の都合で
+    //   変わるため、価格.com/引越し侍と同じく「ログイン後に実際にデータが取れるか」で判定する。
+    //   ここでは /csrf がトークンを発行するかを見る（有効なセッションにしか発行されない）。
+    invalidateCsrf() // ログイン前のキャッシュを捨ててから確認する
+    const v = await csrfProbe()
+    const via = token ? '' : '（CSRFなしで試行）' // どちらの経路だったか後から分かるように残す
+    if (v.state === 'ok') {
+      csrfCache = { token: v.token, at: Date.now() } // 確認に使ったトークンをそのまま使う（無駄打ちしない）
+      safeStorageSet({ zbaReloginReason: 'ok' + (token ? '' : '（CSRFなしで成功）') })
+      return true
+    }
+    if (v.state === 'no') {
+      // ログインAPIが何を返していようと、セッションが有効になっていない＝ログインできていない。
+      // ID/PWが違う可能性が高いので、上限にカウントして止める。
+      safeStorageSet({ zbaReloginReason: 'invalid-creds（ログイン後もセッションが無効・HTTP ' + r.status + '）' + via })
+      return 'invalid-creds'
+    }
+    // 確認そのものができなかった（通信不良・サーバ5xx）。ここだけHTTPステータスを保険に使う。
+    // ★ただし4xxを一律「拒否」とはみなさない。
+    //   408/425/429 は「混んでいるので後でやり直せ」という意味で、拒否ではない。
+    //   これを拒否扱いにして止めると、サイトが混んだだけでその日の自動復帰を諦めることになる。
+    //   （価格.com／引越し侍はHTTPステータスを見ない作りなので、元からこの問題が無い）
+    if (RETRY_STATUS.includes(r.status)) { safeStorageSet({ zbaReloginReason: 'busy-' + r.status + '（混雑・時間をおいて再試行）' + via }); return 'busy-' + r.status }
+    if (r.status >= 400 && r.status < 500) { safeStorageSet({ zbaReloginReason: 'login-http-' + r.status + via }); return 'http-' + r.status }
+    safeStorageSet({ zbaReloginReason: 'verify-unknown（ログイン後の確認ができず・HTTP ' + r.status + '）' + via })
+    return 'verify-unknown'
   } catch (e) { safeStorageSet({ zbaReloginReason: 'fetch-error' }); return 'fetch-error' }
 }
 
@@ -343,16 +402,25 @@ async function tryRecoverAuth() {
   const res = await relogin()
   if (res === true) {
     reloginFails = 0
+    markCredsBad(false) // ログインできた＝保存中のID/PWは正しい
     setAuthState(true)
     postStatus(true, '')
     safeStorageSet({ zbaReloginResult: 'success', zbaReloginAt: Date.now() })
     console.log(`[リード監視:${SITE}] ✓ 自動再ログイン成功`)
     return true
   }
-  // ロック防止：誤ID/PWによる拒否(http-401/403)・資格情報未設定のみ“ハード失敗”として上限にカウントし停止。
-  // 一時的失敗(CSRF取得不可・通信エラー・サーバ5xx・夜間休止)は上限にカウントせず、5分ごとに自動リトライを継続する。
-  const hardFail = (res === 'no-creds' || res === 'http-401' || res === 'http-403')
+  // ロック防止：「ログインできなかったことが確認できた」ものを“ハード失敗”として上限カウントし停止。
+  //   invalid-creds … ログイン後もセッションが無効（＝ID/PWが違う）。本命の判定。
+  //   http-4xx      … 確認ができなかった時の保険。ただし 408/425/429（混雑）は busy- として除外済み。
+  //   no-creds      … ID/PW未保存。
+  // ★以前はHTTPステータスだけで成否を決めていたため、ズバットが誤ID/PWに返す404を
+  //   一時的失敗と取り違え、5分ごとに無限に試行していた（2026-09 の事故）。
+  // 一時的失敗(verify-unknown・通信エラー・サーバ5xx・夜間休止)は上限にカウントせず、5分ごとに自動リトライを継続する。
+  const hardFail = (res === 'no-creds' || res === 'invalid-creds' || /^http-4\d\d$/.test(String(res)))
   if (hardFail) reloginFails++
+  // ★パスワード変更の検知：ログインは通ったのにセッションが有効にならない、
+  //   またはサーバに4xxで拒否された＝保存しているID/PWが通らない。
+  if (res === 'invalid-creds' || /^http-4\d\d$/.test(String(res))) markCredsBad(true)
   safeStorageSet({ zbaReloginResult: 'fail', zbaReloginAt: Date.now() })
   console.warn(`[リード監視:${SITE}] 自動再ログイン失敗 res=${res} hard=${hardFail} (${reloginFails}/${RELOGIN_MAX_FAILS})`)
   return false
@@ -416,8 +484,9 @@ async function fetchTodayCount() {
       headers: { accept: 'application/json', 'accept-language': 'ja', 'csrf-token': token },
     })
     if (r.status === 401 || r.status === 403) { invalidateCsrf(); throw authError() }
-    if (!r.ok) return null
+    if (!r.ok) { noteWatchFail(); return null }
     markBeat() // セッション生存
+    noteWatchOk() // ★HTTPが通った時点で成功。件数が0でも減速させない
     const j = await r.json().catch(() => null)
     if (!j) return null
     // レスポンス形状は不確定。よくありそうなプロパティを順に探す。
@@ -427,7 +496,8 @@ async function fetchTodayCount() {
       j.count || j.dataNum || j.total || null
     )
   } catch (e) {
-    if (e && e.auth) { const ok = await tryRecoverAuth(); if (!ok) { setAuthState(false); postStatus(false, 'auth') } }
+    noteWatchFail() // 通信エラー・ログイン切れ → 次回以降の間隔を延ばす
+    if (e && e.auth) { const ok = await tryRecoverAuth(); if (!ok) { setAuthState(false); postAuthProblem() } }
     return null
   }
 }
@@ -527,7 +597,7 @@ async function fetchDetailViaApi(orderId, companyId) {
       headers: { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja', 'csrf-token': token },
       body: JSON.stringify({ orderId, companyId }),
     })
-    if (r.status === 401 || r.status === 403) { invalidateCsrf(); setAuthState(false); postStatus(false, 'auth'); return false }
+    if (r.status === 401 || r.status === 403) { invalidateCsrf(); setAuthState(false); postAuthProblem(); return false }
     if (!r.ok) { console.log(`[リード監視:${SITE}] 詳細API失敗（リトライ対象）`, orderId, r.status); return false }
     const j = await r.json()
     const o = j && j.response
@@ -551,12 +621,13 @@ async function apiSync() {
     try {
       list = await fetchOrderList()
     } catch (e) {
+      noteWatchFail() // 一覧取得に失敗 → 次回以降の間隔を延ばす
       if (e && e.auth) {
         const ok = await tryRecoverAuth() // 保存資格情報で自動再ログイン（5分に1回まで）
         if (!ok) {
           console.warn(`[リード監視:${SITE}] ⚠ ログイン切れ。自動再ログイン未設定/失敗 → 手動で再ログインしてください`)
           setAuthState(false)
-          postStatus(false, 'auth')
+          postAuthProblem()
         }
       } else {
         // 500等の連続失敗はセッション不正のことがあるため、2回続いたら自動再ログインを試みる
@@ -575,6 +646,7 @@ async function apiSync() {
       return
     }
     listFailStreak = 0
+    noteWatchOk() // 一覧が取れた＝正常。通常速度に戻す
     setAuthState(true)
     markBeat() // セッション生存
     postStatus(true, '', list.length) // 生存ハートビート
@@ -621,6 +693,12 @@ async function apiSync() {
 let lastDailyCount = null
 let lastForceAt = 0
 let watchTimer = null
+// 巡回の連続失敗回数。0 なら通常速度。
+// ★「件数0件」は失敗ではない。HTTPが通った時点で成功として数える（下の noteWatchOk の位置）。
+//   ここを取り違えると、朝の0件の時間帯に勝手に減速して新着が遅れる。
+let watchFailStreak = 0
+function noteWatchOk() { watchFailStreak = 0 }
+function noteWatchFail() { if (watchFailStreak < 5) watchFailStreak++ }
 function inBusyHours() {
   // JST時刻で営業時間判定（content.jsはブラウザ実行で標準TZ。日本以外で動かす想定は無いのでローカル時刻）
   const h = new Date().getHours()
@@ -658,7 +736,9 @@ async function watchTick() {
 }
 function scheduleNextWatch() {
   if (watchTimer) clearTimeout(watchTimer)
-  const ms = inBusyHours() ? WATCH_FAST_MS : WATCH_SLOW_MS
+  const base = inBusyHours() ? WATCH_FAST_MS : WATCH_SLOW_MS
+  // 5秒 → 10 → 20 → 40 → 60(上限)。成功したら次は即 5秒に戻る。
+  const ms = watchFailStreak > 0 ? Math.min(base * Math.pow(2, watchFailStreak), WATCH_BACKOFF_MAX_MS) : base
   watchTimer = setTimeout(watchTick, ms)
 }
 
@@ -680,8 +760,9 @@ function kickNow(reason) {
 }
 
 async function init() {
-  const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined', 'detailDoneIds', 'detailVersion'])
+  const st = await chrome.storage.local.get(['enabled', 'seenKeys', 'everBaselined', 'detailDoneIds', 'detailVersion', 'zbaCredsBad'])
   enabled = st.enabled !== false
+  credsBad = st.zbaCredsBad === true // 拡張/タブを再起動しても「パスワード違い」を忘れない
   everBaselined = st.everBaselined === true
   ;(st.seenKeys || []).forEach(k => seen.add(k))
   // 詳細ロジックのバージョンが上がっていたら取得済みフラグを破棄し、新ロジックで全件取り直す
@@ -769,6 +850,11 @@ async function doScan() {
 
 chrome.storage.onChanged.addListener(ch => {
   if (ch.enabled) enabled = ch.enabled.newValue !== false
+  // ポップアップでID/PWを保存し直したら、その場で「パスワード違い」を解除して再試行できるようにする
+  if (ch.zbaCredsBad) {
+    credsBad = ch.zbaCredsBad.newValue === true
+    if (!credsBad) { reloginFails = 0; lastReloginAt = 0 }
+  }
 })
 
 init()
