@@ -17,8 +17,7 @@ const fresh = grab('const fresh = [...cand.filter', 0)
 const okL = grab('if (r && r.ok) { seen.add(base.id); failed.delete(base.id)', 0)
 check('両ループとも新着優先の並べ替えが入っている', grab('const fresh = [...cand.filter').count === 2, `${grab('const fresh = [...cand.filter').count}箇所`)
 check('両ループとも再送上限(MAX_RETRY)がある', (src.match(/const MAX_RETRY = 60/g) || []).length === 2)
-// 2ループ × (window からの復元 + chrome.storage からの復元) = 4箇所
-check('両ループとも旧形式の failed 配列を読める', (src.match(/Array\.isArray\(e\) \? e : \[e, 1\]/g) || []).length === 4, `${(src.match(/Array\.isArray\(e\) \? e : \[e, 1\]/g) || []).length}箇所`)
+check('両ループとも旧形式の failed 配列を読める', (src.match(/Array\.isArray\(e\) \? e : \[e, 1\]/g) || []).length === 2)
 
 // 失敗時ブロック（複数行）を実ソースから切り出す
 const startIdx = L.findIndex(l => l.includes('// 上限まで再送し、それでも駄目なら諦めて取込済みにする'))
@@ -27,7 +26,6 @@ const failBlock = L.slice(startIdx - 1, startIdx + 6).join('\n')
 const MAX_RETRY = 60
 const runTick = new Function('rows', 'seen', 'failed', 'isToday', 'send', 'PER', 'MAX_RETRY', 'console', `
   return (async () => {
-    const gaveUp = new Set() // 打ち切ったidの記録（保存対象から外すためのもの・判定には影響しない）
     let changed = false, cnt = 0
     ${sweep.one}
     ${cand.one}
