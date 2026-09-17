@@ -314,6 +314,9 @@ let morningResetDate = '' // 朝5時に失敗回数をリセットして再開�
 let listFailStreak = 0 // 一覧取得の連続失敗（500等のセッション不正を再ログインで回復するため）
 const RELOGIN_MIN_GAP = 5 * 60 * 1000
 const RELOGIN_MAX_FAILS = 2 // 失敗ログインの上限（厳しめ・毎朝6時にリセット）
+// 「後でやり直せ」を意味するHTTPステータス。拒否として上限にカウントしない。
+// 408=タイムアウト / 425=早すぎる再送 / 429=アクセス過多
+const RETRY_STATUS = [408, 425, 429]
 
 // /csrf を1回叩いて「ログインできているか」と「トークン」を同時に返す共通プローブ。
 // 実測：未ログインでも HTTP 200 を返し、csrfToken だけが空になる。
@@ -374,8 +377,12 @@ async function relogin() {
       safeStorageSet({ zbaReloginReason: 'invalid-creds（ログイン後もセッションが無効・HTTP ' + r.status + '）' + via })
       return 'invalid-creds'
     }
-    // 確認そのものができなかった（通信不良・サーバ5xx）。
-    // ただしログインAPIが4xxを返していたなら拒否とみなす（従来の安全装置を残す）。
+    // 確認そのものができなかった（通信不良・サーバ5xx）。ここだけHTTPステータスを保険に使う。
+    // ★ただし4xxを一律「拒否」とはみなさない。
+    //   408/425/429 は「混んでいるので後でやり直せ」という意味で、拒否ではない。
+    //   これを拒否扱いにして止めると、サイトが混んだだけでその日の自動復帰を諦めることになる。
+    //   （価格.com／引越し侍はHTTPステータスを見ない作りなので、元からこの問題が無い）
+    if (RETRY_STATUS.includes(r.status)) { safeStorageSet({ zbaReloginReason: 'busy-' + r.status + '（混雑・時間をおいて再試行）' + via }); return 'busy-' + r.status }
     if (r.status >= 400 && r.status < 500) { safeStorageSet({ zbaReloginReason: 'login-http-' + r.status + via }); return 'http-' + r.status }
     safeStorageSet({ zbaReloginReason: 'verify-unknown（ログイン後の確認ができず・HTTP ' + r.status + '）' + via })
     return 'verify-unknown'
@@ -404,7 +411,7 @@ async function tryRecoverAuth() {
   }
   // ロック防止：「ログインできなかったことが確認できた」ものを“ハード失敗”として上限カウントし停止。
   //   invalid-creds … ログイン後もセッションが無効（＝ID/PWが違う）。本命の判定。
-  //   http-4xx      … 確認ができなかった時の保険。どの4xxが返るかはサイト都合で変わるためまとめて拒否扱い。
+  //   http-4xx      … 確認ができなかった時の保険。ただし 408/425/429（混雑）は busy- として除外済み。
   //   no-creds      … ID/PW未保存。
   // ★以前はHTTPステータスだけで成否を決めていたため、ズバットが誤ID/PWに返す404を
   //   一時的失敗と取り違え、5分ごとに無限に試行していた（2026-09 の事故）。

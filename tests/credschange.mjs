@@ -57,6 +57,10 @@ console.log('--- ① ズバット：ID/PW拒否をどう記録するか ---')
   d.set('http-403'); await d.run()
   t(d.creds() === true, '4xxで拒否された場合も「パスワード違い」とみなす')
 
+  const g = make()
+  g.set('busy-429'); await g.run()
+  t(g.creds() === false, '★アクセス過多(429)で「パスワード違い」にしない（誤って赤帯を出さない）')
+
   // 立ったら消えない（毎朝のリセットでも消えない）— 成功で初めて消える
   const e = make()
   e.set('invalid-creds'); await e.run()
@@ -120,6 +124,8 @@ console.log('\n--- ④ CRM画面の表示 ---')
   t(r3 === null, '正常なら何も出さない')
 }
 t(/sa-creds/.test(alert) && /新しいパスワードを保存し直して/.test(alert), '画面に「新しいパスワードを保存し直す」手順を出す')
+t(/inReloginOff/.test(alert) && /朝6時に自動で再開/.test(alert), '夜間は「自動再試行を休止中」と添える（帯自体は隠さない）')
+t(/visibilityState/.test(alert), '表示中のタブだけ /api/status に問い合わせる（裏タブの無駄打ちを止める）')
 
 // ===== ⑤ 拡張ポップアップ（復旧の入口）=====
 console.log('\n--- ⑤ ポップアップ ---')

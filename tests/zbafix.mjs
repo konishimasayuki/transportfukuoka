@@ -16,6 +16,9 @@ for (const [res, want, why] of [
   ['http-429', true,  '4xxはまとめて拒否'],
   ['no-creds', true,  'ID/PW未保存'],
   ['invalid-creds', true, 'ログイン後もセッションが無効＝ID/PWが違う（本命の判定）'],
+  ['busy-429', false, '★アクセス過多は「後でやり直せ」の意味。拒否ではない'],
+  ['busy-408', false, '★タイムアウトも拒否ではない'],
+  ['busy-425', false, '★早すぎる再送も拒否ではない'],
   ['verify-unknown', false, '確認できなかっただけなので再試行を継続'],
   ['http-500', false, 'サーバ障害は一時的失敗'],
   ['http-503', false, 'サーバ障害は一時的失敗'],
@@ -89,6 +92,8 @@ t(e.includes('status:ng/creds'), '★パスワード違いが分かっている�
 console.log('\n--- #3 完全ログアウトからの復帰 / #4 ログイン成否の判定 ---')
 {
   const body = content.match(/async function relogin\(\)[\s\S]*?\n\}/)[0]
+  const RETRY_STATUS = JSON.parse(content.match(/const RETRY_STATUS = (\[[^\]]*\])/)[1])
+  t(RETRY_STATUS.includes(429) && RETRY_STATUS.includes(408), '混雑扱いにするステータスが定義されている', JSON.stringify(RETRY_STATUS))
   t(!/if \(!token\).*return 'no-csrf'/.test(body), 'トークンが空でも no-csrf で諦めない')
   t(/if \(token\) headers\['csrf-token'\]/.test(body), '空のときは csrf-token ヘッダを送らない')
   t(/csrfProbe\(\)/.test(body.split('fetch(`${ZBA_API}/supplier-kanri/login`')[1] || ''),
@@ -98,7 +103,7 @@ console.log('\n--- #3 完全ログアウトからの復帰 / #4 ログイン成�
   const run = async (token, status, probeState) => {
     const sent = []
     const cached = []
-    const fn = new Function('csrfForLogin','csrfProbe','fetch','safeStorageSet','ZBA_API','creds','invalidateCsrf','csrfCache','sent', `
+    const fn = new Function('csrfForLogin','csrfProbe','fetch','safeStorageSet','ZBA_API','creds','invalidateCsrf','csrfCache','RETRY_STATUS','sent', `
       return (async () => {
         ${body.split('\n').slice(4, -1).join('\n').replace(/await chrome\.storage\.local\.get\(\[[^\]]*\]\)/, '({...creds})')}
       })()`)
@@ -108,7 +113,7 @@ console.log('\n--- #3 完全ログアウトからの復帰 / #4 ログイン成�
         async () => token || null,
         async () => ({ state: probeState, token: probeState === 'ok' ? 'newtok' : null }),
         async (url, opt) => { sent.push({ url, headers: opt.headers, body: JSON.parse(opt.body) }); return { ok: status>=200&&status<300, status } },
-        o => cached.push(o), 'API', { zbaLoginId: 'id', zbaPassword: 'pw' }, () => {}, null, sent)
+        o => cached.push(o), 'API', { zbaLoginId: 'id', zbaPassword: 'pw' }, () => {}, null, RETRY_STATUS, sent)
     } catch (e) { res = 'throw:' + e.message }
     return { res, sent, reason: (cached.find(o => o.zbaReloginReason) || {}).zbaReloginReason }
   }
@@ -133,6 +138,9 @@ console.log('\n--- #3 完全ログアウトからの復帰 / #4 ログイン成�
     ['', 404, 'ok', true, '★404でも実際に入れていれば成功（ステータスを信用しない）'],
     ['', 500, 'unknown', 'verify-unknown', 'サーバ障害で確認不能 → 上限にカウントせず再試行'],
     ['', 404, 'unknown', 'http-404', '確認不能だが4xx → 従来どおり拒否扱い（保険）'],
+    ['', 429, 'unknown', 'busy-429', '★混雑で確認不能 → 止めずに再試行を続ける'],
+    ['', 408, 'unknown', 'busy-408', '★タイムアウトも同じ'],
+    ['', 429, 'no',      'invalid-creds', '429でも実際に入れていないと確認できたら拒否'],
     ['', 200, 'unknown', 'verify-unknown', '確認不能・200 → 再試行を継続'],
   ]) {
     const r = await run(tok, st, probe)

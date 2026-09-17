@@ -6,9 +6,13 @@ const now = Date.now()
 const iso = (msAgo) => new Date(now - msAgo).toISOString()
 const S = (ok_, reason, msAgo) => ({ source:'x', ok: ok_, reason, count: 100, at: iso(msAgo) })
 
-async function open(statuses, tab = 'リード管理', w = 1500) {
+async function open(statuses, tab = 'リード管理', w = 1500, hour = null) {
   const p = await (await b.newContext({ viewport: { width: w, height: 1000 }, isMobile: w<700, hasTouch: w<700 })).newPage()
   const errs=[]; p.on('pageerror', e=>errs.push(String(e)))
+  const hits = { status: 0 }
+  p.on('request', r => { if (new URL(r.url()).pathname === '/api/status') hits.status++ })
+  // 時刻依存（夜間の注記）を試すため getHours だけ固定する
+  if (hour != null) await p.addInitScript(h => { Date.prototype.getHours = function () { return h } }, hour)
   await p.route(u => u.pathname.startsWith('/api/'), r =>
     r.fulfill({ status:200, contentType:'application/json', body: '{"items":[],"count":0,"follow":0,"data":{}}' }))
   await p.route(u => u.pathname === '/api/status', r =>
@@ -17,7 +21,7 @@ async function open(statuses, tab = 'リード管理', w = 1500) {
   await p.fill('input[placeholder="IDを入力"]','b'); await p.fill('input[placeholder="パスワードを入力"]','b')
   await p.click('button:has-text("ログイン")'); await p.waitForTimeout(1200)
   if (tab) { await p.locator(`.nav-item:has-text("${tab}")`).first().evaluate(el=>el.click()); await p.waitForTimeout(1200) }
-  return { p, errs }
+  return { p, errs, hits }
 }
 const ALL_OK = { zba:S(true,'',30000), samurai:S(true,'',30000), kakaku:S(true,'',30000) }
 
@@ -51,6 +55,33 @@ const ALL_OK = { zba:S(true,'',30000), samurai:S(true,'',30000), kakaku:S(true,'
   const txt = (await p.locator('.site-alert').innerText()).replace(/\s+/g,' ')
   t(txt.includes('ズバット') && txt.includes('引越し侍') && !txt.includes('価格.com'), '複数サイトが同時に落ちても両方出る', txt.slice(0,90))
   t(await p.locator('.site-alert .sa-creds').count() === 1, '1サイトでもパスワード違いがあれば手順は1回だけ出る')
+  await p.close() }
+
+// ②-3 夜間（自動再ログイン休止中）の注記
+{ const { p } = await open({ ...ALL_OK, zba: S(false,'auth',30000) }, 'リード管理', 1500, 23)
+  const txt = (await p.locator('.site-alert').innerText()).replace(/\s+/g,' ')
+  t(await p.locator('.site-alert').count() === 1, '★夜でも帯は出す（隠すと本当の故障を見逃す）')
+  t(txt.includes('朝6時に自動で再開'), '★夜は「自動再試行を休止中」と添える', txt.slice(-60))
+  await p.close() }
+{ const { p } = await open({ ...ALL_OK, zba: S(false,'auth',30000) }, 'リード管理', 1500, 12)
+  const txt = (await p.locator('.site-alert').innerText()).replace(/\s+/g,' ')
+  t(!txt.includes('朝6時に自動で再開'), '昼間はその注記を出さない')
+  await p.close() }
+{ const { p } = await open({ ...ALL_OK, zba: S(false,'creds',30000) }, 'リード管理', 1500, 23)
+  const txt = (await p.locator('.site-alert').innerText()).replace(/\s+/g,' ')
+  t(!txt.includes('朝6時に自動で再開') && txt.includes('新しいパスワード'), 'パスワード違いは夜でも「保存し直せ」を出す（夜間休止は無関係）')
+  await p.close() }
+
+// ②-4 見えていないタブでは問い合わせない
+{ const { p, hits } = await open({ ...ALL_OK })
+  const before = hits.status
+  t(before >= 1, '表示中は問い合わせる', `${before}回`)
+  await p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')) })
+  await p.waitForTimeout(400)
+  t(hits.status === before, '★裏に回ったら問い合わせない', `${hits.status}回`)
+  await p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')) })
+  await p.waitForTimeout(600)
+  t(hits.status === before + 1, '★戻ってきたら60秒待たずに最新を取る', `${hits.status}回`)
   await p.close() }
 
 // ③ ハートビート途絶（PCが落ちている等）
