@@ -424,6 +424,10 @@ function ago(ts) {
 }
 // 保存中のID/PWがサイトに拒否された時の案内（全サイト共通）。
 // セッション切れと違い、人が新しいパスワードを保存し直すまで直らない。
+// ログイン試行ボタンの連打防止。人の操作なので上限は設けないが、
+// 慌てて連打すると試行回数だけ増えてロックの危険があるため間隔を空ける。
+const TEST_COOLDOWN_MS = 10000
+
 const CREDS_BAD_MSG = '🔑 IDまたはパスワードが違います（サイト側で変更された可能性）\n　　新しいパスワードを下に入力して保存してください'
 
 // 「最終巡回（稼働）」「最終取り込み（新規）」の2行を組み立てる（全サイト共通）
@@ -475,6 +479,9 @@ document.getElementById('zbaSave').addEventListener('click', async () => {
 
 document.getElementById('zbaTest').addEventListener('click', async () => {
   const res = document.getElementById('zbaResult')
+  const btn = document.getElementById('zbaTest')
+  btn.disabled = true
+  setTimeout(() => { btn.disabled = false }, TEST_COOLDOWN_MS)
   res.style.color = '#64748b'; res.textContent = 'ログイン確認中…'
   await saveCredsFromFields() // 入力中の値も保存してからテスト
   const { zbaLoginId, zbaPassword } = await chrome.storage.local.get(['zbaLoginId', 'zbaPassword'])
@@ -520,7 +527,7 @@ document.getElementById('zbaTest').addEventListener('click', async () => {
 // ズバットと違い専用ログインAPIが無いため、拡張のループがセッション切れ時に
 // ログインフォームを解析してPOSTする方式（background.js:relogin）。ここでは保存のみ。
 function makeSiteCreds(cfg) {
-  // cfg: { credsKey, idEl, pwEl, saveBtn, resultEl, statusEl, resultKey, reasonKey, atKey, blockedKey, triesKey, credsBadKey, siteLabel }
+  // cfg: { credsKey, idEl, pwEl, saveBtn, resultEl, statusEl, resultKey, reasonKey, atKey, blockedKey, triesKey, credsBadKey, testBtn, tabUrl, winKey, siteLabel }
   const REASONS = {
     'no-creds': 'ID/PW未設定', 'no-form': 'ログインフォーム未検出',
     'no-userfield': 'ID入力欄を特定できず', 'invalid-creds': 'ID/PWが違う可能性',
@@ -563,11 +570,52 @@ function makeSiteCreds(cfg) {
     res.style.color = '#16a34a'; res.textContent = '保存しました（セッション切れ時に自動でログインし直します）'
     renderStatus()
   })
+  // ===== 今すぐログインを試す =====
+  // 巡回ループが公開している入口（window.__tf*LoginTest）を呼ぶ。
+  // ログイン処理そのものは巡回と同じコードなので、テスト結果と実際の挙動がズレない。
+  const testEl = cfg.testBtn && document.getElementById(cfg.testBtn)
+  if (testEl) testEl.addEventListener('click', async () => {
+    const res = document.getElementById(cfg.resultEl)
+    testEl.disabled = true
+    res.style.color = '#64748b'; res.textContent = 'ログイン確認中…'
+    try {
+      const c = (await chrome.storage.local.get([cfg.credsKey]))[cfg.credsKey]
+      if (!c || !c.username || !c.password) { res.style.color = '#dc2626'; res.textContent = 'ID/PWを保存してから実行してください'; return }
+      const tabs = await chrome.tabs.query({ url: cfg.tabUrl })
+      if (!tabs.length) { res.style.color = '#dc2626'; res.textContent = `${cfg.siteLabel}の管理画面を開いてから実行してください`; return }
+      try { await chrome.runtime.sendMessage({ type: 'ENSURE_LOOPS' }) } catch {} // アラーム（1分毎）を待たずに注入
+      const frames = await chrome.scripting.executeScript({
+        target: { tabId: tabs[0].id },
+        func: (key) => (typeof window[key] === 'function' ? window[key]() : { state: 'no-loop' }),
+        args: [cfg.winKey],
+      })
+      const r = (frames && frames[0] && frames[0].result) || { state: 'no-loop' }
+      if (r.state === 'ok') {
+        res.style.color = '#16a34a'; res.textContent = '✓ ログイン成功（自動再ログイン有効）'
+        document.getElementById(cfg.pwEl).value = ''
+      } else if (r.state === 'ng') {
+        res.style.color = '#dc2626'; res.textContent = '✕ ログインできません。IDとパスワードを確認してください'
+      } else if (r.state === 'already') {
+        // ログイン中はログインフォームが出ないので、保存中のID/PWが正しいかまでは確かめられない
+        res.style.color = '#16a34a'; res.textContent = '✓ 現在ログイン中です（保存したID/PWはセッションが切れた時に使われます）'
+      } else if (r.state === 'error') {
+        res.style.color = '#dc2626'; res.textContent = '✕ 確認できませんでした（通信かサイト側の不調）: ' + (r.message || '')
+      } else {
+        res.style.color = '#dc2626'; res.textContent = '巡回が動いていません。一覧ページを開いて数秒待ってから再実行してください'
+      }
+    } catch (e) {
+      res.style.color = '#dc2626'; res.textContent = 'エラー: ' + ((e && e.message) || String(e))
+    } finally {
+      renderStatus()
+      setTimeout(() => { testEl.disabled = false }, TEST_COOLDOWN_MS)
+    }
+  })
+
   load(); renderStatus()
 }
 
-makeSiteCreds({ credsKey: 'samuraiCreds', idEl: 'samuraiId', pwEl: 'samuraiPw', saveBtn: 'samuraiSave', resultEl: 'samuraiResult', statusEl: 'samuraiStatus', resultKey: 'samuraiReloginResult', reasonKey: 'samuraiReloginReason', atKey: 'samuraiReloginAt', blockedKey: 'samuraiReloginBlocked', triesKey: 'samuraiReloginTries', credsBadKey: 'samuraiCredsBad', pollKey: 'samuraiLastPollAt', pollCountKey: 'samuraiLastPollCount', leadKey: 'samuraiLastLeadAt', siteLabel: '引越し侍' })
-makeSiteCreds({ credsKey: 'kakakuCreds', idEl: 'kakakuId', pwEl: 'kakakuPw', saveBtn: 'kakakuSave', resultEl: 'kakakuResult', statusEl: 'kakakuStatus', resultKey: 'kakakuReloginResult', reasonKey: 'kakakuReloginReason', atKey: 'kakakuReloginAt', blockedKey: 'kakakuReloginBlocked', triesKey: 'kakakuReloginTries', credsBadKey: 'kakakuCredsBad', pollKey: 'kakakuLastPollAt', pollCountKey: 'kakakuLastPollCount', leadKey: 'kakakuLastLeadAt', siteLabel: '価格.com' })
+makeSiteCreds({ credsKey: 'samuraiCreds', idEl: 'samuraiId', pwEl: 'samuraiPw', saveBtn: 'samuraiSave', resultEl: 'samuraiResult', statusEl: 'samuraiStatus', resultKey: 'samuraiReloginResult', reasonKey: 'samuraiReloginReason', atKey: 'samuraiReloginAt', blockedKey: 'samuraiReloginBlocked', triesKey: 'samuraiReloginTries', credsBadKey: 'samuraiCredsBad', testBtn: 'samuraiTest', tabUrl: 'https://hikkosizamurai.com/admin/*', winKey: '__tfSamuraiLoginTest', pollKey: 'samuraiLastPollAt', pollCountKey: 'samuraiLastPollCount', leadKey: 'samuraiLastLeadAt', siteLabel: '引越し侍' })
+makeSiteCreds({ credsKey: 'kakakuCreds', idEl: 'kakakuId', pwEl: 'kakakuPw', saveBtn: 'kakakuSave', resultEl: 'kakakuResult', statusEl: 'kakakuStatus', resultKey: 'kakakuReloginResult', reasonKey: 'kakakuReloginReason', atKey: 'kakakuReloginAt', blockedKey: 'kakakuReloginBlocked', triesKey: 'kakakuReloginTries', credsBadKey: 'kakakuCredsBad', testBtn: 'kakakuTest', tabUrl: 'https://ssl.kakaku.com/hikkoshi/vender/admin/*', winKey: '__tfKakakuLoginTest', pollKey: 'kakakuLastPollAt', pollCountKey: 'kakakuLastPollCount', leadKey: 'kakakuLastLeadAt', siteLabel: '価格.com' })
 
 // ズバットのステータスも定期更新に登録し、開いている間は数秒ごとに「◯分前」を更新する。
 statusRefreshers.push(renderZbaStatus)

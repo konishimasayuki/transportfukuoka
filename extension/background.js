@@ -96,6 +96,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     setAuthBadge(msg.ok)
     return
   }
+  // ポップアップの「今すぐログインを試す」用。アラーム（1分毎）を待たずにループを注入する。
+  if (msg?.type === 'ENSURE_LOOPS') {
+    Promise.all([ensureSamuraiLoop(), ensureKakakuLoop()]).then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }))
+    return true
+  }
 })
 
 // ===== 新規リードのWindows通知（ブラウザ起動中＝Chrome実行中に表示）=====
@@ -259,8 +264,10 @@ function kakakuLoop(gen, today) {
   // ===== 自動再ログイン（アカウントロック防止つき）=====（引越し侍と同方式・同ポリシー）
   //  ①ID/PW拒否で即停止（再保存まで再試行しない＝誤PW時は実質1回のみ）②絶対上限3回 ③5分に1回・全タブ共有。
   const MAX_TRIES = 2 // 失敗ログインの上限（厳しめ・毎朝6時にリセット）
-  async function relogin(loginDoc) {
-    if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) return false // 夜間22〜6時は再ログイン休止
+  // manual=true はポップアップの「今すぐログインを試す」から。人が目の前で操作しているので
+  // 夜間休止・5分間隔・試行上限・停止中のゲートは通さない（連打防止はポップアップ側で行う）。
+  async function relogin(loginDoc, manual) {
+    if (!manual && [22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) return false // 夜間22〜6時は再ログイン休止
     const set = p => { try { chrome.storage.local.set(p) } catch {} }
     let st = {}
     try { st = await chrome.storage.local.get(['kakakuCreds', 'kakakuReloginBlocked', 'kakakuReloginLastAt', 'kakakuReloginTries', 'kakakuReloginMorning', 'kakakuCredsBad']) } catch {}
@@ -277,10 +284,10 @@ function kakakuLoop(gen, today) {
     const authNg = () => postStatus(false, credsBad ? 'creds' : 'auth')
     const creds = st.kakakuCreds
     if (!creds || !creds.username || !creds.password) { authNg(); set({ kakakuReloginResult: 'failed', kakakuReloginReason: 'no-creds', kakakuReloginAt: Date.now() }); return false }
-    if (st.kakakuReloginBlocked) { authNg(); return false } // 停止中（ID/PWを保存し直すと解除）
+    if (!manual && st.kakakuReloginBlocked) { authNg(); return false } // 停止中（ID/PWを保存し直すと解除）
     const now = Date.now()
-    if (st.kakakuReloginLastAt && now - st.kakakuReloginLastAt < 5 * 60 * 1000) return false // 5分に1回まで（全タブ共有）
-    if ((st.kakakuReloginTries || 0) >= MAX_TRIES) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'max-tries', kakakuReloginAt: now }); authNg(); return false }
+    if (!manual && st.kakakuReloginLastAt && now - st.kakakuReloginLastAt < 5 * 60 * 1000) return false // 5分に1回まで（全タブ共有）
+    if (!manual && (st.kakakuReloginTries || 0) >= MAX_TRIES) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'max-tries', kakakuReloginAt: now }); authNg(); return false }
     const pw = loginDoc.querySelector('input[type="password"]')
     const form = pw && pw.closest('form')
     if (!form) { set({ kakakuReloginBlocked: true, kakakuReloginResult: 'failed', kakakuReloginReason: 'no-form', kakakuReloginAt: now }); authNg(); return false }
@@ -501,6 +508,16 @@ function kakakuLoop(gen, today) {
       setTimeout(tick, delay)
     }
   }
+  // ポップアップの「今すぐログインを試す」から呼ぶ入口。
+  // 巡回が使うのと同じ relogin をそのまま通すので、テストと実際の挙動がズレない。
+  window.__tfKakakuLoginTest = async () => {
+    try {
+      const doc = await fetchDoc(LIST, 'no-cache')
+      // ログイン中はログインフォームが出ないので、保存中のID/PWは試せない（正直にそう返す）
+      if (!doc.querySelector('input[type="password"]')) return { state: 'already' }
+      return { state: (await relogin(doc, true)) ? 'ok' : 'ng' }
+    } catch (e) { return { state: 'error', message: (e && e.message) || String(e) } }
+  }
   tick()
 }
 
@@ -541,8 +558,10 @@ function samuraiLoop(gen, todayMD) {
   //  ②絶対上限3回（通信エラー等が絡む例外含む）。到達で停止。
   //  ③5分に1回まで。停止/回数/時刻は chrome.storage で全タブ・再注入をまたいで共有（多重や連打を防ぐ）。
   const MAX_TRIES = 2 // 失敗ログインの上限（厳しめ・毎朝6時にリセット）
-  async function relogin(loginDoc) {
-    if ([22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) return false // 夜間22〜6時は再ログイン休止
+  // manual=true はポップアップの「今すぐログインを試す」から。人が目の前で操作しているので
+  // 夜間休止・5分間隔・試行上限・停止中のゲートは通さない（連打防止はポップアップ側で行う）。
+  async function relogin(loginDoc, manual) {
+    if (!manual && [22, 23, 0, 1, 2, 3, 4, 5].includes(new Date().getHours())) return false // 夜間22〜6時は再ログイン休止
     const set = p => { try { chrome.storage.local.set(p) } catch {} }
     let st = {}
     try { st = await chrome.storage.local.get(['samuraiCreds', 'samuraiReloginBlocked', 'samuraiReloginLastAt', 'samuraiReloginTries', 'samuraiReloginMorning', 'samuraiCredsBad']) } catch {}
@@ -559,10 +578,10 @@ function samuraiLoop(gen, todayMD) {
     const authNg = () => postStatus(false, credsBad ? 'creds' : 'auth')
     const creds = st.samuraiCreds
     if (!creds || !creds.username || !creds.password) { authNg(); set({ samuraiReloginResult: 'failed', samuraiReloginReason: 'no-creds', samuraiReloginAt: Date.now() }); return false }
-    if (st.samuraiReloginBlocked) { authNg(); return false } // 停止中（ID/PWを保存し直すと解除）
+    if (!manual && st.samuraiReloginBlocked) { authNg(); return false } // 停止中（ID/PWを保存し直すと解除）
     const now = Date.now()
-    if (st.samuraiReloginLastAt && now - st.samuraiReloginLastAt < 5 * 60 * 1000) return false // 5分に1回まで（全タブ共有）
-    if ((st.samuraiReloginTries || 0) >= MAX_TRIES) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'max-tries', samuraiReloginAt: now }); authNg(); return false }
+    if (!manual && st.samuraiReloginLastAt && now - st.samuraiReloginLastAt < 5 * 60 * 1000) return false // 5分に1回まで（全タブ共有）
+    if (!manual && (st.samuraiReloginTries || 0) >= MAX_TRIES) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'max-tries', samuraiReloginAt: now }); authNg(); return false }
     const pw = loginDoc.querySelector('input[type="password"]')
     const form = pw && pw.closest('form')
     if (!form) { set({ samuraiReloginBlocked: true, samuraiReloginResult: 'failed', samuraiReloginReason: 'no-form', samuraiReloginAt: now }); authNg(); return false }
@@ -795,6 +814,16 @@ function samuraiLoop(gen, todayMD) {
       else delay = window.__tfSamuraiHeavy ? Math.max(nextDelay(), 45000) : nextDelay() // 重いGET後は45秒以上（最悪でも50秒以内に取得）、軽いフィルターは約15秒
       setTimeout(tick, delay)
     }
+  }
+  // ポップアップの「今すぐログインを試す」から呼ぶ入口。
+  // 巡回が使うのと同じ relogin をそのまま通すので、テストと実際の挙動がズレない。
+  window.__tfSamuraiLoginTest = async () => {
+    try {
+      const doc = await fetchDoc(LIST, 'no-cache')
+      // ログイン中はログインフォームが出ないので、保存中のID/PWは試せない（正直にそう返す）
+      if (!doc.querySelector('input[type="password"]')) return { state: 'already' }
+      return { state: (await relogin(doc, true)) ? 'ok' : 'ng' }
+    } catch (e) { return { state: 'error', message: (e && e.message) || String(e) } }
   }
   tick()
 }

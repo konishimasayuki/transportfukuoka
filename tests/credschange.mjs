@@ -143,5 +143,70 @@ t(/\[cfg\.credsBadKey\]: false/.test(popup), '価格.com／引越し侍：保存
   t(!/CSRF取得失敗/.test(body), '完全ログアウト状態でもテストできる（CSRF空で諦めない）')
 }
 
+// ===== ⑥ 価格.com／引越し侍の「今すぐログインを試す」 =====
+console.log('\n--- ⑥ 価格.com／引越し侍のログイン確認ボタン ---')
+const html = fs.readFileSync(new URL('../extension/popup.html', import.meta.url).pathname, 'utf8')
+{
+  // 入口が「それぞれのループの中」にあること（片方に2つ入っていると引越し侍が動かない）
+  const iKakakuLoop = bg.indexOf('function kakakuLoop(')
+  const iSamuraiLoop = bg.indexOf('function samuraiLoop(')
+  const iKakakuTest = bg.indexOf('window.__tfKakakuLoginTest')
+  const iSamuraiTest = bg.indexOf('window.__tfSamuraiLoginTest')
+  t(iKakakuTest > iKakakuLoop && iKakakuTest < iSamuraiLoop, '価格.comの入口は価格.comのループ内にある')
+  t(iSamuraiTest > iSamuraiLoop, '引越し侍の入口は引越し侍のループ内にある')
+
+  for (const [label, site, cap] of [['価格.com', 'kakaku', 'Kakaku'], ['引越し侍', 'samurai', 'Samurai']]) {
+    // relogin 全体（夜間ゲートは関数の先頭にあるので、そこから切り出す）
+    const loopAt = bg.indexOf(`function ${site}Loop(`)
+    const rlAt = bg.indexOf('async function relogin(loginDoc, manual)', loopAt)
+    const body = bg.slice(rlAt, bg.indexOf(`${site}ReloginReason: 'fetch-error'`, rlAt))
+    // 人の操作のときだけゲートを外す
+    for (const [gate, why] of [
+      ['\\[22, 23, 0, 1, 2, 3, 4, 5\\]', '夜間休止'],
+      [`st\\.${site}ReloginBlocked`, '停止中'],
+      [`st\\.${site}ReloginLastAt`, '5分間隔'],
+      [`\\(st\\.${site}ReloginTries \\|\\| 0\\) >= MAX_TRIES`, '試行上限'],
+    ]) t(new RegExp(`!manual && ${gate}`).test(body), `${label}：${why}は手動テストでは通さない`)
+    t(/async function relogin\(loginDoc, manual\)/.test(body) || /relogin\(loginDoc, manual\)/.test(bg), `${label}：relogin が手動フラグを受け取る`)
+
+    // 入口が巡回と同じ relogin を呼んでいる（テスト用の別実装を作っていない）
+    const entry = bg.slice(bg.indexOf(`window.__tf${cap}LoginTest`))
+    const eb = entry.slice(0, entry.indexOf('\n  }\n'))
+    t(/await relogin\(doc, true\)/.test(eb), `${label}：★巡回と同じ relogin をそのまま使う（二重実装しない）`)
+    t(/input\[type="password"\]/.test(eb) && /'already'/.test(eb), `${label}：ログイン中は already を返す（嘘の合格を出さない）`)
+  }
+  t(/ENSURE_LOOPS/.test(bg), 'ポップアップから即座にループを注入できる（1分待たない）')
+}
+
+// 実際に動かす：3つの状態が正しく返るか
+{
+  const entry = bg.slice(bg.indexOf('window.__tfKakakuLoginTest'))
+  const src = entry.slice(0, entry.indexOf('\n  }\n') + 4)
+  const run = async (hasPwField, reloginResult) => {
+    const win = {}
+    new Function('window', 'fetchDoc', 'LIST', 'relogin', src)(
+      win,
+      async () => ({ querySelector: () => (hasPwField ? {} : null) }),
+      '/list',
+      async () => { if (reloginResult === 'throw') throw new Error('boom'); return reloginResult })
+    return await win.__tfKakakuLoginTest()
+  }
+  t((await run(true, true)).state === 'ok', 'ログアウト中＋ログイン成功 → ok')
+  t((await run(true, false)).state === 'ng', '★ログアウト中＋ログイン失敗 → ng（ID/PWを疑える）')
+  t((await run(false, true)).state === 'already', 'ログイン中 → already（保存中のID/PWは試していない、と正直に返す）')
+  t((await run(true, 'throw')).state === 'error', '通信エラー → error（失敗と混同しない）')
+}
+
+// ポップアップ側
+{
+  t(/id="samuraiTest"/.test(html) && /id="kakakuTest"/.test(html), '3サイトともボタンがある')
+  t(/testBtn: 'samuraiTest'/.test(popup) && /testBtn: 'kakakuTest'/.test(popup), '2サイトぶん配線されている')
+  t(/winKey: '__tfSamuraiLoginTest'/.test(popup) && /winKey: '__tfKakakuLoginTest'/.test(popup), '呼ぶ入口の名前が一致している')
+  t(/TEST_COOLDOWN_MS/.test(popup), '★連打防止がある（連打すると試行回数が増えてロックの危険）')
+  t((popup.match(/TEST_COOLDOWN_MS\)/g) || []).length === 2, '3サイトのボタンすべてに効く（ズバット＋共通関数）', `${(popup.match(/TEST_COOLDOWN_MS\)/g) || []).length}箇所`)
+  const blk = popup.slice(popup.indexOf('const testEl'))
+  t(/state === 'already'/.test(blk) && /state === 'ng'/.test(blk) && /state === 'error'/.test(blk) && /巡回が動いていません/.test(blk), '4状態すべてに表示がある（成功・失敗・ログイン中・確認不能＋ループ未起動）')
+}
+
 console.log(`\n${ok} PASS / ${ng} FAIL`)
 process.exit(ng ? 1 : 0)
