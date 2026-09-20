@@ -335,7 +335,7 @@ async function csrfProbe() {
 // ログイン前のトークン取得（authError を投げない版）。空でもログインは試す。
 async function csrfForLogin() { return (await csrfProbe()).token }
 
-// 戻り値：成功=true / 失敗=理由文字列
+// 戻り値：成功=true / 確実とは言えない成功='ok-unconfirmed' / 失敗=理由文字列
 //   （'night','no-creds','invalid-creds','verify-unknown','http-XXX','fetch-error','storage-error'）。
 // 呼び出し側は「no-creds・invalid-creds・拒否(4xx)」をハード失敗として上限カウントする。
 // ★成否は「ログイン後に実際にデータ（＝CSRFトークン）が取れるか」で決める。
@@ -368,7 +368,12 @@ async function relogin() {
     const via = token ? '' : '（CSRFなしで試行）' // どちらの経路だったか後から分かるように残す
     if (v.state === 'ok') {
       csrfCache = { token: v.token, at: Date.now() } // 確認に使ったトークンをそのまま使う（無駄打ちしない）
-      safeStorageSet({ zbaReloginReason: 'ok' + (token ? '' : '（CSRFなしで成功）') })
+      // ★ログイン前からセッションが生きていた場合（token が取れていた場合）、
+      //   ここで取れたトークンが「今のログインの結果」なのか「元から生きていたセッション」なのか
+      //   区別できない。サイトが誤ID/PWで既存セッションを残す仕様だと、誤PWでも成功に見えてしまう。
+      //   巡回は続けてよいので成功扱いにするが、「ID/PWが正しいと確認できた」とは扱わない。
+      if (token) { safeStorageSet({ zbaReloginReason: 'ok（ただし元からセッションが生きていたため、ID/PWの正しさは未確認）' }); return 'ok-unconfirmed' }
+      safeStorageSet({ zbaReloginReason: 'ok（CSRFなしで成功）' })
       return true
     }
     if (v.state === 'no') {
@@ -400,9 +405,11 @@ async function tryRecoverAuth() {
   lastReloginAt = now
   console.log(`[リード監視:${SITE}] 自動再ログインを試行`)
   const res = await relogin()
-  if (res === true) {
+  if (res === true || res === 'ok-unconfirmed') {
     reloginFails = 0
-    markCredsBad(false) // ログインできた＝保存中のID/PWは正しい
+    // 「ID/PWが正しい」と解除してよいのは、確実にログインできたと言い切れる時だけ。
+    // ok-unconfirmed（元からセッションが生きていた）では解除しない。
+    if (res === true) markCredsBad(false)
     setAuthState(true)
     postStatus(true, '')
     safeStorageSet({ zbaReloginResult: 'success', zbaReloginAt: Date.now() })

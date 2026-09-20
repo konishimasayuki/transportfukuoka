@@ -28,6 +28,7 @@ for (const [res, want, why] of [
   ['storage-error', false, '拡張の不調は一時的失敗'],
 ]) t(hardFail(res) === want, `${res} → ${want ? '停止にカウント' : '再試行を継続'}`, why)
 t(hardFail(true) === false, 'res===true（成功）はカウントしない')
+t(hardFail('ok-unconfirmed') === false, 'ok-unconfirmed もカウントしない（失敗ではない）')
 
 // 何回で止まるか（1日あたりの試行回数）
 const MAX = Number(content.match(/RELOGIN_MAX_FAILS = (\d+)/)[1])
@@ -125,7 +126,7 @@ console.log('\n--- #3 完全ログアウトからの復帰 / #4 ログイン成�
   t(a.sent[0].body.loginId === 'id' && a.sent[0].body.password === 'pw', '本文の項目名は loginId / password のまま')
   const b = await run('tok123', 200, 'ok')
   t(b.sent[0] && b.sent[0].headers['csrf-token'] === 'tok123', 'トークンがあれば従来どおり送る')
-  t(b.res === true, '通常経路：成功なら true', String(b.res))
+  t(b.res === 'ok-unconfirmed', '★元からセッションが生きていた場合は ok-unconfirmed（成功と言い切らない）', String(b.res))
   const c = await run('', 200, 'ok')
   t(c.res === true, 'トークン空でもログインできていれば成功（完全ログアウトから復帰できる）', String(c.res))
 
@@ -134,6 +135,8 @@ console.log('\n--- #3 完全ログアウトからの復帰 / #4 ログイン成�
   for (const [tok, st, probe, want, why] of [
     ['', 200, 'no', 'invalid-creds', '★旧実装はここを「成功」と誤判定していた（200だが入れていない）'],
     ['tok', 200, 'no', 'invalid-creds', 'トークンありでも実態で判定する'],
+    ['tok', 200, 'ok', 'ok-unconfirmed', '★セッションが生きたままの成功は「確認できた」とは扱わない'],
+    ['', 200, 'ok', true, 'ログアウト状態からの成功は確実なので true'],
     ['', 404, 'no', 'invalid-creds', '404でも理由は「拒否」ではなく実態で確定する'],
     ['', 404, 'ok', true, '★404でも実際に入れていれば成功（ステータスを信用しない）'],
     ['', 500, 'unknown', 'verify-unknown', 'サーバ障害で確認不能 → 上限にカウントせず再試行'],

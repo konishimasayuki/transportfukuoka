@@ -499,7 +499,10 @@ document.getElementById('zbaTest').addEventListener('click', async () => {
       } catch { return { state: 'unknown', token: null } }
     }
     // トークンが空でもログインは試す（完全ログアウト状態でもテストできるようにする）
-    const token = (await probe()).token
+    // ★ログイン前の状態も控える。既にセッションが生きていると、ログイン後にトークンが
+    //   取れても「今のログインで取れた」のか「元から生きていた」のか区別できない。
+    const before = await probe()
+    const token = before.token
     const headers = { accept: 'application/json', 'content-type': 'application/json', 'accept-language': 'ja' }
     if (token) headers['csrf-token'] = token
     const r = await fetch(`${ZBA_API}/supplier-kanri/login`, {
@@ -509,7 +512,11 @@ document.getElementById('zbaTest').addEventListener('click', async () => {
     // ★HTTPステータスでは判定しない。ズバットは誤ID/PWに404を返す（2026-09の事故）。
     //   実際にログインできたか（＝トークンが発行されるか）で判定する。
     const v = await probe()
-    if (v.state === 'ok') {
+    if (v.state === 'ok' && before.state === 'ok') {
+      // 元からログインしていたので、保存中のID/PWが正しいかまでは確かめられない（嘘の合格を出さない）
+      res.style.color = '#64748b'
+      res.textContent = '現在ログイン中です。保存したID/PWが正しいかは、ログアウト状態でないと確認できません'
+    } else if (v.state === 'ok') {
       res.style.color = '#16a34a'; res.textContent = '✓ ログイン成功（自動再ログイン有効）'
       document.getElementById('zbaPw').value = ''
       await chrome.storage.local.set({ zbaReloginResult: 'success', zbaReloginAt: Date.now(), zbaCredsBad: false })
