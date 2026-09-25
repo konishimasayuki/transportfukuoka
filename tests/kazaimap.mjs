@@ -8,28 +8,28 @@ const est = fs.readFileSync(new URL('../src/tabs/Estimate.jsx', import.meta.url)
 const modal = fs.readFileSync(new URL('../src/components/LeadDetailModal.jsx', import.meta.url).pathname, 'utf8')
 const cut = (src, start, end) => { const i = src.indexOf(start); return src.slice(i, src.indexOf(end, i) + end.length) }
 
+// 表記ゆれの吸収は src/lib/kazaiName.js に一本化されている（2つに分かれていた名残を消した）
+const { canonKazai } = await import('../src/lib/kazaiName.js')
+
 // ===== 実コードから割り当て関数を組み立てる =====
-const { resolveKazaiKey, ALL_ITEMS } = new Function(`
+const { resolveKazaiKey, ALL_ITEMS } = new Function('canonKazai', `
   ${cut(est, 'const KAZAI_GROUPS = [', '\n]')}
   const ALL_ITEMS = KAZAI_GROUPS.flatMap(g => g.items)
   ${cut(est, 'const LEAD_KAZAI_TO_KEY = {', '\n}')}
-  ${cut(est, 'const canonKazai = ', "\n  .replace(/類(?=（|$)/g, '')")}
   ${cut(est, 'const ITEM_NAME_TO_KEY = (() => {', '\n})()')}
   ${cut(est, 'const LEAD_KEY_CANON = (() => {', '\n})()')}
   ${cut(est, 'function resolveKazaiKey(name) {', '\n}')}
   return { resolveKazaiKey, ALL_ITEMS }
-`)()
+`)(canonKazai)
 const label = k => { const i = ALL_ITEMS.find(x => x.key === k); return i ? `${i.name}${i.size ? '(' + i.size + ')' : ''}` : k }
 
 // ===== 実コードから画面のカテゴリ分けを組み立てる =====
-const { categoryOf } = new Function(`
+const { categoryOf, KAZAI_CATEGORY } = new Function('canonKazai', `
   ${cut(modal, 'const KAZAI_CATEGORY = {', '\n}')}
-  ${cut(modal, 'const KAZAI_CATEGORY_EXTRA = {', '\n}')}
-  ${cut(modal, 'const canonName = ', '\n')}
   ${cut(modal, 'const CATEGORY_BY_NAME = (() => {', '\n})()')}
   ${cut(modal, 'function categoryOf(name) {', '\n}')}
-  return { categoryOf }
-`)()
+  return { categoryOf, KAZAI_CATEGORY }
+`)(canonKazai)
 
 // 画面（お荷物量）に並ぶ品名すべて。期待する見積書品目つき。
 // null = あえて割り当てない（見積書に該当が無く毎回その場で足すもの）
@@ -103,12 +103,47 @@ for (const [name, want] of [
 for (const [name, cat] of [['テレビ', '家電'], ['こたつ', '家具'], ['仏壇', 'その他'], ['バイク', '重量物']])
   t(categoryOf(name) === cat, `${name} のカテゴリは従来どおり ${cat}`)
 
-console.log('\n--- 「＋家財を追加」の選択肢を増やしていないか ---')
-// KAZAI_CATEGORY は追加用プルダウンも兼ねる。大小違いの似た項目で埋めると選びにくくなるので
-// 分類専用の KAZAI_CATEGORY_EXTRA に分けてある。
-const picker = cut(modal, 'const KAZAI_CATEGORY = {', '\n}')
-t(!/テレビ台大|ローボード大|シングルベッド/.test(picker), 'プルダウン用の語彙には価格.com固有の項目を足していない')
-t(/KAZAI_CATEGORY_EXTRA/.test(modal) && !/KAZAI_CATEGORY_EXTRA\)\.map/.test(modal), '追加語彙は分類専用（プルダウンには出さない）')
+console.log('\n--- 語彙表の重複（テーブルが荒れていないか）---')
+// 重複があると、同じ品名が2つのカテゴリに散ったり、後から足したほうが
+// 先勝ちで無効になったりする。目視では見落とすので機械に見張らせる。
+const flat = Object.entries(KAZAI_CATEGORY).flatMap(([cat, list]) => list.map(n => [n, cat]))
+t(flat.length >= 90, `語彙は ${flat.length} 件（3サイトぶん統合）`)
+{
+  const seen = new Map(), dup = []
+  for (const [n, c] of flat) { if (seen.has(n)) dup.push(`${n}(${seen.get(n)}/${c})`); else seen.set(n, c) }
+  t(dup.length === 0, '同じ品名を二度書いていない', dup.join(' '))
+}
+{
+  const seen = new Map(), dup = []
+  for (const [n, c] of flat) { const k = canonKazai(n); if (seen.has(k)) dup.push(`${n}≒${seen.get(k)[0]}(${seen.get(k)[1]}/${c})`); else seen.set(k, [n, c]) }
+  t(dup.length === 0, '★表記ゆれを吸収すると同じになる品名が無い（布団/布団類 のような重複）', dup.join(' '))
+}
+{
+  // 分類は先勝ち。同じ見出し語が違うカテゴリに入っていると、どちらが勝つか分からない
+  const m = new Map(), conflict = []
+  for (const [n, c] of flat) { const k = canonKazai(n); if (m.has(k) && m.get(k) !== c) conflict.push(`${n}: ${m.get(k)} vs ${c}`); else m.set(k, c) }
+  t(conflict.length === 0, 'カテゴリが食い違う品名が無い', conflict.join(' '))
+}
+
+console.log('\n--- 語彙表と正規化の持ち方 ---')
+t(!/KAZAI_CATEGORY_EXTRA/.test(modal), '分類専用の別テーブルを作っていない（1つの表に統合済み）')
+t(!/const canonName = /.test(modal), '画面側に独自の正規化ルールを持っていない')
+t(/from '\.\.\/lib\/kazaiName'/.test(modal) && /from '\.\.\/lib\/kazaiName'/.test(est),
+  '★見積書と画面が同じ正規化を使う（片方だけ直す事故を防ぐ）')
+
+console.log('\n--- 家財を選ぶモーダル ---')
+t(/function KazaiPicker\(/.test(modal), 'プルダウンではなくモーダルで選ぶ')
+t(!/<select value={addName}/.test(modal) && !/optgroup/.test(modal), '旧プルダウンが残っていない')
+t(/Object\.entries\(KAZAI_CATEGORY\)/.test(cut(modal, 'function KazaiPicker(', '\n}\n')), 'モーダルはカテゴリごとに並べる')
+t(/canonKazai\(n\)\.includes\(key\)/.test(modal), '絞り込みも表記ゆれを吸収する（「ソファー」で「ソファ」も出る）')
+t(/zIndex: 1200/.test(modal), 'リード詳細より前面に出す')
+t(/ModalPortal/.test(cut(modal, 'function KazaiPicker(', '\n}\n')), 'ModalPortal を通す（背後が動かない・ヘッダーより前面）')
+{
+  // 価格.comの品名がすべて一覧に載っていること（載っていないと選べない＝手入力になる）
+  const names = new Set(flat.map(([n]) => canonKazai(n)))
+  const missing = CASES.map(([n]) => n).filter(n => !names.has(canonKazai(n)))
+  t(missing.length === 0, '価格.comの50品目すべてがモーダルの一覧にある', missing.join(' '))
+}
 
 console.log(`\n${ok} PASS / ${ng} FAIL`)
 process.exit(ng ? 1 : 0)

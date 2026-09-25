@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { DEMO_CONTRACTS } from '../lib/demoData'
 import { GMAPS_KEY, zipFromAddress } from '../lib/gmaps'
+import { canonKazai } from '../lib/kazaiName'
 import ModalPortal from '../components/ModalPortal'
 
 /* =========================================================================
@@ -218,12 +219,6 @@ const LEAD_KAZAI_TO_KEY = {
   // 見積書に該当品目が無く毎回その場で足しているため、あえて割り当てない
   // （帳票の空き升に「特殊家財」として品名と数量が出る）。
 }
-// 表記ゆれ（全角半角・空白・長音・「類」）を吸収した見出し語にする。
-// 例：ソファー（2人掛け）→ ソファ（2人掛け）、タンス類（大）→ タンス（大）
-const canonKazai = (s) => String(s || '').normalize('NFKC').replace(/[\s　]/g, '')
-  .replace(/\(/g, '（').replace(/\)/g, '）')
-  .replace(/ー(?=（|$)/g, '')
-  .replace(/類(?=（|$)/g, '')
 // 見積書語彙そのものの一致（保険）。「ソファー2人用」「ソファー（2人用）」どちらでも引ける
 const ITEM_NAME_TO_KEY = (() => {
   const m = {}
