@@ -173,6 +173,45 @@ async function kakakuScrapeAndFetch() {
     }
     return ''
   }
+  // ===== 家財（お荷物量）=====
+  // 価格.comの詳細ページ構造（2026-09 実測）
+  //   <div class="c-ttl2-type1"><h3 class="c-ttl2_ttl">お荷物量</h3></div>
+  //   <div class="grid_item grid_item-3"><h3>リビング関連</h3>
+  //     <table><tbody><tr><td>テレビ（４０インチ以上）</td><td>1台</td></tr>…
+  //   <h3 class="u-m-top20">上記以外の家財</h3><p class="u-m-top10">（自由記述）</p>
+  // 「お荷物量」の見出しから次の見出し（その他）までに挟まれた tr だけを拾う。
+  // ページ全体の tr を無条件に見ると、一覧や他セクションの表まで混ざるため。
+  const kazaiOf = (doc) => {
+    // 見出しブロック（.c-ttl2-type1）を境界にする。無ければ見出し自体（.c-ttl2_ttl）で代用。
+    // ※ h3 全体を境界にすると「リビング関連」「上記以外の家財」で範囲が切れてしまう。
+    const heads = doc.querySelectorAll('.c-ttl2-type1').length
+      ? [...doc.querySelectorAll('.c-ttl2-type1')]
+      : [...doc.querySelectorAll('.c-ttl2_ttl')]
+    const i = heads.findIndex(h => textOf(h) === 'お荷物量')
+    if (i < 0) return []
+    const start = heads[i], end = heads[i + 1] || null
+    // 文書順で start の後ろ、end の前にあるものだけ（4=FOLLOWING / 2=PRECEDING）
+    const inRange = el => !!(start.compareDocumentPosition(el) & 4) && (!end || !!(end.compareDocumentPosition(el) & 2))
+    const out = []
+    for (const tr of [...doc.querySelectorAll('tr')].filter(inRange)) {
+      if (out.length >= 200) break // 構造が変わった時の暴走よけ
+      const td = [...tr.children].filter(c => c.tagName === 'TD')
+      if (td.length < 2) continue
+      const name = textOf(td[0])
+      // 「1台」「2脚」「7枚」…数字＋短い単位だけを数量とみなす（単位は持たない）。
+      // 「3台分の駐車場あり」のような文章を数量と読み違えないための保険。
+      const m = textOf(td[1]).match(/^(\d+)\s*[^\d\s]{0,3}$/)
+      if (!name || !m) continue
+      const qty = parseInt(m[1], 10)
+      if (qty > 0) out.push({ name, qty }) // 0 は積まない荷物なので捨てる
+    }
+    // 「上記以外の家財」（自由記述）。家財セクションに残したいので1行として足す。
+    const nh = [...doc.querySelectorAll('h3,h4,dt,th')].find(e => textOf(e) === '上記以外の家財')
+    const note = nh && nh.nextElementSibling ? textOf(nh.nextElementSibling) : ''
+    if (note) out.push({ name: '上記以外の家財：' + note, qty: 1 })
+    return out
+  }
+
   const dd = new Set(); const bases = []
   for (const tr of rows) {
     const a = tr.querySelector('a[href*="userdetail"]')
@@ -190,7 +229,7 @@ async function kakakuScrapeAndFetch() {
   const leads = []
   for (const base of bases) {
     try {
-      let name = base.name, kana = '', fromAddr = '', toAddr = '', fromZip = '', fromType = '', layout = '', floor = '', elevator = ''
+      let name = base.name, kana = '', fromAddr = '', toAddr = '', fromZip = '', fromType = '', layout = '', floor = '', elevator = '', kazai = []
       try {
         const res = await fetch('/hikkoshi/vender/admin/userdetail/?orderid=' + base.id, { credentials: 'include', cache: 'no-store', headers: { accept: 'text/html', 'cache-control': 'no-cache' } })
         if (res.ok) {
@@ -213,6 +252,7 @@ async function kakakuScrapeAndFetch() {
           floor = valueFor(doc, 'お住まいの階数')
           elevator = valueFor(doc, 'エレベーター')
           toAddr = valueFor(doc, '着地（お引越し先）') || valueFor(doc, '着地(お引越し先)')
+          kazai = kazaiOf(doc)
         }
       } catch (e) { /* 詳細失敗→一覧情報だけ */ }
       const memo = [layout && '間取り:' + layout, floor && '階数:' + floor, elevator && 'EV:' + elevator, base.status && '状況:' + base.status].filter(Boolean).join(' / ')
@@ -220,7 +260,7 @@ async function kakakuScrapeAndFetch() {
         site: '価格.com', key: base.phone || ('価格.com:' + base.id), phone: base.phone,
         name, kana, email: base.email, count: base.count,
         from: fromAddr || base.fromPref, to: toAddr || base.toPref, fromZip, fromType,
-        receivedAt: base.requestedAt, moveDate: base.moveDate, memo,
+        receivedAt: base.requestedAt, moveDate: base.moveDate, memo, kazai,
         orderId: base.quoteId || ('A000' + base.id), detail: true, detectedAt: new Date().toISOString(),
       })
       await new Promise(r => setTimeout(r, 200))

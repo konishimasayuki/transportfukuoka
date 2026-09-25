@@ -34,9 +34,33 @@ const KAZAI_CATEGORY = {
   その他: ['自転車', '物干し竿', '植木鉢・観葉植物', 'ゴルフセット', 'スキー用品', '仏壇'],
   重量物: ['ピアノ類', '小型ピアノ・エレクトーン', '大型ピアノ', 'バイク', '車'],
 }
+// 表示のカテゴリ分けだけに使う追加語彙（価格.com）。
+// KAZAI_CATEGORY は「＋ 家財を追加」の選択肢も兼ねているため、
+// 大小違いだけの似た項目をそちらへ足すと選びにくくなる。分類専用にこちらへ置く。
+const KAZAI_CATEGORY_EXTRA = {
+  家具: ['テレビ台大', 'テレビ台小', 'ソファ3人掛け以上', 'ソファ2人掛け以下', 'ソファベッド',
+    'テーブル（3人以上）', 'テーブル（2人以下）', 'ローボード大', 'ローボード小', 'チェスト大', 'チェスト小',
+    'カーペット（10畳以上）', 'カーペット（9畳以下）', '食器収納大', '食器収納小',
+    'ダブルベッド以上', 'セミダブルベッド', 'シングルベッド', '布団', 'ドレッサー大', 'ドレッサー小',
+    'タンス大', 'タンス小', '本棚大', '本棚小', 'イス'],
+  家電: ['冷蔵庫（2ドア以下）', '洗濯機（タテ）', '洗濯機（ドラム）', 'ノートパソコン',
+    'ファンヒーター・ストーブ', '照明器具'],
+  その他: ['植木鉢'],
+  重量物: ['ピアノ'],
+}
+// 全角・半角・空白の違いを吸収して照合する。
+// 価格.comは「テレビ（４０インチ以上）」のように全角数字で来るため、
+// 生の文字列比較のままだと既存の「テレビ（40インチ以上）」と一致しない。
+const canonName = s => String(s || '').normalize('NFKC').replace(/[\s　]/g, '').replace(/\(/g, '（').replace(/\)/g, '）')
+const CATEGORY_BY_NAME = (() => {
+  const m = {}
+  for (const src of [KAZAI_CATEGORY, KAZAI_CATEGORY_EXTRA]) {
+    for (const [cat, list] of Object.entries(src)) list.forEach(n => { const c = canonName(n); if (!(c in m)) m[c] = cat })
+  }
+  return m
+})()
 function categoryOf(name) {
-  for (const [cat, list] of Object.entries(KAZAI_CATEGORY)) if (list.includes(name)) return cat
-  return 'その他'
+  return CATEGORY_BY_NAME[canonName(name)] || 'その他'
 }
 
 // モーダル上部のボタン。文字数で幅が変わらないよう、改行位置を決め打ちして折り返させない
