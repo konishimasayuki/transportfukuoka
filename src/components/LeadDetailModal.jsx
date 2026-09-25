@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate, hasAmountTag, formatAmount, fillAmount } from '../lib/mailTemplate'
 import ModalPortal from './ModalPortal'
+import { canonKazai } from '../lib/kazaiName'
 
 const STATUS_LIST  = ['未架電', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
 // 手入力で新規登録するときの初期値（査定サイト由来ではないので流入元は「その他」）
@@ -21,22 +22,105 @@ const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '�
 const YN = ['', 'あり', 'なし']
 
 // 家財のカテゴリ分け（追加候補プルダウンと表示の両方で使用）
+// 家財の語彙。品名 → カテゴリの対応であり、「＋ 家財を追加」で選ぶ一覧でもある。
+// 各サイトが同じ物を違う言い方で送ってくるため、言い方ごとに載せる
+// （例：「タンス（大）」＝引越し侍／ズバット、「タンス大」＝価格.com）。
+// 載っていない品名は「その他」に入る。消えはしないが分類はされない。
 const KAZAI_CATEGORY = {
   家具: ['ソファ', 'ソファ（1人掛け）', 'ソファ（2人掛け）', 'ソファ（3人掛け）', 'サイドボード・テレビ台',
     'チェスト（大）', 'チェスト（中・小）', 'リビングテーブル', 'ダイニングテーブルセット', 'シャンデリア・スタンド',
     'こたつ', '絨毯・カーペット', '絨毯・カーペット（10畳未満）', '絨毯・カーペット（10畳以上）',
     'ベッド', 'ベッド（シングル）', 'ベッド（セミダブル）', 'ベッド（ダブル）', '布団類',
     'タンス', 'タンス（中・小）', 'タンス（大）', '本棚', '本棚（中・小）', '本棚（大）', '衣装ケース',
-    '机/椅子', '机', '椅子', 'ドレッサー', '食器棚', '食器棚（中・小）', '食器棚（大）'],
+    '机/椅子', '机', '椅子', 'ドレッサー', '食器棚', '食器棚（中・小）', '食器棚（大）',
+    // 価格.com の言い方
+    'テレビ台大', 'テレビ台小', 'ソファ3人掛け以上', 'ソファ2人掛け以下', 'ソファベッド',
+    'テーブル（3人以上）', 'テーブル（2人以下）', 'ローボード大', 'ローボード小', 'チェスト大', 'チェスト小',
+    'カーペット（10畳以上）', 'カーペット（9畳以下）', '食器収納大', '食器収納小',
+    'ダブルベッド以上', 'セミダブルベッド', 'シングルベッド', 'ドレッサー大', 'ドレッサー小',
+    'タンス大', 'タンス小', '本棚大', '本棚小', 'イス'],
   家電: ['テレビ', 'テレビ（40インチ未満）', 'テレビ（40インチ以上）', 'ステレオ・コンポ類', 'ステレオ', 'ミニコンポ',
     'デスクトップパソコン', '冷蔵庫', '冷蔵庫（２ドア）', '冷蔵庫（3ドア）',
-    '洗濯機', '洗濯機（縦型）', '洗濯機（ドラム式）', '乾燥機', '電子レンジ', 'エアコン', 'ストーブ・ヒーター', '扇風機'],
-  その他: ['自転車', '物干し竿', '植木鉢・観葉植物', 'ゴルフセット', 'スキー用品', '仏壇'],
+    '洗濯機', '洗濯機（縦型）', '洗濯機（ドラム式）', '乾燥機', '電子レンジ', 'エアコン', 'ストーブ・ヒーター', '扇風機',
+    // 価格.com の言い方
+    '冷蔵庫（2ドア以下）', '洗濯機（タテ）', '洗濯機（ドラム）', 'ノートパソコン',
+    'ファンヒーター・ストーブ', '照明器具'],
+  その他: ['自転車', '物干し竿', '植木鉢・観葉植物', 'ゴルフセット', 'スキー用品', '仏壇',
+    // 価格.com の言い方
+    '植木鉢'],
   重量物: ['ピアノ類', '小型ピアノ・エレクトーン', '大型ピアノ', 'バイク', '車'],
 }
+
+// 品名 → カテゴリ。表記ゆれを吸収して引けるようにしておく
+// （価格.comは「テレビ（４０インチ以上）」のように全角で来る）。
+const CATEGORY_BY_NAME = (() => {
+  const m = {}
+  for (const [cat, list] of Object.entries(KAZAI_CATEGORY)) {
+    list.forEach(n => { const c = canonKazai(n); if (!(c in m)) m[c] = cat })
+  }
+  return m
+})()
 function categoryOf(name) {
-  for (const [cat, list] of Object.entries(KAZAI_CATEGORY)) if (list.includes(name)) return cat
-  return 'その他'
+  return CATEGORY_BY_NAME[canonKazai(name)] || 'その他'
+}
+
+
+// ===== 家財を選んで足すモーダル =====
+// 以前はプルダウン1つで選ばせていたが、各サイトの言い方をすべて載せたため
+// 90件を超えて探せなくなった。カテゴリごとに並べ、絞り込みできるようにする。
+// 押すたびに1つ足して開いたままにする（複数まとめて足せるように）。数量は
+// 追加後に家財欄の数字で直せるので、ここでは数量入力を持たない。
+function KazaiPicker({ onPick, qtyOf, onClose }) {
+  const [q, setQ] = useState('')
+  const [free, setFree] = useState('')
+  const key = canonKazai(q)
+  const hit = (n) => !key || canonKazai(n).includes(key)
+  const groups = Object.entries(KAZAI_CATEGORY)
+    .map(([cat, list]) => [cat, list.filter(hit)])
+    .filter(([, list]) => list.length)
+  const ov = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 16 }
+  const bx = { background: '#fff', borderRadius: 12, width: '100%', maxWidth: 560, maxHeight: '86dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }
+  const ip = { width: '100%', padding: '9px 11px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', outline: 'none', background: '#fff' }
+  const addFree = () => { const v = free.trim(); if (!v) return; onPick(v, 1); setFree('') }
+  return (
+    // 枠外を押したら閉じる（足した内容はその都度反映済みなので消えるものは無い）
+    <ModalPortal><div style={ov} onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={bx}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid #EEF2F7', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ fontSize: 15, fontWeight: 800, flexShrink: 0 }}>家財を追加</div>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="品名で絞り込み…" style={{ ...ip, flex: 1 }} />
+          <button className="btn btn-sm btn-outline" style={{ flexShrink: 0 }} onClick={onClose}>閉じる</button>
+        </div>
+        <div style={{ flex: '1 1 auto', overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '10px 14px' }}>
+          {groups.map(([cat, list]) => (
+            <div key={cat} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#64748B', marginBottom: 6 }}>{cat}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {list.map(n => {
+                  const has = qtyOf(n)
+                  return (
+                    <button key={n} type="button" onClick={() => onPick(n, 1)}
+                      style={{ fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+                        padding: '7px 10px', borderRadius: 8, minHeight: 34,
+                        border: '1px solid ' + (has ? '#1D4ED8' : '#E2E8F0'),
+                        background: has ? '#EFF6FF' : '#fff', color: has ? '#1D4ED8' : '#334155' }}>
+                      {n}{has ? ` ×${has}` : ''}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+          {!groups.length && <div style={{ fontSize: 13, color: '#94A3B8', padding: '8px 0' }}>該当する品名がありません。下の自由入力で足してください。</div>}
+        </div>
+        <div style={{ padding: '10px 14px', borderTop: '1px solid #EEF2F7', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input value={free} onChange={e => setFree(e.target.value)} placeholder="一覧に無い品名を入力…" style={{ ...ip, flex: 1 }}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addFree() } }} />
+          <button className="btn btn-sm btn-primary" style={{ flexShrink: 0 }} onClick={addFree} disabled={!free.trim()}>追加</button>
+        </div>
+      </div>
+    </div></ModalPortal>
+  )
 }
 
 // モーダル上部のボタン。文字数で幅が変わらないよう、改行位置を決め打ちして折り返させない
@@ -116,9 +200,7 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
   const [draft, setDraft] = useState({})
   const [kazai, setKazai] = useState([])
   const [boxCount, setBoxCount] = useState('')
-  const [addName, setAddName] = useState('')
-  const [addQty, setAddQty] = useState(1)
-  const [customKazai, setCustomKazai] = useState(false) // 家財追加：自由入力モード（選択の度に1回だけ）
+  const [pickerOpen, setPickerOpen] = useState(false) // 家財を選ぶモーダル
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   // 担当者の選択肢（設定タブで管理しているリスト）
@@ -138,7 +220,7 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
     setDraft(d)
     setKazai(Array.isArray(item.kazai) ? item.kazai.map(k => ({ ...k })) : [])
     setBoxCount(item.boxCount || '')
-    setAddName(''); setAddQty(1); setCustomKazai(false)
+    setPickerOpen(false)
     setDirty(false)
     setEdit(!!isNew)
   }, [item && item.id, item && item.phone, isNew])
@@ -148,20 +230,18 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
   const setField = (k, v) => { setDraft(p => ({ ...p, [k]: v })); setDirty(true) }
   const setQty = (i, q) => { setKazai(p => p.map((k, idx) => idx === i ? { ...k, qty: Math.max(0, Number(q) || 0) } : k)); setDirty(true) }
   const removeRow = (i) => { setKazai(p => p.filter((_, idx) => idx !== i)); setDirty(true) }
-  // 家財の追加プルダウンで「✏ 自由入力」を選ぶと、その場だけ入力欄に切り替える
-  const chooseAddName = (val) => {
-    if (val === '__custom__') { setCustomKazai(true); setAddName('') }
-    else { setCustomKazai(false); setAddName(val) }
-  }
-  const addRow = () => {
-    if (!addName) return
+  // 家財を1つ足す。同じ品名が既にあれば数量を増やす（同じ行が2つ並ばないように）
+  const addKazai = (name, n = 1) => {
+    const nm = String(name || '').trim()
+    if (!nm) return
     setKazai(p => {
-      const idx = p.findIndex(k => k.name === addName)
-      if (idx >= 0) { const c = [...p]; c[idx] = { ...c[idx], qty: (Number(c[idx].qty) || 0) + (Number(addQty) || 1) }; return c }
-      return [...p, { name: addName, qty: Number(addQty) || 1 }]
+      const i = p.findIndex(k => k.name === nm)
+      if (i >= 0) { const c = [...p]; c[i] = { ...c[i], qty: (Number(c[i].qty) || 0) + n }; return c }
+      return [...p, { name: nm, qty: n }]
     })
-    setAddName(''); setAddQty(1); setCustomKazai(false); setDirty(true)
+    setDirty(true)
   }
+  const qtyOfName = (name) => { const k = kazai.find(x => x.name === name); return k ? Number(k.qty) || 0 : 0 }
 
   const saveChanges = async () => {
     if (!onSave) return
@@ -349,29 +429,11 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>他{item.kazaiUnknown}品（詳細ページを開くと品名表示）</div>
           )}
           {onSave && (
-            <div className="no-print" style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              {customKazai ? (
-                <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
-                  <input type="text" autoFocus value={addName} onChange={e => setAddName(e.target.value)}
-                    placeholder="品名を入力…" style={{ ...inp, width: '100%', paddingRight: 26 }} />
-                  <button type="button" onClick={() => { setCustomKazai(false); setAddName('') }} title="自由入力をキャンセル"
-                    style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: 15, fontWeight: 700, lineHeight: 1, padding: 4 }}>×</button>
-                </div>
-              ) : (
-                <select value={addName} onChange={e => chooseAddName(e.target.value)} style={{ ...inp, flex: 1, minWidth: 180, width: 'auto' }}>
-                  <option value="">＋ 家財を追加…</option>
-                  <option value="__custom__">✏ 自由入力（品名を直接入力）</option>
-                  {Object.entries(KAZAI_CATEGORY).map(([cat, list]) => (
-                    <optgroup key={cat} label={cat}>
-                      {list.map(n => <option key={n} value={n}>{n}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
-              )}
-              <input type="number" min={1} value={addQty} onChange={e => setAddQty(e.target.value)} style={{ ...inp, width: 70, textAlign: 'center' }} />
-              <button className="btn btn-outline btn-sm" onClick={addRow} disabled={!addName}>追加</button>
+            <div className="no-print" style={{ marginTop: 10 }}>
+              <button className="btn btn-outline btn-sm" onClick={() => setPickerOpen(true)}>＋ 家財を追加</button>
             </div>
           )}
+          {pickerOpen && <KazaiPicker onPick={addKazai} qtyOf={qtyOfName} onClose={() => setPickerOpen(false)} />}
           {onSave && (
             <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: 11, color: '#64748B' }}>ダンボール</span>

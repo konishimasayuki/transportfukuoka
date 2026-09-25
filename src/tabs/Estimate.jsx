@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { DEMO_CONTRACTS } from '../lib/demoData'
 import { GMAPS_KEY, zipFromAddress } from '../lib/gmaps'
+import { canonKazai } from '../lib/kazaiName'
 import ModalPortal from '../components/ModalPortal'
 
 /* =========================================================================
@@ -193,13 +194,31 @@ const LEAD_KAZAI_TO_KEY = {
   // 手入力・成約データで出てくる言い回し
   'ダイニングテーブル': 'dining_A', 'ダイニングセット': 'dining_A', 'テレビ台': 'tvdai',
   'カラーボックス': 'colorbox', '姿見': 'sugatami', '物置': 'monooki_A', '布団袋': 'futonbukuro',
+  // ===== 価格.com の語彙 =====
+  // 他2サイトと言い回しが違う（「タンス（大）」に対して「タンス大」、
+  // 「ベッド（シングル）」に対して「シングルベッド」など）。載せないと全部
+  // 特殊家財の空き升に流れて、担当者が毎回手入力し直すことになる。
+  // 大小の区別が見積書側に無いものは同じ品目に寄せる（現場のご指定）。
+  'テレビ台大': 'tvdai', 'テレビ台小': 'tvdai',
+  'ソファ3人掛け以上': 'sofa_3', // 4人掛け以上もここに含める
+  'ソファ2人掛け以下': 'sofa_2',
+  'テーブル（3人以上）': 'table', 'テーブル（2人以下）': 'table',
+  'ローボード大': 'lowboard', 'ローボード小': 'lowboard',
+  'チェスト大': 'chest', 'チェスト小': 'chest',
+  'カーペット（10畳以上）': 'juutan', 'カーペット（9畳以下）': 'juutan',
+  '冷蔵庫（2ドア以下）': 'fridge_2D',
+  '食器収納大': 'shokki_A', '食器収納小': 'shokki_B',
+  '洗濯機（タテ）': 'washer_full', '洗濯機（ドラム）': 'washer_drum',
+  'ダブルベッド以上': 'bed_W', // キングもここに含める
+  'セミダブルベッド': 'bed_SW', 'シングルベッド': 'bed_S',
+  'ドレッサー大': 'dresser', 'ドレッサー小': 'dresser',
+  'タンス大': 'seiri_A', 'タンス小': 'seiri_B',
+  '本棚大': 'hondana_A', '本棚小': 'hondana_B',
+  'ファンヒーター・ストーブ': 'onpuuki',
+  // ソファベッド・イス・ノートパソコン・植木鉢・上記以外の家財は、
+  // 見積書に該当品目が無く毎回その場で足しているため、あえて割り当てない
+  // （帳票の空き升に「特殊家財」として品名と数量が出る）。
 }
-// 表記ゆれ（全角半角・空白・長音・「類」）を吸収した見出し語にする。
-// 例：ソファー（2人掛け）→ ソファ（2人掛け）、タンス類（大）→ タンス（大）
-const canonKazai = (s) => String(s || '').normalize('NFKC').replace(/[\s　]/g, '')
-  .replace(/\(/g, '（').replace(/\)/g, '）')
-  .replace(/ー(?=（|$)/g, '')
-  .replace(/類(?=（|$)/g, '')
 // 見積書語彙そのものの一致（保険）。「ソファー2人用」「ソファー（2人用）」どちらでも引ける
 const ITEM_NAME_TO_KEY = (() => {
   const m = {}
