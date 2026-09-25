@@ -14,8 +14,10 @@ const POLL_MS = 60 * 1000       // 1分ごとに確認（巡回側は12〜50秒�
 const STALE_MS = 10 * 60 * 1000 // 10分以上ハートビートが無ければ「止まっている」
                                 // ※深夜は巡回が120秒間隔まで落ちるので、それより十分長くとる
 // 拡張が自動再ログインを休止する時間帯（extension 側の relogin と同じ 22:00〜06:00）。
-// 巡回PCは24時間稼働なので帯は夜も出す（隠すと本当の故障を見逃す）。
-// 出したうえで「今は自動で直しにいかない」ことだけ伝える。
+// この間の「ログイン切れ」は朝6時に自動で再ログインされて直るので、帯は出さない。
+// 見ても直せないものを夜通し出しても、翌朝には本当の異常と区別がつかなくなる。
+// ※休止と関係のないもの（ハートビート途絶＝巡回PCの停止、取得エラー、
+//   パスワード違い）は夜でも出す。これらは朝6時になっても直らない。
 const RELOGIN_OFF_FROM = 22, RELOGIN_OFF_TO = 6
 function inReloginOff(d = new Date()) { const h = d.getHours(); return h >= RELOGIN_OFF_FROM || h < RELOGIN_OFF_TO }
 const LABEL = { zba: 'ズバット', samurai: '引越し侍', kakaku: '価格.com' }
@@ -32,13 +34,15 @@ function judge(key, s) {
     return { key, name, why: `${min >= 60 ? Math.floor(min / 60) + '時間' : min + '分'}前から巡回が止まっています`, at: ms }
   }
   if (s.ok === false) {
+    // ★夜間（自動再ログイン休止中）の「ログイン切れ」は出さない。朝6時に自動で直る。
+    if (s.reason === 'auth' && inReloginOff()) return null
     // 'creds' は「保存しているID/PWがサイトに拒否された」＝パスワードが変更された可能性。
     // セッション切れ（待てば自動で戻る）と違い、人が保存し直すまで絶対に直らないので分けて出す。
     const why = s.reason === 'creds' ? 'IDまたはパスワードが違います（サイト側で変更された可能性）'
               : s.reason === 'auth' ? 'ログインが切れています（手動でログインし直してください）'
               : s.reason === 'error' ? '取得に失敗しています'
               : '異常を報告しています'
-    return { key, name, why, at: ms, creds: s.reason === 'creds', auth: s.reason === 'auth' }
+    return { key, name, why, at: ms, creds: s.reason === 'creds' }
   }
   return null
 }
@@ -100,11 +104,6 @@ export default function SiteAlert({ isDemo }) {
         <div className="sa-note">
           この間に届いたリードは取り込まれません。巡回PCのChromeと拡張機能を確認してください。
         </div>
-        {down.some(d => d.auth) && inReloginOff() && (
-          <div className="sa-note">
-            いまは夜間のため自動での再ログインを休止しています（朝6時に自動で再開します）。
-          </div>
-        )}
         {down.some(d => d.creds) && (
           <div className="sa-note sa-creds">
             パスワードが変更されている可能性があります。巡回PCのChrome右上の拡張機能アイコンを開き、

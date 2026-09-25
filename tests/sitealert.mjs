@@ -6,7 +6,8 @@ const now = Date.now()
 const iso = (msAgo) => new Date(now - msAgo).toISOString()
 const S = (ok_, reason, msAgo) => ({ source:'x', ok: ok_, reason, count: 100, at: iso(msAgo) })
 
-async function open(statuses, tab = 'リード管理', w = 1500, hour = null) {
+// hour は既定で昼（12時）に固定する。実行時刻で夜間判定に入ると結果が変わるため。
+async function open(statuses, tab = 'リード管理', w = 1500, hour = 12) {
   const p = await (await b.newContext({ viewport: { width: w, height: 1000 }, isMobile: w<700, hasTouch: w<700 })).newPage()
   const errs=[]; p.on('pageerror', e=>errs.push(String(e)))
   const hits = { status: 0 }
@@ -57,19 +58,22 @@ const ALL_OK = { zba:S(true,'',30000), samurai:S(true,'',30000), kakaku:S(true,'
   t(await p.locator('.site-alert .sa-creds').count() === 1, '1サイトでもパスワード違いがあれば手順は1回だけ出る')
   await p.close() }
 
-// ②-3 夜間（自動再ログイン休止中）の注記
+// ②-3 夜間（自動再ログイン休止中）は「ログイン切れ」を出さない
 { const { p } = await open({ ...ALL_OK, zba: S(false,'auth',30000) }, 'リード管理', 1500, 23)
-  const txt = (await p.locator('.site-alert').innerText()).replace(/\s+/g,' ')
-  t(await p.locator('.site-alert').count() === 1, '★夜でも帯は出す（隠すと本当の故障を見逃す）')
-  t(txt.includes('朝6時に自動で再開'), '★夜は「自動再試行を休止中」と添える', txt.slice(-60))
+  t(await p.locator('.site-alert').count() === 0, '★夜間のログイン切れは帯を出さない（朝6時に自動で直る）')
   await p.close() }
 { const { p } = await open({ ...ALL_OK, zba: S(false,'auth',30000) }, 'リード管理', 1500, 12)
-  const txt = (await p.locator('.site-alert').innerText()).replace(/\s+/g,' ')
-  t(!txt.includes('朝6時に自動で再開'), '昼間はその注記を出さない')
+  t(await p.locator('.site-alert').count() === 1, '昼間のログイン切れは従来どおり出す')
   await p.close() }
 { const { p } = await open({ ...ALL_OK, zba: S(false,'creds',30000) }, 'リード管理', 1500, 23)
   const txt = (await p.locator('.site-alert').innerText()).replace(/\s+/g,' ')
-  t(!txt.includes('朝6時に自動で再開') && txt.includes('新しいパスワード'), 'パスワード違いは夜でも「保存し直せ」を出す（夜間休止は無関係）')
+  t(txt.includes('新しいパスワード'), '★夜でもパスワード違いは出す（朝6時になっても直らない）')
+  await p.close() }
+{ const { p } = await open({ ...ALL_OK, kakaku: S(true,'',25*60*1000) }, 'リード管理', 1500, 23)
+  t(await p.locator('.site-alert').count() === 1, '★夜でもハートビート途絶は出す（巡回PCが止まっている）')
+  await p.close() }
+{ const { p } = await open({ ...ALL_OK, zba: S(false,'error',30000) }, 'リード管理', 1500, 3)
+  t(await p.locator('.site-alert').count() === 1, '★夜でも取得エラーは出す（再ログイン休止とは無関係）')
   await p.close() }
 
 // ②-4 見えていないタブでは問い合わせない

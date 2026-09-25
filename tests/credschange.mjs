@@ -113,19 +113,41 @@ t((bg.match(/authNg\(\)/g) || []).length === 12, '2サイトとも auth 報告�
 console.log('\n--- ④ CRM画面の表示 ---')
 {
   const judgeSrc = alert.match(/function judge\(key, s\)[\s\S]*?\n\}/)[0]
-  const judge = new Function('LABEL', 'STALE_MS', `${judgeSrc}; return judge`)({ zba: 'ズバット' }, 10 * 60 * 1000)
+  const offSrc0 = alert.match(/function inReloginOff\([^\n]*/)[0]
+  const consts0 = alert.match(/const RELOGIN_OFF_FROM = \d+, RELOGIN_OFF_TO = \d+/)[0]
+  const judge = new Function('LABEL', 'STALE_MS', `${consts0}\n${offSrc0}\n${judgeSrc}; return judge`)({ zba: 'ズバット' }, 10 * 60 * 1000)
   const now = new Date().toISOString()
   const r1 = judge('zba', { ok: false, reason: 'creds', at: now })
   t(/パスワード/.test(r1.why), '★「パスワードが違う」と分かる文言を出す', r1.why)
   t(r1.creds === true, 'creds フラグが立つ（追加案内の出し分けに使う）')
   const r2 = judge('zba', { ok: false, reason: 'auth', at: now })
-  t(!/パスワード/.test(r2.why) && r2.creds !== true, '通常のログイン切れとは文言を分ける', r2.why)
+  if (r2) t(!/パスワード/.test(r2.why) && r2.creds !== true, '通常のログイン切れとは文言を分ける', r2.why)
+  else t(true, '通常のログイン切れ（今は夜間なので出さない判定）')
   const r3 = judge('zba', { ok: true, reason: '', at: now })
   t(r3 === null, '正常なら何も出さない')
 }
 t(/sa-creds/.test(alert) && /新しいパスワードを保存し直して/.test(alert), '画面に「新しいパスワードを保存し直す」手順を出す')
-t(/inReloginOff/.test(alert) && /朝6時に自動で再開/.test(alert), '夜間は「自動再試行を休止中」と添える（帯自体は隠さない）')
+t(/s\.reason === 'auth' && inReloginOff\(\)/.test(alert), '★夜間（再ログイン休止中）のログイン切れは帯を出さない')
+t(!/朝6時に自動で再開/.test(alert), '出番の無くなった夜間の注記は消してある')
 t(/visibilityState/.test(alert), '表示中のタブだけ /api/status に問い合わせる（裏タブの無駄打ちを止める）')
+
+// 夜間／昼間で judge の出方が変わるか（getHours を固定して実際に動かす）
+{
+  const judgeSrc = alert.match(/function judge\(key, s\)[\s\S]*?\n\}/)[0]
+  const offSrc = alert.match(/function inReloginOff\([^\n]*/)[0]
+  const consts = alert.match(/const RELOGIN_OFF_FROM = \d+, RELOGIN_OFF_TO = \d+/)[0]
+  const at = new Date().toISOString()
+  const mk = hour => {
+    const D = class extends Date { getHours() { return hour } }
+    return new Function('LABEL', 'STALE_MS', 'Date', `${consts}\n${offSrc}\n${judgeSrc}; return judge`)({ zba: 'ズバット' }, 10 * 60 * 1000, D)
+  }
+  for (const h of [22, 23, 0, 3, 5]) t(mk(h)('zba', { ok: false, reason: 'auth', at }) === null, `${h}時：ログイン切れは出さない（朝6時に自動で直る）`)
+  for (const h of [6, 12, 21]) t(mk(h)('zba', { ok: false, reason: 'auth', at }) !== null, `${h}時：ログイン切れは出す`)
+  t(mk(23)('zba', { ok: false, reason: 'creds', at }) !== null, '★夜でもパスワード違いは出す（朝6時になっても直らない）')
+  t(mk(23)('zba', { ok: false, reason: 'error', at }) !== null, '★夜でも取得エラーは出す（再ログイン休止とは無関係）')
+  const old = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  t(mk(23)('zba', { ok: true, reason: '', at: old }) !== null, '★夜でもハートビート途絶は出す（巡回PCが止まっている）')
+}
 
 // ===== ⑤ 拡張ポップアップ（復旧の入口）=====
 console.log('\n--- ⑤ ポップアップ ---')
