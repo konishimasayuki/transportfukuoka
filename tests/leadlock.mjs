@@ -147,5 +147,48 @@ console.log('\n--- 叩く回数（5人運用での負荷）---')
   t(calls.length === 2, '延長は2コマンド（確認＋更新）', `${calls.length}コマンド`)
 }
 
+console.log('\n--- 画面側：応答が遅い・返らない時（#8）---')
+// Vercelの関数は起動に数秒かかることがある。上限を設けないと
+// 「リードを押したのに画面が開かない」状態になる。
+{
+  const fs = await import('node:fs')
+  const src = fs.readFileSync(new URL('../src/lib/leadLock.js', import.meta.url).pathname, 'utf8')
+  const cut = (a, b) => { const i = src.indexOf(a); return src.slice(i, src.indexOf(b, i) + b.length) }
+  const TIMEOUT = Number(src.match(/const ASK_TIMEOUT_MS\s*=\s*(\d+)/)[1])
+  t(TIMEOUT > 0 && TIMEOUT <= 5000, `待ち時間の上限がある（${TIMEOUT}ms）`)
+
+  const build = (fakeFetch) => new Function('fetch', 'clientId', 'AbortController', 'ASK_TIMEOUT_MS', `
+    ${cut('async function askServer(', '\n}')}
+    ${cut('async function post(action, key) {', '\n}')}
+    return post
+  `)(fakeFetch, () => 'me', globalThis.AbortController, TIMEOUT)
+
+  // ①応答が返ってこない（中断されるまで待つ）
+  let aborted = false
+  const hang = build((u, o) => new Promise((_, rej) => {
+    o.signal.addEventListener('abort', () => { aborted = true; rej(new Error('aborted')) })
+  }))
+  const t0 = Date.now()
+  const r1 = await hang('acquire', 'L1')
+  const ms = Date.now() - t0
+  t(aborted, '★応答が返らない時は打ち切る')
+  t(ms >= TIMEOUT - 100 && ms < TIMEOUT + 800, `★${TIMEOUT}ms で打ち切る（固まらない）`, `${ms}ms`)
+  t(r1.ok === true && r1.offline === true, '★打ち切った時は「取れた」とみなして開ける（業務を止めない）', JSON.stringify(r1))
+
+  // ②通信そのものが失敗
+  const dead = build(async () => { throw new Error('offline') })
+  const r2 = await dead('acquire', 'L1')
+  t(r2.ok === true && r2.offline === true, '通信できない時も開ける')
+
+  // ③壊れた応答
+  const broken = build(async () => ({ json: async () => { throw new Error('bad json') } }))
+  t((await broken('acquire', 'L1')).ok === true, '応答が壊れていても開ける')
+
+  // ④正常時はサーバーの判断をそのまま使う（他の人が対応中なら止める）
+  const okServer = build(async () => ({ json: async () => ({ ok: false, held: { by: 'A', at: Date.now() } }) }))
+  const r4 = await okServer('acquire', 'L1')
+  t(r4.ok === false && r4.held.by === 'A', '正常に答えが返れば、これまでどおり止める')
+}
+
 console.log(`\n${ok} PASS / ${ng} FAIL`)
 process.exit(ng ? 1 : 0)

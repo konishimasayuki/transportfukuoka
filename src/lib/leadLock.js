@@ -8,6 +8,10 @@ import { useEffect, useRef, useState } from 'react'
 const ID_KEY = 'tf_client_id'
 const LIST_POLL_MS = 10 * 1000 // 一覧のグレーアウトを更新する間隔
 const RENEW_MS     = 20 * 1000 // 開いている間、確保を延長する間隔（サーバーのTTLは60秒）
+// 応答待ちの上限。Vercelの関数はしばらく使われないと起動に数秒かかることがあり、
+// 上限を設けないと「リードを押したのに画面が開かない」状態になる。
+const ASK_TIMEOUT_MS  = 2500 // リードを開く時（人が待っている）
+const LIST_TIMEOUT_MS = 5000 // 一覧の更新（待っている人はいない）
 
 // localStorage が使えない環境（プライベートモード等）ではこのタブ限りのIDにする。
 // 固定文字列にすると全員が同一人物とみなされ、誰も他人をブロックできなくなる。
@@ -26,19 +30,27 @@ export function clientId() {
 // リードを一意に指す値。保存時の照合（api/inbound）と同じ優先順にそろえる。
 export const lockKeyOf = (item) => String((item && (item.key || item.id)) || '')
 
-async function post(action, key) {
-  if (!key) return { ok: true }
+// 応答が遅い／返らない時に画面が固まらないよう、必ず打ち切る。
+async function askServer(payload, timeoutMs) {
+  const ac = typeof AbortController !== 'undefined' ? new AbortController() : null
+  const timer = setTimeout(() => { try { if (ac) ac.abort() } catch { /* 中断できなくても下のcatchで拾う */ } }, timeoutMs)
   try {
     const r = await fetch('/api/lock', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, key, by: clientId() }),
+      body: JSON.stringify(payload), signal: ac ? ac.signal : undefined,
     })
     return await r.json()
   } catch {
-    // 通信できない時は「取れた」とみなして作業を止めない。
-    // 二重架電は防げなくなるが、開けなくなるほうが業務への害が大きい。
-    return { ok: true, offline: true }
-  }
+    return null // 打ち切り・通信不可・応答が壊れている
+  } finally { clearTimeout(timer) }
+}
+
+async function post(action, key) {
+  if (!key) return { ok: true }
+  const r = await askServer({ action, key, by: clientId() }, ASK_TIMEOUT_MS)
+  // 答えが得られない時は「取れた」とみなして作業を止めない。
+  // その間は二重架電を防げなくなるが、リードが開かないほうが業務への害が大きい。
+  return r || { ok: true, offline: true }
 }
 export const acquireLock = (key) => post('acquire', key)
 export const renewLock   = (key) => post('renew', key)
@@ -69,10 +81,14 @@ export function useLeadLocks(enabled) {
     if (!enabled) { setLocks({}); return }
     let alive = true
     const load = async () => {
+      // こちらも上限を設ける。応答が返らないまま次のポーリングが重なるのを防ぐ。
+      const ac = typeof AbortController !== 'undefined' ? new AbortController() : null
+      const timer = setTimeout(() => { try { if (ac) ac.abort() } catch { /* 下のcatchで拾う */ } }, LIST_TIMEOUT_MS)
       try {
-        const d = await fetch('/api/lock').then(r => r.json())
+        const d = await fetch('/api/lock', { signal: ac ? ac.signal : undefined }).then(r => r.json())
         if (alive && d && d.locks) setLocks(d.locks)
       } catch { /* 取れない時は前の状態のままにする（誤って印を消さない） */ }
+      finally { clearTimeout(timer) }
     }
     const tick = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') load() }
     load()

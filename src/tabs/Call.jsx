@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import LeadDetailModal, { ConvertToContractModal, MailPanel } from '../components/LeadDetailModal'
-import { useLeadLocks, useHoldLock, lockKeyOf, acquireLock, agoText } from '../lib/leadLock'
 import { receivedAtMs } from '../lib/sortLeads'
 
 // すべて架空のサンプル（氏名は「サンプル○」、番号はダミー）。
@@ -28,7 +27,7 @@ const DEMO_DETECTIONS = [
   { label:'価格.com', color:'#0E8A7A', val:'1件', pct:34 },
 ]
 
-function CallUI({ callOn, setCallOn, sites, logs, stats, detections, onOpenLog, lockedBy }) {
+function CallUI({ callOn, setCallOn, sites, logs, stats, detections, onOpenLog }) {
   return (
     <div>
       {/* ステータスバー */}
@@ -85,10 +84,7 @@ function CallUI({ callOn, setCallOn, sites, logs, stats, detections, onOpenLog, 
                 </div>
                 {/* ステータス表示ではなく「詳細」ボタンで詳細モーダルを開く */}
                 {l.lead
-                  ? <>
-                      {lockedBy && lockedBy(l.lead) && <span style={{ fontSize: 10, fontWeight: 800, color: '#B45309', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '1px 6px', whiteSpace: 'nowrap' }}>対応中</span>}
-                      <button className="btn btn-outline btn-sm" onClick={() => onOpenLog && onOpenLog(l.lead)}>詳細</button>
-                    </>
+                  ? <button className="btn btn-outline btn-sm" onClick={() => onOpenLog && onOpenLog(l.lead)}>詳細</button>
                   : <span className={`badge ${l.badge}`}>{l.status}</span>}
               </div>
             ))}
@@ -209,21 +205,6 @@ export default function Call({ user, switchTab }) {
   }))
 
   const [detailItem, setDetailItem] = useState(null)
-  // 二重架電の防止（リード管理と同じ仕組み。ここの「詳細」からも開けるため）
-  const { lockedBy } = useLeadLocks(!isDemo)
-  const [heldKey, setHeldKey] = useState(null)
-  useHoldLock(heldKey)
-  const openLead = async (item) => {
-    if (isDemo) { setDetailItem(item); return }
-    const k = lockKeyOf(item)
-    const r = await acquireLock(k)
-    if (r && r.ok === false && r.held) {
-      if (!window.confirm(`このお客様は他の人が${agoText(r.held.at)}から対応中です。\n\nそれでも開きますか？`)) return
-      setHeldKey(null); setDetailItem(item); return
-    }
-    setHeldKey(k); setDetailItem(item)
-  }
-  const closeLead = () => { setDetailItem(null); setHeldKey(null) }
   const [convertLead, setConvertLead] = useState(null)
   // 電話が繋がらなかったお客様へのメール
   const [mailLead, setMailLead] = useState(null)
@@ -382,12 +363,11 @@ export default function Call({ user, switchTab }) {
         logs={isDemo ? DEMO_LOGS : liveLogs}
         stats={isDemo ? { total:7, success:5 } : { total: todaysLeads.length, success: 0 }}
         detections={isDemo ? DEMO_DETECTIONS : liveDetections}
-        onOpenLog={openLead}
-        lockedBy={lockedBy}
+        onOpenLog={setDetailItem}
       />
       <LeadDetailModal
         item={detailItem}
-        onClose={closeLead}
+        onClose={() => setDetailItem(null)}
         onStatusChange={updateLeadStatus}
         onSave={savePatch}
         onCreateEstimate={createEstimateFromLead}
