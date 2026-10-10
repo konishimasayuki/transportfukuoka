@@ -10,6 +10,23 @@ const LIST_POLL_MS = 10 * 1000 // 一覧のグレーアウトを更新する間�
 const RENEW_MS     = 20 * 1000 // 開いている間、確保を延長する間隔（サーバーのTTLは60秒）
 // 応答待ちの上限。Vercelの関数はしばらく使われないと起動に数秒かかることがあり、
 // 上限を設けないと「リードを押したのに画面が開かない」状態になる。
+// 「対応中」の印を使うのは新着から10分だけ。
+// 二重架電が起きるのは新着通知が鳴った直後で、全員が同じリードに飛びつく時。
+// 古いリードまで対象にすると、確認のために開いただけで灰色になり、
+// 画面が灰色だらけになって印の意味が薄れる（開きっぱなしで塞がる問題も出る）。
+export const LOCK_WINDOW_MS = 10 * 60 * 1000
+
+// サーバー時刻との差。PCの時計がずれていると新着判定が丸ごと狂うため、
+// 一覧の取得のたびにサーバーの時刻と突き合わせて補正する。
+let skewMs = 0
+export const serverNow = () => Date.now() + skewMs
+
+// このリードはまだ「対応中」の印を付ける対象か（savedAt＝CRMが受け取った時刻で判定）
+export function withinLockWindow(item) {
+  const ms = Date.parse((item && item.savedAt) || '')
+  return !!ms && (serverNow() - ms) < LOCK_WINDOW_MS
+}
+
 const ASK_TIMEOUT_MS  = 2500 // リードを開く時（人が待っている）
 const LIST_TIMEOUT_MS = 5000 // 一覧の更新（待っている人はいない）
 
@@ -86,6 +103,7 @@ export function useLeadLocks(enabled) {
       const timer = setTimeout(() => { try { if (ac) ac.abort() } catch { /* 下のcatchで拾う */ } }, LIST_TIMEOUT_MS)
       try {
         const d = await fetch('/api/lock', { signal: ac ? ac.signal : undefined }).then(r => r.json())
+        if (d && d.at) { const sv = Date.parse(d.at); if (sv) skewMs = sv - Date.now() } // 時計のずれを補正
         if (alive && d && d.locks) setLocks(d.locks)
       } catch { /* 取れない時は前の状態のままにする（誤って印を消さない） */ }
       finally { clearTimeout(timer) }

@@ -190,5 +190,38 @@ console.log('\n--- 画面側：応答が遅い・返らない時（#8）---')
   t(r4.ok === false && r4.held.by === 'A', '正常に答えが返れば、これまでどおり止める')
 }
 
+console.log('\n--- 新着から10分だけ印を使う ---')
+// 古いリードまで対象にすると、確認のために開いただけで灰色になり
+// 画面が灰色だらけになる。二重架電が起きるのは新着直後なのでそこに絞る。
+{
+  const fs = await import('node:fs')
+  const src = fs.readFileSync(new URL('../src/lib/leadLock.js', import.meta.url).pathname, 'utf8')
+  const cut = (a, b) => { const i = src.indexOf(a); return src.slice(i, src.indexOf(b, i) + b.length) }
+  const { withinLockWindow, LOCK_WINDOW_MS } = new Function(`
+    ${cut('export const LOCK_WINDOW_MS', '\n')}
+    let skewMs = 0
+    ${cut('export const serverNow', '\n')}
+    ${cut('export function withinLockWindow(item) {', '\n}')}
+    return { withinLockWindow, LOCK_WINDOW_MS }
+  `.replace(/export /g, ''))()
+  t(LOCK_WINDOW_MS === 10 * 60 * 1000, `窓は10分（${LOCK_WINDOW_MS / 60000}分）`)
+  const at = ms => ({ savedAt: new Date(Date.now() - ms).toISOString() })
+  t(withinLockWindow(at(0)) === true, '届いた直後は対象')
+  t(withinLockWindow(at(9 * 60 * 1000)) === true, '9分後はまだ対象')
+  t(withinLockWindow(at(11 * 60 * 1000)) === false, '★11分後は対象外（灰色にしない）')
+  t(withinLockWindow({}) === false, 'savedAt が無い古いデータは対象外')
+  t(withinLockWindow({ savedAt: 'こわれた値' }) === false, '壊れた日付でも落ちない')
+  t(withinLockWindow(null) === false, 'null でも落ちない')
+}
+{
+  // 画面側：長電話の最中に窓が切れても、印は消さない
+  const fs = await import('node:fs')
+  const leads = fs.readFileSync(new URL('../src/tabs/Leads.jsx', import.meta.url).pathname, 'utf8')
+  const fn = leads.slice(leads.indexOf('const openLead = async (item) => {'), leads.indexOf('const closeLead ='))
+  t(/!withinLockWindow\(item\) && !held/.test(fn), '★古くても誰かが開いていれば知らせる（長電話中に印が消えない）')
+  t(/if \(!withinLockWindow\(item\)\) \{/.test(fn) && /setHeldKey\(null\)/.test(fn), '古いリードでは確保を取らない（塞がない）')
+  t(/lockedBy\(item\)/.test(leads), '一覧の灰色は確保の有無で決める（窓の外でも対応中は見える）')
+}
+
 console.log(`\n${ok} PASS / ${ng} FAIL`)
 process.exit(ng ? 1 : 0)

@@ -37,7 +37,9 @@ const { default: lockHandler } = await import('../api/lock.js')
 const LEADS = [1, 2, 3].map(i => ({
   id: 'id' + i, key: '090-0000-000' + i, phone: '090-0000-000' + i, name: 'テスト太郎' + i,
   site: '価格.com', from: '福岡県福岡市', to: '福岡県春日市', count: '2人',
-  receivedAt: '10/10 09:0' + i, status: '未架電', savedAt: '2026-10-10T00:0' + i + ':00.000Z', kazai: [],
+  receivedAt: '10/10 09:0' + i, status: '未架電',
+  savedAt: new Date(Date.now() - i * 1000).toISOString(), // 新着（10分窓の中）として扱わせる
+  kazai: [],
 }))
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml' }
 const server = http.createServer(async (req, res) => {
