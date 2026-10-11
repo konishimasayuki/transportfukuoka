@@ -3,13 +3,11 @@
 // 全員が同じ管理者アカウントでログインするため、サーバーでは人を区別できない。
 // ブラウザごとに固定のIDを1つ持ち、それだけで「自分か他人か」を見分ける。
 // 名前は出せない（出すには各PCに名前を登録してもらう必要がある）。
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 const ID_KEY = 'tf_client_id'
 const LIST_POLL_MS = 10 * 1000 // 一覧のグレーアウトを更新する間隔
 const RENEW_MS     = 20 * 1000 // 開いている間、確保を延長する間隔（サーバーのTTLは60秒）
-// 応答待ちの上限。Vercelの関数はしばらく使われないと起動に数秒かかることがあり、
-// 上限を設けないと「リードを押したのに画面が開かない」状態になる。
 // 「対応中」の印を使うのは新着から10分だけ。
 // 二重架電が起きるのは新着通知が鳴った直後で、全員が同じリードに飛びつく時。
 // 古いリードまで対象にすると、確認のために開いただけで灰色になり、
@@ -39,6 +37,8 @@ export const isUncalled = (item) => ((item && item.status) || '未架電') === '
 // どちらかに当てはまれば対象。古くて手の付いたリードは対象外（灰色にしない）。
 export const shouldLock = (item) => isUncalled(item) || withinLockWindow(item)
 
+// 応答待ちの上限。Vercelの関数はしばらく使われないと起動に数秒かかることがあり、
+// 上限を設けないと「リードを押したのに画面が開かない」状態になる。
 const ASK_TIMEOUT_MS  = 2500 // リードを開く時（人が待っている）
 const LIST_TIMEOUT_MS = 5000 // 一覧の更新（待っている人はいない）
 
@@ -96,7 +96,8 @@ export function releaseBeacon(key) {
 
 // 「◯分前から」の表示
 export function agoText(at) {
-  const s = Math.max(0, Math.floor((Date.now() - Number(at || 0)) / 1000))
+  // at はサーバーが付けた時刻。PCの時計がずれていると「◯分前」が狂うので補正後の時刻で測る。
+  const s = Math.max(0, Math.floor((serverNow() - Number(at || 0)) / 1000))
   if (s < 60) return `${s}秒前`
   const m = Math.floor(s / 60)
   return m < 60 ? `${m}分前` : `${Math.floor(m / 60)}時間前`
@@ -131,16 +132,19 @@ export function useLeadLocks(enabled) {
   const me = clientId()
   // 他の人が対応中か（自分が開いているものは灰色にしない）
   const lockedBy = (item) => { const l = locks[lockKeyOf(item)]; return (l && l.by !== me) ? l : null }
-  return { locks, lockedBy, reload: () => setLocks(l => ({ ...l })) }
+  return { locks, lockedBy }
 }
 
 // ===== 開いている間、確保を保ち続ける =====
 // key を渡している間だけ20秒ごとに延長し、外したら解放する。
 export function useHoldLock(key) {
-  const held = useRef(null)
   useEffect(() => {
-    held.current = key || null
     if (!key) return
+    // ★開始時に1回延長しておく。
+    //   開発時のStrictModeは「実行→後片付け→再実行」を行うため、後片付けの解放で
+    //   確保が消えたまま20秒間戻らない。ここで必ず置き直す。
+    //   何かの拍子に確保が失われていた時の自己修復にもなる。
+    renewLock(key)
     const timer = setInterval(() => { renewLock(key) }, RENEW_MS)
     const onHide = () => releaseBeacon(key)
     window.addEventListener('pagehide', onHide)
@@ -157,7 +161,6 @@ export function useHoldLock(key) {
       document.removeEventListener('visibilitychange', onBack)
       window.removeEventListener('focus', onBack)
       releaseLock(key) // 画面を閉じたら「対応中」を外す
-      held.current = null
     }
   }, [key])
 }

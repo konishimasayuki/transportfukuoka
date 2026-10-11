@@ -171,8 +171,13 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   useHoldLock(heldKey)
   // 行を押した時：先にサーバーへ確保しに行く。
   // 一覧のグレーアウトは数秒遅れて届くので、同時に飛びついた場合はここでしか止められない。
+  // ★確保の応答は最大2.5秒かかる（Vercelの関数が起動する時）。その間は画面が
+  //   変わらないので、利用者は「押せていない」と思って続けて押す。そのまま通すと
+  //   別のリードを確保したまま違うリードを開いてしまい、確保が置き去りになる。
+  const openingRef = useRef(false)
   const openLead = async (item) => {
     if (isDemo) { setDetailItem(item); return }
+    if (openingRef.current) return // 応答待ちの間の追加クリックは無視する
     const held = lockedBy(item)
     // 対象外（手の付いたリード）は印を使わない。誰も開いていなければそのまま開く。
     // ※すでに誰かが開いている場合は、対象外でも知らせる。
@@ -183,7 +188,9 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       setHeldKey(null); setDetailItem(item); return
     }
     const k = lockKeyOf(item)
-    const r = await acquireLock(k)
+    openingRef.current = true
+    let r
+    try { r = await acquireLock(k) } finally { openingRef.current = false }
     if (r && r.ok === false && r.held) {
       if (!window.confirm(`このお客様は他の人が${agoText(r.held.at)}から対応中です。\n\nそれでも開きますか？`)) return
       setHeldKey(null) // 確保は相手のまま。横取りしない

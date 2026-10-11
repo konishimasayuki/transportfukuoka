@@ -248,6 +248,19 @@ console.log('\n--- 印を付ける対象（未架電のあいだ ＋ 新着10分
     '★この画面に戻ったら20秒を待たずに延長する（2タブで片方を閉じた時の穴を塞ぐ）')
   t(/removeEventListener\('visibilitychange', onBack\)/.test(hold) && /removeEventListener\('focus', onBack\)/.test(hold),
     '登録した受け口は閉じる時に外す（開くたびに溜まらない）')
+
+  // StrictMode は「実行→後片付け→再実行」を行う。後片付けの解放で確保が消えたまま
+  // 20秒戻らないので、開始時にも1回延長して置き直す（確保を失った時の自己修復も兼ねる）。
+  const body = hold.slice(0, hold.indexOf('const timer = setInterval'))
+  t(/renewLock\(key\)/.test(body), '★開き始めに1回延長する（StrictModeの二重実行で確保が消えない）')
+  t(!/useRef/.test(lib) && !/reload:/.test(lib), '使っていないコードを残していない')
+  t(/serverNow\(\) - Number\(at/.test(lib), '「◯分前」もサーバー時刻基準（PCの時計がずれても狂わない）')
+
+  // 応答が最大2.5秒かかる間、利用者は「押せていない」と思って続けて押す。
+  // そのまま通すと別のリードを確保したまま違うリードを開き、確保が置き去りになる。
+  t(/openingRef\.current\) return/.test(leads) && /openingRef\.current = true/.test(leads),
+    '★応答待ちの間の追加クリックを無視する（確保の置き去りを防ぐ）')
+  t(/finally \{ openingRef\.current = false \}/.test(leads), '失敗しても必ず解除する（押せなくならない）')
 }
 
 console.log(`\n${ok} PASS / ${ng} FAIL`)
