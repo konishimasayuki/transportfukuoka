@@ -240,6 +240,14 @@ console.log('\n--- 印を付ける対象（未架電のあいだ ＋ 新着10分
     '★詳細が閉じたことを1か所で捕まえて解放する（閉じる経路の書き漏らし対策）')
   const closers = (leads.match(/setDetailItem\(null\)/g) || []).length
   t(closers >= 5, `閉じる経路は ${closers} 箇所ある（個別対応では漏れる）`)
+
+  // 2タブ問題の緩和：画面に戻った時点で延長を1回送る
+  const lib = fs.readFileSync(new URL('../src/lib/leadLock.js', import.meta.url).pathname, 'utf8')
+  const hold = lib.slice(lib.indexOf('export function useHoldLock'))
+  t(/visibilitychange/.test(hold) && /addEventListener\('focus'/.test(hold),
+    '★この画面に戻ったら20秒を待たずに延長する（2タブで片方を閉じた時の穴を塞ぐ）')
+  t(/removeEventListener\('visibilitychange', onBack\)/.test(hold) && /removeEventListener\('focus', onBack\)/.test(hold),
+    '登録した受け口は閉じる時に外す（開くたびに溜まらない）')
 }
 
 console.log(`\n${ok} PASS / ${ng} FAIL`)

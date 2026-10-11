@@ -144,9 +144,18 @@ export function useHoldLock(key) {
     const timer = setInterval(() => { renewLock(key) }, RENEW_MS)
     const onHide = () => releaseBeacon(key)
     window.addEventListener('pagehide', onHide)
+    // ★この画面に戻ってきたら、20秒を待たずにその場で延長する。
+    //   ブラウザIDはタブ間で共通なので、同じリードを2タブで開いて片方を閉じると
+    //   「対応中」が消えてしまう（サーバーは保持者を1つしか持たない）。
+    //   閉じたあと人が見るのは残ったタブなので、ここで即座に復活させる。
+    const onBack = () => { if (document.visibilityState === 'visible') renewLock(key) }
+    document.addEventListener('visibilitychange', onBack)
+    window.addEventListener('focus', onBack)
     return () => {
       clearInterval(timer)
       window.removeEventListener('pagehide', onHide)
+      document.removeEventListener('visibilitychange', onBack)
+      window.removeEventListener('focus', onBack)
       releaseLock(key) // 画面を閉じたら「対応中」を外す
       held.current = null
     }

@@ -77,16 +77,23 @@ const api = async () => {
 }
 
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
-const open = async (label) => {
-  const p = await (await b.newContext({ viewport: { width: 1400, height: 900 } })).newPage()
+// 同じ人の2枚目のタブを作るために、文脈（localStorage）を使い回せるようにする
+const openIn = async (ctx, label) => {
+  const p = await ctx.newPage()
   p.on('pageerror', e => console.log(`PAGEERROR(${label})`, String(e)))
   await p.goto(`http://localhost:${PORT}/`)
-  await p.fill('input[placeholder="IDを入力"]', 'b'); await p.fill('input[placeholder="パスワードを入力"]', 'b')
-  await p.click('button:has-text("ログイン")'); await p.waitForTimeout(900)
+  // 同じ文脈の2枚目のタブは既にログイン済みなので、ログイン欄が無ければ飛ばす
+  if (await p.locator('input[placeholder="IDを入力"]').count()) {
+    await p.fill('input[placeholder="IDを入力"]', 'b'); await p.fill('input[placeholder="パスワードを入力"]', 'b')
+    await p.click('button:has-text("ログイン")'); await p.waitForTimeout(900)
+  }
   await p.locator('.nav-item:has-text("リード管理")').first().evaluate(el => el.click())
   await p.waitForTimeout(1200)
   return p
 }
+const ctxA = await b.newContext({ viewport: { width: 1400, height: 900 } })
+const ctxB = await b.newContext({ viewport: { width: 1400, height: 900 } })
+const open = async (label) => openIn(label === 'A' ? ctxA : ctxB, label)
 const A = await open('A'), B = await open('B')
 const rowA = A.locator('tbody tr').first(), rowB = B.locator('tbody tr').first()
 t(await A.locator('tbody tr').count() === 3, '一覧が出ている')
@@ -121,6 +128,34 @@ await A.locator('button:has-text("閉じる")').last().evaluate(el => el.click()
 t(!(await api())[KEY_A], '★閉じたら「対応中」が外れる')
 await B.waitForTimeout(11000)
 t(await rowB.locator('text=対応中').count() === 0, '★Bの画面もグレーアウトから戻る')
+
+console.log('\n--- 同じ人が2タブで開いた場合 ---')
+{
+  // ブラウザIDはタブ間で共通。片方を閉じるとサーバー上の「対応中」が消えるため、
+  // 残ったタブに戻った時点で即座に復活させている（20秒の延長を待たない）。
+  const A1 = await openIn(ctxA, 'A1')
+  const A2 = await openIn(ctxA, 'A2')
+  const r1 = A1.locator('tbody tr').first(), r2 = A2.locator('tbody tr').first()
+  const KEY = (await r1.locator('td').nth(3).innerText()).trim()
+  await r1.evaluate(el => el.click()); await A1.waitForTimeout(700)
+  let dlg = ''
+  A2.on('dialog', async d => { dlg = d.message(); await d.accept() })
+  await r2.evaluate(el => el.click()); await A2.waitForTimeout(700)
+  t(dlg === '', '同じ人なら2タブ目でも警告は出ない')
+  t(!!(await api())[KEY], '2タブ目を開いても「対応中」は残っている')
+
+  await A1.locator('button:has-text("閉じる")').last().evaluate(el => el.click())
+  await A1.waitForTimeout(600)
+  t(!(await api())[KEY], '★片方を閉じると一旦「対応中」が消える（この穴を塞ぐ）')
+
+  // ヘッドレスでは bringToFront がタブ切替のイベントを出さないため、
+  // ブラウザが実際に送るイベントを再現して、受け取り側の配線を確かめる。
+  await A2.bringToFront()
+  await A2.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('focus')) })
+  await A2.waitForTimeout(1200)
+  t(!!(await api())[KEY], '★残ったタブに戻った時点で即座に復活する（20秒待たない）')
+  await A1.close(); await A2.close()
+}
 
 await b.close()
 await new Promise(r => server.close(r))
