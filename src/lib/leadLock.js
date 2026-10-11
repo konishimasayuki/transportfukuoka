@@ -21,11 +21,23 @@ export const LOCK_WINDOW_MS = 10 * 60 * 1000
 let skewMs = 0
 export const serverNow = () => Date.now() + skewMs
 
-// このリードはまだ「対応中」の印を付ける対象か（savedAt＝CRMが受け取った時刻で判定）
+// 新着から10分以内か（savedAt＝CRMが受け取った時刻で判定）
 export function withinLockWindow(item) {
   const ms = Date.parse((item && item.savedAt) || '')
   return !!ms && (serverNow() - ms) < LOCK_WINDOW_MS
 }
+
+// まだ誰も架電していないか。
+// ★「架電済」だけで外すのでは足りない。留守・見積り・要追客・成約・見送り…
+//   どれであっても、誰かが一度は手を付けた印なので対象から外す。
+//   つまり「未架電のまま」の時だけ対象にする。
+export const isUncalled = (item) => ((item && item.status) || '未架電') === '未架電'
+
+// 「対応中」の印を付ける対象か。
+// ・未架電のあいだ … 誰も架電していないので、飛びつきが起こりうる
+// ・新着から10分  … 架電直後にステータスを付け替える操作の最中も守る
+// どちらかに当てはまれば対象。古くて手の付いたリードは対象外（灰色にしない）。
+export const shouldLock = (item) => isUncalled(item) || withinLockWindow(item)
 
 const ASK_TIMEOUT_MS  = 2500 // リードを開く時（人が待っている）
 const LIST_TIMEOUT_MS = 5000 // 一覧の更新（待っている人はいない）

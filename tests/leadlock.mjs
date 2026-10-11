@@ -190,19 +190,21 @@ console.log('\n--- 画面側：応答が遅い・返らない時（#8）---')
   t(r4.ok === false && r4.held.by === 'A', '正常に答えが返れば、これまでどおり止める')
 }
 
-console.log('\n--- 新着から10分だけ印を使う ---')
+console.log('\n--- 印を付ける対象（未架電のあいだ ＋ 新着10分）---')
 // 古いリードまで対象にすると、確認のために開いただけで灰色になり
 // 画面が灰色だらけになる。二重架電が起きるのは新着直後なのでそこに絞る。
 {
   const fs = await import('node:fs')
   const src = fs.readFileSync(new URL('../src/lib/leadLock.js', import.meta.url).pathname, 'utf8')
   const cut = (a, b) => { const i = src.indexOf(a); return src.slice(i, src.indexOf(b, i) + b.length) }
-  const { withinLockWindow, LOCK_WINDOW_MS } = new Function(`
+  const { withinLockWindow, LOCK_WINDOW_MS, isUncalled, shouldLock } = new Function(`
     ${cut('export const LOCK_WINDOW_MS', '\n')}
     let skewMs = 0
     ${cut('export const serverNow', '\n')}
     ${cut('export function withinLockWindow(item) {', '\n}')}
-    return { withinLockWindow, LOCK_WINDOW_MS }
+    ${cut('export const isUncalled', '\n')}
+    ${cut('export const shouldLock', '\n')}
+    return { withinLockWindow, LOCK_WINDOW_MS, isUncalled, shouldLock }
   `.replace(/export /g, ''))()
   t(LOCK_WINDOW_MS === 10 * 60 * 1000, `窓は10分（${LOCK_WINDOW_MS / 60000}分）`)
   const at = ms => ({ savedAt: new Date(Date.now() - ms).toISOString() })
@@ -212,14 +214,25 @@ console.log('\n--- 新着から10分だけ印を使う ---')
   t(withinLockWindow({}) === false, 'savedAt が無い古いデータは対象外')
   t(withinLockWindow({ savedAt: 'こわれた値' }) === false, '壊れた日付でも落ちない')
   t(withinLockWindow(null) === false, 'null でも落ちない')
+
+  // ★架電済だけで外すのでは足りない。未架電から変われば全部外す。
+  const old10 = ms => new Date(Date.now() - ms).toISOString()
+  const lead = (status, ageMs = 60 * 60 * 1000) => ({ status, savedAt: old10(ageMs) })
+  t(isUncalled({}) === true, 'ステータス未設定は未架電とみなす')
+  t(isUncalled(lead('未架電')) === true, '未架電は対象')
+  for (const st of ['架電済', '留守', '見積り', '要追客', '成約', '見送り'])
+    t(isUncalled(lead(st)) === false && shouldLock(lead(st)) === false, `★${st} になったら印は外れる`)
+  t(shouldLock(lead('未架電')) === true, '★1時間前の未架電リードもまだ対象（気づくのが遅れても守る）')
+  t(shouldLock(lead('架電済', 60 * 1000)) === true, '手は付いたが新着1分 → 10分窓で守る（付け替え操作の最中）')
+  t(shouldLock(lead('架電済', 20 * 60 * 1000)) === false, '手が付いて20分 → 対象外（灰色だらけにしない）')
 }
 {
   // 画面側：長電話の最中に窓が切れても、印は消さない
   const fs = await import('node:fs')
   const leads = fs.readFileSync(new URL('../src/tabs/Leads.jsx', import.meta.url).pathname, 'utf8')
   const fn = leads.slice(leads.indexOf('const openLead = async (item) => {'), leads.indexOf('const closeLead ='))
-  t(/!withinLockWindow\(item\) && !held/.test(fn), '★古くても誰かが開いていれば知らせる（長電話中に印が消えない）')
-  t(/if \(!withinLockWindow\(item\)\) \{/.test(fn) && /setHeldKey\(null\)/.test(fn), '古いリードでは確保を取らない（塞がない）')
+  t(/!shouldLock\(item\) && !held/.test(fn), '★対象外でも誰かが開いていれば知らせる（長電話中に印が消えない）')
+  t(/if \(!shouldLock\(item\)\) \{/.test(fn) && /setHeldKey\(null\)/.test(fn), '対象外のリードでは確保を取らない（塞がない）')
   t(/lockedBy\(item\)/.test(leads), '一覧の灰色は確保の有無で決める（窓の外でも対応中は見える）')
 }
 

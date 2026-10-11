@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import LeadDetailModal, { ConvertToContractModal, EMPTY_LEAD, MailPanel, MailSentMark } from '../components/LeadDetailModal'
-import { useLeadLocks, useHoldLock, lockKeyOf, acquireLock, agoText, withinLockWindow } from '../lib/leadLock'
+import { useLeadLocks, useHoldLock, lockKeyOf, acquireLock, agoText, shouldLock } from '../lib/leadLock'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { receivedAtMs } from '../lib/sortLeads'
@@ -174,11 +174,11 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   const openLead = async (item) => {
     if (isDemo) { setDetailItem(item); return }
     const held = lockedBy(item)
-    // 新着から10分を過ぎたリードは印の対象外。誰も開いていなければそのまま開く。
-    // ※すでに誰かが開いている場合は、10分を過ぎていても知らせる。
-    //   新着のうちに開いて長電話している間に印が消えてしまうと、本末転倒になる。
-    if (!withinLockWindow(item) && !held) { setDetailItem(item); return }
-    if (!withinLockWindow(item)) { // 古いが対応中：確認だけして、確保は取らない
+    // 対象外（手の付いたリード）は印を使わない。誰も開いていなければそのまま開く。
+    // ※すでに誰かが開いている場合は、対象外でも知らせる。
+    //   開いて長電話している最中にステータスを付け替えて印が消えると本末転倒になる。
+    if (!shouldLock(item) && !held) { setDetailItem(item); return }
+    if (!shouldLock(item)) { // 対象外だが対応中：確認だけして、確保は取らない
       if (!window.confirm(`このお客様は他の人が${agoText(held.at)}から対応中です。\n\nそれでも開きますか？`)) return
       setHeldKey(null); setDetailItem(item); return
     }
