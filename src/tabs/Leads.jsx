@@ -194,6 +194,10 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     setDetailItem(item)
   }
   const closeLead = () => { setDetailItem(null); setHeldKey(null) }
+  // ★詳細を閉じる経路は「閉じる」ボタンだけではない（コピー・成約登録・見積書作成・
+  //   配車ボードへ移動…で setDetailItem(null) している）。個別に解放を書くと必ず
+  //   書き漏らし、そのリードが灰色のまま残る。閉じたことを1か所で捕まえて解放する。
+  useEffect(() => { if (!detailItem) setHeldKey(null) }, [detailItem])
   const [newLead, setNewLead] = useState(null) // 手入力の新規リード登録モーダル
   const [convertLead, setConvertLead] = useState(null) // ステータス「成約」変更時の登録モーダル
   // メール送信（サーバ側で履歴を残しているので、画面はその内容に合わせるだけ）

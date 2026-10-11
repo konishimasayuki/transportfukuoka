@@ -234,6 +234,12 @@ console.log('\n--- 印を付ける対象（未架電のあいだ ＋ 新着10分
   t(/!shouldLock\(item\) && !held/.test(fn), '★対象外でも誰かが開いていれば知らせる（長電話中に印が消えない）')
   t(/if \(!shouldLock\(item\)\) \{/.test(fn) && /setHeldKey\(null\)/.test(fn), '対象外のリードでは確保を取らない（塞がない）')
   t(/lockedBy\(item\)/.test(leads), '一覧の灰色は確保の有無で決める（窓の外でも対応中は見える）')
+  // 「閉じる」以外の経路（コピー・成約登録・見積書作成・配車ボードへ移動）でも
+  // 詳細は閉じる。個別に解放を書くと書き漏らし、そのリードが灰色のまま残る。
+  t(/useEffect\(\(\) => \{ if \(!detailItem\) setHeldKey\(null\) \}, \[detailItem\]\)/.test(leads),
+    '★詳細が閉じたことを1か所で捕まえて解放する（閉じる経路の書き漏らし対策）')
+  const closers = (leads.match(/setDetailItem\(null\)/g) || []).length
+  t(closers >= 5, `閉じる経路は ${closers} 箇所ある（個別対応では漏れる）`)
 }
 
 console.log(`\n${ok} PASS / ${ng} FAIL`)
