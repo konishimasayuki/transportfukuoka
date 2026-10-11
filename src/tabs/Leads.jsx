@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import LeadDetailModal, { ConvertToContractModal, EMPTY_LEAD, MailPanel, MailSentMark } from '../components/LeadDetailModal'
+import { useLeadLocks, useHoldLock, lockKeyOf, acquireLock, agoText, shouldLock } from '../lib/leadLock'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { receivedAtMs } from '../lib/sortLeads'
@@ -163,6 +164,47 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   const [page, setPage] = useState(0) // リード一覧のページ（1ページ50件）
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [detailItem, setDetailItem] = useState(null)
+  // ===== 二重架電の防止 =====
+  // 開いている間だけ「対応中」をサーバーに置き、他の人の一覧では灰色にする。
+  const { lockedBy } = useLeadLocks(!isDemo)
+  const [heldKey, setHeldKey] = useState(null) // 自分が確保しているリード（開いている間だけ）
+  useHoldLock(heldKey)
+  // 行を押した時：先にサーバーへ確保しに行く。
+  // 一覧のグレーアウトは数秒遅れて届くので、同時に飛びついた場合はここでしか止められない。
+  // ★確保の応答は最大2.5秒かかる（Vercelの関数が起動する時）。その間は画面が
+  //   変わらないので、利用者は「押せていない」と思って続けて押す。そのまま通すと
+  //   別のリードを確保したまま違うリードを開いてしまい、確保が置き去りになる。
+  const openingRef = useRef(false)
+  const openLead = async (item) => {
+    if (isDemo) { setDetailItem(item); return }
+    if (openingRef.current) return // 応答待ちの間の追加クリックは無視する
+    const held = lockedBy(item)
+    // 対象外（手の付いたリード）は印を使わない。誰も開いていなければそのまま開く。
+    // ※すでに誰かが開いている場合は、対象外でも知らせる。
+    //   開いて長電話している最中にステータスを付け替えて印が消えると本末転倒になる。
+    if (!shouldLock(item) && !held) { setDetailItem(item); return }
+    if (!shouldLock(item)) { // 対象外だが対応中：確認だけして、確保は取らない
+      if (!window.confirm(`このお客様は他の人が${agoText(held.at)}から対応中です。\n\nそれでも開きますか？`)) return
+      setHeldKey(null); setDetailItem(item); return
+    }
+    const k = lockKeyOf(item)
+    openingRef.current = true
+    let r
+    try { r = await acquireLock(k) } finally { openingRef.current = false }
+    if (r && r.ok === false && r.held) {
+      if (!window.confirm(`このお客様は他の人が${agoText(r.held.at)}から対応中です。\n\nそれでも開きますか？`)) return
+      setHeldKey(null) // 確保は相手のまま。横取りしない
+      setDetailItem(item)
+      return
+    }
+    setHeldKey(k)
+    setDetailItem(item)
+  }
+  const closeLead = () => { setDetailItem(null); setHeldKey(null) }
+  // ★詳細を閉じる経路は「閉じる」ボタンだけではない（コピー・成約登録・見積書作成・
+  //   配車ボードへ移動…で setDetailItem(null) している）。個別に解放を書くと必ず
+  //   書き漏らし、そのリードが灰色のまま残る。閉じたことを1か所で捕まえて解放する。
+  useEffect(() => { if (!detailItem) setHeldKey(null) }, [detailItem])
   const [newLead, setNewLead] = useState(null) // 手入力の新規リード登録モーダル
   const [convertLead, setConvertLead] = useState(null) // ステータス「成約」変更時の登録モーダル
   // メール送信（サーバ側で履歴を残しているので、画面はその内容に合わせるだけ）
@@ -685,11 +727,16 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
                   <tr><td colSpan={13} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
                 ) : paged.map(item => {
                   return (
-                  <tr key={item.id} onClick={() => setDetailItem(item)}
-                    style={{ cursor: 'pointer', ...(item.isCopy ? { background: '#FEFCE8' } : null) }}>
+                  <tr key={item.id} onClick={() => openLead(item)}
+                    title={lockedBy(item) ? `他の人が${agoText(lockedBy(item).at)}から対応中です` : undefined}
+                    style={{ cursor: 'pointer',
+                      ...(item.isCopy ? { background: '#FEFCE8' } : null),
+                      ...(lockedBy(item) ? { background: '#F1F5F9', color: '#94A3B8', opacity: .65 } : null) }}>
                     <td style={{ whiteSpace: 'nowrap' }}>{fmtReceived(item.receivedAt || item.requestedAt || '')}</td>
                     <td style={{ whiteSpace: 'nowrap' }}><SourceTag site={item.site} /></td>
-                    <td><b>{item.name || '（名前なし）'}</b></td>
+                    <td><b>{item.name || '（名前なし）'}</b>
+                      {lockedBy(item) && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: '#B45309', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '1px 6px', whiteSpace: 'nowrap' }}>対応中</span>}
+                    </td>
                     <td style={{ whiteSpace: 'nowrap' }}><a href={`tel:${item.phone}`} onClick={e => e.stopPropagation()} style={{ color: '#1E5FA8', textDecoration: 'none', fontWeight: 700 }}>{item.phone}</a></td>
                     <td title={`${item.from || item.fromAddress || ''} → ${item.to || item.toAddress || ''}`}>
                       <div style={{ maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -777,7 +824,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
 
       <LeadDetailModal
         item={detailItem}
-        onClose={() => setDetailItem(null)}
+        onClose={closeLead}
         onStatusChange={(it, status) => {
           if (status === '成約') {
             if (isContracted(it)) { showToast('このリードは既に成約登録済みです。編集は成約管理で行えます。'); return }
