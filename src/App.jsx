@@ -78,11 +78,13 @@ export default function App() {
     }
     (async () => {
       try {
+        // ★以前はバッジの数字ひとつのために全リード（本番で8MB超）を読んでいた。
+        //   件数はサーバー側が保持しているので、それだけ受け取る。
         const [leadsRes, contractsRes] = await Promise.all([
-          fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
+          fetch('/api/inbound?counts=1').then(r => r.json()).catch(() => ({ follow: 0 })),
           fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
         ])
-        const n = (leadsRes.items || []).filter(l => l.status === '要追客').length +
+        const n = (typeof leadsRes.follow === 'number' ? leadsRes.follow : (leadsRes.items || []).filter(l => l.status === '要追客').length) +
                   (contractsRes.items || []).filter(c => c.status === '要追客').length
         if (!cancelled) setFollowCount(n)
       } catch { if (!cancelled) setFollowCount(0) }

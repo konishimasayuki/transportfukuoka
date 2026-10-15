@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import LeadDetailModal, { ConvertToContractModal, EMPTY_LEAD, MailPanel, MailSentMark } from '../components/LeadDetailModal'
 import { useLeadLocks, useHoldLock, lockKeyOf, acquireLock, agoText, shouldLock } from '../lib/leadLock'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
@@ -574,7 +574,9 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     setImporting(false)
   }
 
-  const filtered = items
+  // ★リードが数千件あるため、ここは1回の描画で全件を6回ふるいにかけて並べ替える。
+  //   毎回やり直すと数十〜数百ミリ秒かかり、画面が引っかかる。条件が変わった時だけ計算する。
+  const filtered = useMemo(() => items
     .filter(i => !isQuotes || i.status === '見積り') // 見積り管理：ステータス「見積り」のみ
     .filter(i => {
       if (dateFilter.type === 'day') return leadDateStr(i) === dateFilter.date
@@ -599,10 +601,17 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       if (sortKey === 'receivedAt') { const cmp = receivedAtMs(a) - receivedAtMs(b); return sortDir === 'asc' ? cmp : -cmp }
       return receivedAtMs(b) - receivedAtMs(a) // 既定：受付日時の新しい順
     })
+  , [items, isQuotes, dateFilter, search, filterStatuses, filterTimetree, filterStaffs, sortKey, sortDir])
 
-  const countBy = (s) => items.filter(i => i.status === s).length
+  // ステータス別の件数も全件走査になる。描画のたびにやり直さない。
+  const statusCounts = useMemo(() => {
+    const m = {}
+    for (const i of items) { const k = i.status || '未架電'; m[k] = (m[k] || 0) + 1 }
+    return m
+  }, [items])
+  const countBy = (s) => statusCounts[s] || 0
   // 見積り管理タブの集計母数（画面に出している対象と一致させる）
-  const quoteItems = items.filter(i => i.status === '見積り')
+  const quoteItems = useMemo(() => items.filter(i => i.status === '見積り'), [items])
 
   // ページング：直近50件ずつ表示（受付日時の新しい順）。以降は「次へ」で移動。
   const PAGE_SIZE = 50

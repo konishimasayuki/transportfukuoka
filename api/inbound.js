@@ -33,13 +33,38 @@ function slimLead(l) {
     ...(l.isCopy ? { isCopy: true } : null),
   }
 }
-// 全リードから軽量サマリを作る
+// 「本日」の判定は画面（追客タブ）と同じ規則にそろえる。
+// 受付日時(MM/DD)が今日と一致。無ければ保存日時で判定する。
+function mdOf(d) { return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}` }
+function isTodayLead(l, todayMD) {
+  if (l.receivedAt && /^\d{2}\/\d{2}/.test(l.receivedAt)) return String(l.receivedAt).slice(0, 5) === todayMD
+  if (l.savedAt) { const d = new Date(l.savedAt); if (!isNaN(d.getTime())) return mdOf(d) === todayMD }
+  return false
+}
+
+// 全リードから軽量サマリを作る。
+// ★ここに「画面が知りたい数字」をすべて入れておく。
+//   こうしないと、件数をひとつ出すためだけに全件（8MB超）を読むことになる。
+//   作るのは書き込みの中だけ。その時点で配列は既に手元にあるので追加の読み込みは発生しない。
 function buildMeta(items) {
+  const todayMD = mdOf(new Date())
+  const sites = {}, todaySites = {}
+  let follow = 0, todayTotal = 0
+  for (const l of items) {
+    const st = l.site || 'その他'
+    sites[st] = (sites[st] || 0) + 1
+    if (l.status === '要追客') follow++
+    if (isTodayLead(l, todayMD)) { todayTotal++; todaySites[st] = (todaySites[st] || 0) + 1 }
+  }
+  // 直近分は「そのまま画面に出せる形」で持つ（詳細モーダルを開けるよう全項目）
   const recentLeads = [...items]
     .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
     .slice(0, META_MAX)
-    .map(slimLead)
-  return { count: items.length, items: recentLeads, at: new Date().toISOString() }
+  return {
+    count: items.length, follow, sites,
+    today: { md: todayMD, total: todayTotal, sites: todaySites },
+    items: recentLeads, at: new Date().toISOString(),
+  }
 }
 // サマリを保存（失敗しても本体には影響させない。次の機会に作り直される）
 async function writeMeta(items) {
@@ -154,7 +179,33 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       // 軽量モード：?recent=N で直近N件（savedAt降順）＋総数だけ返す（新着通知ポーリング用）
       // お知らせメッセージ（broadcast）も擬似リードとして混ぜ、子拡張(無改修)に通知させる。
-      const recent = parseInt((req.query && req.query.recent) || '', 10)
+      const q = req.query || {}
+
+      // ===== 件数だけ（左メニューのバッジ用）=====
+      // 以前は「要追客が何件か」を数えるためだけに全件を読んでいた。
+      if (q.counts) {
+        const meta = await readMeta()
+        if (meta && typeof meta.follow === 'number') return res.json({ count: meta.count, follow: meta.follow })
+        const all = await readItems(KEY)
+        writeMeta(all)
+        return res.json({ count: all.length, follow: all.filter(i => i.status === '要追客').length })
+      }
+
+      // ===== 追客タブ用のまとめ =====
+      // 15秒ごとに全件（8MB超）を取っていたのをこれに置き換える。
+      // 返すのは「流入元ごとの件数」「本日の件数」「直近のリード」だけ。
+      if (q.summary) {
+        const meta = await readMeta()
+        if (meta && meta.sites && meta.today) {
+          return res.json({ count: meta.count, follow: meta.follow || 0, sites: meta.sites, today: meta.today, items: meta.items || [] })
+        }
+        const all = await readItems(KEY) // サマリが無い・古い形式の時だけ作り直す
+        const m = buildMeta(all)
+        writeMeta(all)
+        return res.json({ count: m.count, follow: m.follow, sites: m.sites, today: m.today, items: m.items })
+      }
+
+      const recent = parseInt(q.recent || '', 10)
       // ★帯域対策：直近N件で足りるうちは軽量サマリだけ読む（リード全件を転送しない）。
       //   サマリが無い・壊れている・N が保持件数を超える場合だけ全件から作り直す。
       if (recent > 0 && recent <= META_MAX) {
@@ -165,7 +216,9 @@ export default async function handler(req, res) {
             key: 'bc_' + b.id, site: b.title || 'お知らせ', name: '📢 ' + (b.body || ''),
             savedAt: b.savedAt, broadcast: true,
           })) } catch (e) { /* broadcast取得失敗は無視 */ }
-          const merged = [...meta.items.slice(0, recent), ...bc]
+          // 新着通知のポーリング（12秒ごと）には通知に要る項目だけ返す。
+          // サマリは詳細モーダル用に全項目を持っているが、ここで毎回それを流すと無駄。
+          const merged = [...meta.items.slice(0, recent).map(slimLead), ...bc]
             .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
           return res.json({ count: meta.count, items: merged })
         }
@@ -191,6 +244,7 @@ export default async function handler(req, res) {
         const recentLeads = [...items]
           .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
           .slice(0, recent)
+          .map(slimLead)
         const merged = [...recentLeads, ...bcItems]
           .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
         return res.json({ count: items.length, items: merged })
