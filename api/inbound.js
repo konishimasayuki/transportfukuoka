@@ -1,6 +1,8 @@
 import { placeCall, twilioReady } from './_twilio.js'
 import { sendPushToAll } from './_push.js'
 import { readItems, mutate, redisCmd } from './_kvstore.js'
+import { receivedAtMs } from '../src/lib/sortLeads.js'
+import { META_MAX, PAGE, slimLead, newerFirst, buildMeta, writeMeta, readMeta, readMetaBoth } from './_leadmeta.js'
 
 const KEY     = 'transportfukuoka:leads'
 const VER_KEY = 'transportfukuoka:leads:ver'
@@ -18,70 +20,25 @@ async function maybeAutoCall(lead) {
 // お知らせメッセージ（/api/broadcast で保存）。?recent 応答に混ぜて子拡張へ届ける。
 const BROADCAST_KEY = 'transportfukuoka:broadcasts'
 
-// 新着チェック専用の軽量サマリ。
-// ねらい：?recent=N（12秒ごとのポーリング）でリードを毎回全件読み出すと、
-// 1回あたり数MBが Upstash→Vercel に流れ、帯域課金が跳ね上がる。
-// 直近数件の「通知に必要な項目だけ」を別キー（1KB未満）に持ち、そこだけ読む。
-const META_KEY = 'transportfukuoka:leads:meta'
-// 保持する直近件数。リード管理の1ページ（50件）と同じにする。
-// 「更新」ボタンはこの50件だけを受け取り、1ページ目を丸ごと最新にする（全件8MB超を取り直さない）。
-// ?recent=N（新着通知）は N がこれ以下ならサマリから返す。
-const META_MAX = 50
-
-// 通知に必要な項目だけを抜き出す（本体をそのまま入れると軽量化にならない）
-function slimLead(l) {
-  return {
-    key: l.key, id: l.id, site: l.site, name: l.name, phone: l.phone,
-    from: l.from, to: l.to, savedAt: l.savedAt,
-    ...(l.isCopy ? { isCopy: true } : null),
-  }
-}
-// 「本日」の判定は画面（追客タブ）と同じ規則にそろえる。
-// 受付日時(MM/DD)が今日と一致。無ければ保存日時で判定する。
-function mdOf(d) { return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}` }
-function isTodayLead(l, todayMD) {
-  if (l.receivedAt && /^\d{2}\/\d{2}/.test(l.receivedAt)) return String(l.receivedAt).slice(0, 5) === todayMD
-  if (l.savedAt) { const d = new Date(l.savedAt); if (!isNaN(d.getTime())) return mdOf(d) === todayMD }
-  return false
+// 全件から「軽いほう＋全項目のほう」を作り、保存もしておく（サマリが無い時だけ通る）
+async function rebuildMeta() {
+  const all = await readItems(KEY)
+  writeMeta(all)
+  return { all, ...buildMeta(all) }
 }
 
-// 全リードから軽量サマリを作る。
-// ★ここに「画面が知りたい数字」をすべて入れておく。
-//   こうしないと、件数をひとつ出すためだけに全件（8MB超）を読むことになる。
-//   作るのは書き込みの中だけ。その時点で配列は既に手元にあるので追加の読み込みは発生しない。
-function buildMeta(items) {
-  const todayMD = mdOf(new Date())
-  const sites = {}, todaySites = {}
-  let follow = 0, todayTotal = 0
-  for (const l of items) {
-    const st = l.site || 'その他'
-    sites[st] = (sites[st] || 0) + 1
-    if (l.status === '要追客') follow++
-    if (isTodayLead(l, todayMD)) { todayTotal++; todaySites[st] = (todaySites[st] || 0) + 1 }
-  }
-  // 直近分は「そのまま画面に出せる形」で持つ（詳細モーダルを開けるよう全項目）
-  const recentLeads = [...items]
-    .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
-    .slice(0, META_MAX)
-  return {
-    count: items.length, follow, sites,
-    today: { md: todayMD, total: todayTotal, sites: todaySites },
-    items: recentLeads, at: new Date().toISOString(),
-  }
+// 広告費タブ用：受付日の月（YYYY-MM）。画面と同じ解釈（src/lib/sortLeads.js）を使う。
+// サーバーはUTCで動くため、保存日時で判定するリードは日本時間でも見て、どちらかが合えば返す。
+// 余分に返った分は画面側の集計で正しい月に振り分けられる（足りないよりは良い）。
+function ymOf(t) { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
+function inMonths(l, months) {
+  const t = receivedAtMs(l)
+  if (!t) return false
+  return months.has(ymOf(t)) || months.has(ymOf(t + 9 * 3600 * 1000))
 }
-// サマリを保存（失敗しても本体には影響させない。次の機会に作り直される）
-async function writeMeta(items) {
-  try { await redisCmd(['SET', META_KEY, JSON.stringify(buildMeta(items))]) }
-  catch (e) { console.error('meta write failed:', e.message) }
-}
-// サマリを読む（無い・壊れている場合は null を返して呼び出し側で全件フォールバック）
-async function readMeta() {
-  try {
-    const raw = await redisCmd(['GET', META_KEY])
-    if (!raw) return null
-    const m = JSON.parse(raw)
-    return (m && Array.isArray(m.items) && typeof m.count === 'number') ? m : null
-  } catch { return null }
+// 広告費の集計に要る項目だけ（家財などを含む全項目は1件1KB超あり、2か月で3MBを超える）
+function adLead(l) {
+  return { key: l.key, site: l.site, count: l.count, receivedAt: l.receivedAt, requestedAt: l.requestedAt, savedAt: l.savedAt }
 }
 
 // 担当者がCRM上で入力・管理する項目（＝巡回では絶対に上書きしてはならない）。
@@ -189,23 +146,51 @@ export default async function handler(req, res) {
       if (q.counts) {
         const meta = await readMeta()
         if (meta && typeof meta.follow === 'number') return res.json({ count: meta.count, follow: meta.follow })
-        const all = await readItems(KEY)
-        writeMeta(all)
-        return res.json({ count: all.length, follow: all.filter(i => i.status === '要追客').length })
+        const { meta: m } = await rebuildMeta()
+        return res.json({ count: m.count, follow: m.follow })
       }
 
-      // ===== 追客タブ用のまとめ =====
-      // 15秒ごとに全件（8MB超）を取っていたのをこれに置き換える。
-      // 返すのは「流入元ごとの件数」「本日の件数」「直近のリード」だけ。
+      // ===== リード管理の「更新」ボタン用のまとめ =====
+      // 全件（8MB超）を取り直さず、件数と直近50件だけ返す。
       if (q.summary) {
-        const meta = await readMeta()
-        if (meta && meta.sites && meta.today) {
-          return res.json({ count: meta.count, follow: meta.follow || 0, sites: meta.sites, today: meta.today, items: meta.items || [] })
+        const both = (await readMetaBoth()) || (await rebuildMeta())
+        const { meta, full } = both
+        return res.json({ count: meta.count, follow: meta.follow, sites: meta.sites, today: meta.today, items: full.items })
+      }
+
+      // ===== 追客タブ：要追客のリードを新しい順に50件ずつ =====
+      //   ?follow=1                         … 最初の50件（サマリから。全件は読まない）
+      //   ?follow=1&beforeSavedAt=..&beforeKey=.. … その続き（ここだけ全件を読む）
+      //   ?follow=1&limit=N                 … 先頭からN件（保存失敗で画面を戻す時、読んだ件数のまま取り直す）
+      // 返す rest は「まだ読んでいない要追客の件数」。
+      if (q.follow) {
+        const limit = Math.min(Math.max(parseInt(q.limit || '', 10) || PAGE, 1), 2000)
+        const hasCursor = q.beforeSavedAt !== undefined || q.beforeKey !== undefined
+        if (!hasCursor && limit <= PAGE) {
+          const both = await readMetaBoth()
+          if (both) {
+            const items = both.full.follow.slice(0, limit)
+            return res.json({ items, total: both.meta.follow, rest: Math.max(0, both.meta.follow - items.length) })
+          }
         }
-        const all = await readItems(KEY) // サマリが無い・古い形式の時だけ作り直す
-        const m = buildMeta(all)
-        writeMeta(all)
-        return res.json({ count: m.count, follow: m.follow, sites: m.sites, today: m.today, items: m.items })
+        const all = await readItems(KEY)
+        let follows = all.filter(l => l.status === '要追客').sort(newerFirst)
+        if (hasCursor) {
+          const cur = { savedAt: String(q.beforeSavedAt || ''), key: String(q.beforeKey || '') }
+          follows = follows.filter(l => newerFirst(cur, l) < 0) // cur より古いものだけ
+        }
+        const items = follows.slice(0, limit)
+        return res.json({ items, total: all.filter(l => l.status === '要追客').length, rest: follows.length - items.length })
+      }
+
+      // ===== 広告費タブ：指定した月のリードだけ（集計に要る項目のみ）=====
+      //   ?months=2026-09,2026-10
+      if (q.months) {
+        const list = String(q.months).split(',').map(x => x.trim()).filter(x => /^\d{4}-\d{2}$/.test(x)).slice(0, 3)
+        if (!list.length) return res.status(400).json({ error: 'months は YYYY-MM をカンマ区切りで指定してください' })
+        const months = new Set(list)
+        const all = await readItems(KEY)
+        return res.json({ months: list, items: all.filter(l => inMonths(l, months)).map(adLead) })
       }
 
       const recent = parseInt(q.recent || '', 10)
@@ -220,7 +205,7 @@ export default async function handler(req, res) {
             savedAt: b.savedAt, broadcast: true,
           })) } catch (e) { /* broadcast取得失敗は無視 */ }
           // 新着通知のポーリング（12秒ごと）には通知に要る項目だけ返す。
-          // サマリは詳細モーダル用に全項目を持っているが、ここで毎回それを流すと無駄。
+          // このキーは元から通知用の項目だけ。古い形式で全項目が入っていても削って返す。
           const merged = [...meta.items.slice(0, recent).map(slimLead), ...bc]
             .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
           return res.json({ count: meta.count, items: merged })

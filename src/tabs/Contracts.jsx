@@ -317,6 +317,10 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const [importing, setImporting] = useState(false)
   const [toast, setToast] = useState('')
   const [followLeads, setFollowLeads] = useState([]) // 追客タブ用：ステータス「要追客」のリード（未成約）
+  // 要追客のリードは数百件あるため、新しい順に50件ずつ読む（全件8MB超を読まない）
+  const [followRest, setFollowRest] = useState(0)        // まだ読んでいない要追客の件数
+  const [followCursor, setFollowCursor] = useState(null) // 最後に読んだリード（続きはこれより古いもの）
+  const [followMoreLoading, setFollowMoreLoading] = useState(false)
   const [leadDetailItem, setLeadDetailItem] = useState(null) // 追客タブ：クリックしたリード行の詳細（リード管理と同じモーダル）
   const [mailLead, setMailLead] = useState(null)                 // メール送信パネルで開いているリード
   const [pendingLeadConvert, setPendingLeadConvert] = useState(null) // 追客タブ：成約登録の確定待ちリード
@@ -361,9 +365,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   useEffect(() => {
     if (mode !== 'follow') return
     if (isDemo) { setFollowLeads(DEMO_LEADS.filter(l => l.status === '要追客')); return }
-    fetch('/api/inbound').then(r => r.json()).then(d => {
-      setFollowLeads((d.items || []).filter(l => l.status === '要追客'))
-    }).catch(() => setFollowLeads([]))
+    loadFollowPage(null).catch(() => setFollowLeads([]))
   }, [mode, isDemo])
   useEffect(() => {
     if (isDemo) { setStaffList(DEFAULT_STAFF); return }
@@ -514,12 +516,34 @@ export default function Contracts({ user, mode, onFollowDelta }) {
       console.error(e); showToast('保存できませんでした。画面を最新に戻します'); await resync()
     }
   }
-  // 追客タブのリード一覧をサーバから取り直す
+  // 追客タブ：要追客のリードを読む。after を渡すとその続き（より古い50件）を後ろに足す。
+  //   limit を渡すと先頭からその件数を読み直す（画面を戻す時に、読んだ件数を減らさないため）
+  const loadFollowPage = async (after, limit) => {
+    const qs = after
+      ? `&beforeSavedAt=${encodeURIComponent(after.savedAt || '')}&beforeKey=${encodeURIComponent(after.key || '')}`
+      : (limit ? `&limit=${limit}` : '')
+    const d = await fetch('/api/inbound?follow=1' + qs).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json() })
+    const got = (d.items || []).filter(l => l.status === '要追客')
+    setFollowLeads(prev => {
+      if (!after) return got
+      const have = new Set(prev.map(l => l.key || l.id))
+      return [...prev, ...got.filter(l => !have.has(l.key || l.id))]
+    })
+    const last = (d.items || [])[(d.items || []).length - 1]
+    if (last) setFollowCursor({ savedAt: last.savedAt || '', key: last.key || '' })
+    else if (!after) setFollowCursor(null)
+    setFollowRest(Number(d.rest) || 0)
+  }
+  const loadMoreFollow = async () => {
+    if (followMoreLoading || !followCursor) return
+    setFollowMoreLoading(true)
+    try { await loadFollowPage(followCursor) }
+    catch (e) { console.error(e); showToast('読み込めませんでした') }
+    finally { setFollowMoreLoading(false) }
+  }
+  // 追客タブのリード一覧をサーバから取り直す（読んでいた件数のまま）
   const refetchFollowLeads = async () => {
-    try {
-      const d = await fetch('/api/inbound').then(r => r.json())
-      setFollowLeads((d.items || []).filter(l => l.status === '要追客'))
-    } catch (e) { console.error(e) }
+    try { await loadFollowPage(null, Math.max(50, followLeads.length)) } catch (e) { console.error(e) }
   }
 
   // 一覧から担当者をインライン変更（全項目を保持して保存）
@@ -801,8 +825,9 @@ export default function Contracts({ user, mode, onFollowDelta }) {
 
       {mode === 'follow' ? (
         <div className="kpi-row kpi-3">
-          <div className="kpi-card c-orange"><div className="kpi-label">追客対象（合計）</div><div className="kpi-val">{modeItems.length}<span>件</span></div></div>
-          <div className="kpi-card c-purple"><div className="kpi-label">うちリード（未成約）</div><div className="kpi-val">{leadRows.length}<span>件</span></div></div>
+          {/* リードは50件ずつ読むため、まだ読んでいない件数（followRest）も足して全体の件数を出す */}
+          <div className="kpi-card c-orange"><div className="kpi-label">追客対象（合計）</div><div className="kpi-val">{modeItems.length + followRest}<span>件</span></div></div>
+          <div className="kpi-card c-purple"><div className="kpi-label">うちリード（未成約）</div><div className="kpi-val">{leadRows.length + followRest}<span>件</span></div></div>
           <div className="kpi-card c-green"><div className="kpi-label">成約済み（全体）</div><div className="kpi-val">{countBy('成約済み')}<span>件</span></div></div>
         </div>
       ) : (mode === 'aircon' || mode === 'cardboard') ? (
@@ -937,6 +962,13 @@ export default function Contracts({ user, mode, onFollowDelta }) {
               </tbody>
             </table>
           </div>
+          {mode === 'follow' && followRest > 0 && (
+            <div style={{ textAlign: 'center', padding: '12px 0 16px' }}>
+              <button className="btn btn-outline btn-sm" onClick={loadMoreFollow} disabled={followMoreLoading}>
+                {followMoreLoading ? '読み込み中…' : `さらに50件読み込む（未読み込みの要追客リード 残り${followRest}件）`}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -779,6 +779,8 @@ export default function Estimate({ user, switchTab }) {
   const [contracts, setContracts] = useState(isDemo ? DEMO_CONTRACTS : []) // 成約管理由来の行をマージ表示するため
   const [loading, setLoading]     = useState(!isDemo)
   const [view, setView]       = useState('list')      // 'list' | 'edit'
+  // 一覧は「見積書＋成約」で数百行あるため、新しい順に50行ずつ出す（「さらに50件」で追加）
+  const [listLimit, setListLimit] = useState(50)
   const [form, setForm]       = useState(emptyForm())
   const [editId, setEditId]   = useState(null)
   const [saving, setSaving]   = useState(false)
@@ -847,7 +849,9 @@ export default function Estimate({ user, switchTab }) {
       const [eRes, cRes, lRes] = await Promise.all([
         fetch('/api/estimate').then(r => r.json()).catch(() => ({ items: [] })),
         fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
-        fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })), // 家財の後追い紐付け用
+        // 家財の後追い紐付け用。リード全件（8MB超）ではなく直近50件だけ読む。
+        // 過去の成約は既に紐付け済み（本番で確認：紐付けが必要な成約は0件）で、新しく対象になるのは最近のリードから作った成約のため。
+        fetch('/api/inbound?summary=1').then(r => r.json()).catch(() => ({ items: [] })),
       ])
       setItems(eRes.items || [])
       setContracts(backfillContractKazai(cRes.items || [], lRes.items || []))
@@ -1160,7 +1164,7 @@ export default function Estimate({ user, switchTab }) {
                 <tbody>
                   {rows.length === 0 ? (
                     <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>見積書・成約レコードがありません</td></tr>
-                  ) : rows.map(item => {
+                  ) : rows.slice(0, listLimit).map(item => {
                     const isContract = item._kind === 'contract'
                     return (
                       <tr key={item.id} style={isContract ? { background: '#F8FAFC' } : undefined}>
@@ -1191,6 +1195,13 @@ export default function Estimate({ user, switchTab }) {
                 </tbody>
               </table>
             </div>
+            {rows.length > listLimit && (
+              <div style={{ textAlign: 'center', padding: '12px 0 16px' }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setListLimit(n => n + 50)}>
+                  さらに50件表示（残り{rows.length - listLimit}件）
+                </button>
+              </div>
+            )}
           </div>
         )}
 

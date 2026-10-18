@@ -7,6 +7,8 @@
 process.env.UPSTASH_REDIS_REST_URL = 'http://mock'
 process.env.UPSTASH_REDIS_REST_TOKEN = 'mock'
 process.env.TWILIO_AUTOCALL = 'off'
+process.env.RESEND_API_KEY = 'test' // api/mail.js の送信は偽物で受ける（実際には送らない）
+process.env.MAIL_FROM = 'test@example.com'
 import fs from 'node:fs'
 
 let ng = 0, ok = 0
@@ -16,6 +18,7 @@ const t = (c, m, d = '') => { c ? (ok++, console.log('✅ ' + m + (d ? ' — ' +
 const store = new Map(); const get = k => (store.has(k) ? store.get(k) : null)
 let reads = []
 globalThis.fetch = async (url, opts) => {
+  if (String(url).includes('resend.com')) return { ok: true, status: 200, json: async () => ({ id: 'm1' }) }
   const c = JSON.parse(opts.body); const op = c[0]; let result
   if (op === 'GET') { reads.push(c[1]); result = get(c[1]) }
   else if (op === 'SET') { store.set(c[1], c[2]); result = 'OK' }
@@ -96,6 +99,117 @@ console.log('\n--- 新着通知（?recent=）は軽いまま ---')
   const r = await call('GET', undefined, { recent: '5' })
   t(r.items.length === 5, '件数どおり返す')
   t(!('receivedAt' in r.items[0]) && !('status' in r.items[0]), '★通知に要る項目だけ（サマリが全項目を持つようになっても太らない）', Object.keys(r.items[0]).join(','))
+}
+
+console.log('\n--- メール送信（api/mail.js）もサマリに反映する ---')
+{
+  seed(300)
+  await call('GET', undefined, { summary: '1' })
+  const { default: mail } = await import('../api/mail.js')
+  let out = null, code = 200
+  await mail({ method: 'POST', body: { to: 'a@example.com', subject: '件名', text: '本文', leadKey: 'k0' }, query: {} },
+    { setHeader() {}, status(c) { code = c; return this }, end() { return this }, json(o) { out = o; return this } })
+  t(code === 200 && out && out.ok, 'メール送信が通る（偽物の送信先）', JSON.stringify(out))
+  const s = await call('GET', undefined, { summary: '1' })
+  const l = s.items.find(x => x.key === 'k0')
+  t(l && Array.isArray(l.mailLog) && l.mailLog.length === 1, '★送信履歴が「更新」ボタンの受け取る直近分にも入る（古い内容に戻らない）')
+}
+
+console.log('\n--- 新着通知のポーリングは軽いキーだけ読む ---')
+{
+  seed(300)
+  await call('GET', undefined, { summary: '1' })
+  reads = []
+  await call('GET', undefined, { recent: '5' })
+  t(!reads.includes(KEY) && !reads.includes(META + ':full'), '★12秒ごとの通知は全項目のサマリを読まない', `読んだキー: ${reads.join(',')}`)
+  const metaBytes = store.get(META).length
+  t(metaBytes < 4000, '★通知が読むキーは数KB（全項目50件を入れると約70KB）', `${metaBytes}バイト`)
+}
+
+console.log('\n--- 追客タブ：要追客を新しい順に50件ずつ（?follow=1）---')
+{
+  // 要追客 = i%10===0 → 300件中30件。足りないので要追客を増やした1,000件で見る（要追客100件）
+  seed(1000)
+  await call('GET', undefined, { summary: '1' })
+  reads = []
+  const p1 = await call('GET', undefined, { follow: '1' })
+  t(p1.items.length === 50 && p1.items.every(l => l.status === '要追客'), '最初は要追客だけ50件', String(p1.items.length))
+  t(p1.total === 100 && p1.rest === 50, '全体の件数と残りの件数を返す', `total=${p1.total} rest=${p1.rest}`)
+  t(!reads.includes(KEY), '★最初の50件は全件を読まない（サマリから）', `読んだキー: ${reads.join(',')}`)
+  t(p1.items.every((l, i, a) => i === 0 || String(a[i - 1].savedAt) >= String(l.savedAt)), '新しい順')
+  t('receivedAt' in p1.items[0] && 'phone' in p1.items[0] && 'site' in p1.items[0], '全項目のまま（詳細モーダルを開ける）')
+  const last = p1.items[49]
+  const p2 = await call('GET', undefined, { follow: '1', beforeSavedAt: last.savedAt, beforeKey: last.key })
+  const keys = new Set([...p1.items, ...p2.items].map(l => l.key))
+  t(p2.items.length === 50 && p2.rest === 0, '続きの50件', `${p2.items.length}件 rest=${p2.rest}`)
+  t(keys.size === 100, '★1ページ目と2ページ目で重複・取りこぼしなし', String(keys.size))
+  const pl = await call('GET', undefined, { follow: '1', limit: '80' })
+  t(pl.items.length === 80 && pl.rest === 20, '読んだ件数のまま取り直せる（limit）', `${pl.items.length}件 rest=${pl.rest}`)
+
+  // 保存日時が同じリードが並んでも、境目で重複・欠落しない
+  const arr = JSON.parse(store.get(KEY))
+  arr.forEach(l => { if (l.status === '要追客') l.savedAt = '2026-10-01T00:00:00.000Z' })
+  store.set(KEY, JSON.stringify(arr)); store.delete(META); store.delete(META + ':full')
+  const q1 = await call('GET', undefined, { follow: '1' })
+  const ql = q1.items[49]
+  const q2 = await call('GET', undefined, { follow: '1', beforeSavedAt: ql.savedAt, beforeKey: ql.key })
+  t(new Set([...q1.items, ...q2.items].map(l => l.key)).size === 100, '★保存日時が全部同じでも重複・取りこぼしなし')
+
+  // ステータスを変えたらサマリの要追客も変わる
+  seed(1000)
+  await call('GET', undefined, { summary: '1' })
+  const top = (await call('GET', undefined, { follow: '1' })).items[0]
+  await call('PUT', { key: top.key, phone: top.phone, status: '架電済' })
+  const after = await call('GET', undefined, { follow: '1' })
+  t(!after.items.some(l => l.key === top.key) && after.total === 99, '★要追客から外したリードは消え、件数も減る', `total=${after.total}`)
+}
+
+console.log('\n--- 広告費タブ：指定した月だけ（?months=）---')
+{
+  const arr = []
+  const add = (rec, site, count) => arr.push({ id: 'a' + arr.length, key: 'a' + arr.length, phone: '090-2000-' + String(arr.length).padStart(4, '0'), name: 'x', site, count, receivedAt: rec, kazai: [{ name: '冷蔵庫', qty: 1 }], memo: 'm', savedAt: '2026-10-01T00:00:00.000Z' })
+  // 年なしの受付日（引越し侍）は「今年」として読む（画面と同じ）。テストは今年の9月・10月で見る
+  const y = new Date().getFullYear()
+  add('09/15 10:00', '引越し侍', '1人'); add(`${y}/09/30 23:59`, '価格.com'); add(`${y}/10/01 00:00`, 'ズバット')
+  add('08/31 12:00', '引越し侍', '3人'); add(`${y}/07/10 09:00`, '価格.com')
+  store.clear(); store.set(KEY, JSON.stringify(arr)); store.set(KEY + ':ver', '1')
+  const r = await call('GET', undefined, { months: `${y}-09,${y}-10` })
+  const names = r.items.map(l => l.receivedAt).sort()
+  t(r.items.length === 3, '指定した2か月のリードだけ返す（月末23:59・月初0:00も含む）', names.join(' / '))
+  t(!r.items.some(l => /07\/10|08\/31/.test(l.receivedAt)), '他の月は返さない')
+  t(r.items.every(l => !('kazai' in l) && !('memo' in l) && 'site' in l && 'count' in l && 'receivedAt' in l), '★集計に要る項目だけ（家財・メモなどは送らない）', Object.keys(r.items[0] || {}).join(','))
+  const bad = await call('GET', undefined, { months: 'abc' })
+  t(bad && bad.error, '月の指定がおかしい時はエラー')
+}
+
+console.log('\n--- 画面側：追客・広告費・見積・上部の更新ボタン ---')
+{
+  const rd = f => fs.readFileSync(new URL('../src/' + f, import.meta.url).pathname, 'utf8')
+  const con = rd('tabs/Contracts.jsx'), ad = rd('tabs/AdCost.jsx'), est = rd('tabs/Estimate.jsx'), top = rd('components/Topbar.jsx'), app = rd('App.jsx')
+  t(!/fetch\('\/api\/inbound'\)/.test(con), '★追客タブはリード全件を読まない')
+  t(/\/api\/inbound\?follow=1/.test(con) && /beforeSavedAt/.test(con), '追客タブは要追客を50件ずつ読む')
+  t(/onClick=\{loadMoreFollow\}/.test(con), '「さらに50件読み込む」ボタンがある')
+  t(/modeItems\.length \+ followRest/.test(con), '★追客対象の件数は、まだ読んでいない分も足して出す')
+  t(!/fetch\('\/api\/inbound'\)/.test(ad), '★広告費タブはリード全件を読まない')
+  t(/months\[0\]\.key, months\[1\]\.key/.test(ad), '最初は当月と先月だけ読む')
+  t(/loadedMonths\.has\(selMonth\)/.test(ad) && /fetchLeadMonths\(\[m\]\)/.test(ad), '★それより前の月は選んだ時に追加で読む')
+  t(/isAutoMonth && !loadedMonths\.has\(selMonth\)/.test(ad), '★読めていない月は保存させない（0件で広告費を上書きしない）')
+  t(!/fetch\('\/api\/inbound'\)/.test(est) && /\/api\/inbound\?summary=1/.test(est), '★見積タブはリード全件を読まない（直近50件）')
+  t(/rows\.slice\(0, listLimit\)/.test(est) && /setListLimit\(n => n \+ 50\)/.test(est), '見積の一覧は50行ずつ・「さらに50件表示」')
+  t(!/⟳ 更新/.test(top) && !/onRefresh/.test(app), '上部の「更新」ボタン（何もしていなかった）を出さない')
+}
+
+console.log('\n--- 画面側：広告費で別々に読んだ月を合わせる（mergeLeads）---')
+{
+  const src = fs.readFileSync(new URL('../src/tabs/AdCost.jsx', import.meta.url).pathname, 'utf8')
+  const i = src.indexOf('const mergeLeads = (prev, add) => {')
+  const mergeLeads = new Function(src.slice(i, src.indexOf('\n  }', i) + 4) + '; return mergeLeads')()
+  const L = k => ({ key: k })
+  // ★不具合の再現：3か月ずつ分けて頼むと、月の境目のリードが両方の結果に入る
+  const r1 = mergeLeads([], [L('a'), L('b'), L('b'), L('c')])
+  t(r1.map(x => x.key).join(',') === 'a,b,c', '★受け取った分どうしの重複も除く（7月の広告費が重複で増えていた）', r1.map(x => x.key).join(','))
+  const r2 = mergeLeads([L('a')], [L('a'), L('d')])
+  t(r2.map(x => x.key).join(',') === 'a,d', '既に持っている分とも重複しない')
 }
 
 console.log('\n--- 画面側：「更新」で受け取った直近ぶんの反映（mergeLatest）---')
