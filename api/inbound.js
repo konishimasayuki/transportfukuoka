@@ -23,7 +23,10 @@ const BROADCAST_KEY = 'transportfukuoka:broadcasts'
 // 1回あたり数MBが Upstash→Vercel に流れ、帯域課金が跳ね上がる。
 // 直近数件の「通知に必要な項目だけ」を別キー（1KB未満）に持ち、そこだけ読む。
 const META_KEY = 'transportfukuoka:leads:meta'
-const META_MAX = 10 // 保持する直近件数（?recent=N が これを超えたら全件から作り直す）
+// 保持する直近件数。リード管理の1ページ（50件）と同じにする。
+// 「更新」ボタンはこの50件だけを受け取り、1ページ目を丸ごと最新にする（全件8MB超を取り直さない）。
+// ?recent=N（新着通知）は N がこれ以下ならサマリから返す。
+const META_MAX = 50
 
 // 通知に必要な項目だけを抜き出す（本体をそのまま入れると軽量化にならない）
 function slimLead(l) {

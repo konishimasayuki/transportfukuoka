@@ -140,6 +140,26 @@ const modalBox     = { background: '#fff', borderRadius: 14, width: '100%', maxW
 
 const norm = (l) => ({ ...l, status: l.status || '未架電' })
 
+// 「更新」で受け取った直近ぶんを手元の一覧に反映する。
+// 既にあるものは差し替え、無いものは先頭に足す。
+// ★差し替えを先に全部済ませてから、新しいものをまとめて先頭に足すこと。
+//   途中で先頭に足すと全員の位置が1つずれ、続く差し替えが別のリードを
+//   上書きしてしまう（新着が消えて既存が重複する）。
+export function mergeLatest(prev, latest) {
+  const idx = new Map(prev.map((x, i) => [x.key || x.id, i]))
+  const next = prev.slice()
+  const added = []
+  const seen = new Set()
+  for (const l of latest) {
+    const k = l.key || l.id
+    if (seen.has(k)) continue // 同じリードが2回来ても1回だけ反映
+    seen.add(k)
+    if (idx.has(k)) next[idx.get(k)] = l
+    else added.push(l)
+  }
+  return added.length ? [...added, ...next] : next
+}
+
 // 手入力の登録・コピーで使う受付日時（既存データと同じ MM/DD HH:MM 表記）
 function fmtNowReceived() {
   const d = new Date(), p2 = (n) => String(n).padStart(2, '0')
@@ -256,6 +276,33 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       setItems((data.items || []).map(norm))
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
+  }
+
+  // ===== 「更新」ボタン：直近50件だけ受け取って一覧に反映する =====
+  // ★全件（本番で8MB超・2.5〜4秒）を毎回取り直していたのが「更新が遅い」の原因。
+  //   新着を見るために押すボタンなので、1ページ目（50件）が最新になれば足りる。
+  //   受け取った50件は key で突き合わせ、既存は差し替え（他の人のステータス・メモも反映）、
+  //   無いものは追加する。
+  //   ・前回から50件を超えて増えた／件数が減った（誰かが削除した）時は全件を取り直す
+  //   ・2ページ目以降の他の人の変更は、タブを開き直した時に反映される
+  const [refreshing, setRefreshing] = useState(false)
+  const refreshLatest = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      const data = await fetch('/api/inbound?summary=1').then(r => r.json())
+      const latest = Array.isArray(data.items) ? data.items : null
+      const total = Number(data.count)
+      // 足りない・減った・応答がおかしい → 正確さを優先して全件
+      if (!latest || !(total >= 0) || total < items.length || total - items.length > latest.length) {
+        await fetchItems()
+        return
+      }
+      setItems(prev => mergeLatest(prev, latest.map(norm)))
+    } catch (e) {
+      console.error(e)
+      await fetchItems() // 軽い取得に失敗したら全件で取り直す
+    } finally { setRefreshing(false) }
   }
 
   // 「本日」判定（受付日時 MM/DD を優先、無ければ保存日時）
@@ -634,7 +681,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
 
       <div className="filter-row">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 名前・フリガナ(ひらがな可)・電話・エリアで検索..." />
-        <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={isDemo}>⟳ 更新</button>
+        <button className="btn btn-outline btn-sm" onClick={refreshLatest} disabled={isDemo || refreshing}>{refreshing ? '更新中…' : '⟳ 更新'}</button>
       </div>
 
       {/* 月選択 ＋ 日付フィルター（今日〜10日前） */}
