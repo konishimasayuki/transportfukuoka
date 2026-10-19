@@ -160,6 +160,39 @@ export function mergeLatest(prev, latest) {
   return added.length ? [...added, ...next] : next
 }
 
+// 一覧の「訪問見積もり日」。
+// ★キーボードで年を打つと 0002→0020→0202→2026 と1文字ごとに変更が起きる。そのたびに保存すると
+//   途中の値がサーバーに書かれ、送信の順番が入れ替わると途中の値が残ってしまう。
+//   入力中は画面の中だけで持ち、日付が確定してから少し待つか、入力欄から離れた時に1回だけ保存する。
+//   年が2000年より前（打ちかけ）の値は保存しない。
+const VISIT_SAVE_WAIT_MS = 800
+const okVisitDate = (v) => v === '' || (/^\d{4}-\d{2}-\d{2}$/.test(v) && Number(v.slice(0, 4)) >= 2000 && Number(v.slice(0, 4)) <= 2100)
+export function VisitDateCell({ value, onCommit }) {
+  const [v, setV] = useState(value)
+  const timer = useRef(null)
+  const sent = useRef(value) // 最後に保存した（または元の）値
+  // 他の人の変更などで元の値が変わったら、入力中でなければ合わせる
+  useEffect(() => { if (!timer.current) { setV(value); sent.current = value } }, [value])
+  useEffect(() => () => clearTimeout(timer.current), [])
+  const commit = (x) => {
+    clearTimeout(timer.current); timer.current = null
+    if (x === sent.current || !okVisitDate(x)) return
+    sent.current = x
+    onCommit(x)
+  }
+  return (
+    <input type="date" value={v}
+      onChange={e => {
+        const x = e.target.value
+        setV(x)
+        clearTimeout(timer.current)
+        timer.current = okVisitDate(x) ? setTimeout(() => commit(x), VISIT_SAVE_WAIT_MS) : null
+      }}
+      onBlur={() => commit(v)}
+      style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 5px', fontFamily: 'inherit', fontSize: 12, color: v ? '#1E293B' : '#94A3B8', background: '#fff' }} />
+  )
+}
+
 // 手入力の登録・コピーで使う受付日時（既存データと同じ MM/DD HH:MM 表記）
 function fmtNowReceived() {
   const d = new Date(), p2 = (n) => String(n).padStart(2, '0')
@@ -298,7 +331,11 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
         await fetchItems()
         return
       }
-      setItems(prev => mergeLatest(prev, latest.map(norm)))
+      const fresh = latest.map(norm)
+      // 反映後の件数がサーバーの件数と合わない（例：削除1件と新着1件が同時にあった）時は全件で取り直す。
+      // そのままだと削除済みのリードが一覧に残り、件数も合わない。
+      if (mergeLatest(items, fresh).length !== total) { await fetchItems(); return }
+      setItems(prev => mergeLatest(prev, fresh))
     } catch (e) {
       console.error(e)
       await fetchItems() // 軽い取得に失敗したら全件で取り直す
@@ -327,7 +364,8 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       setConvertLead(item)
       return
     }
-    onFollowDelta?.((status === '要追客' ? 1 : 0) - (item.status === '要追客' ? 1 : 0))
+    const delta = (status === '要追客' ? 1 : 0) - (item.status === '要追客' ? 1 : 0)
+    onFollowDelta?.(delta)
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, status } : i)) // 楽観更新
     if (isDemo) {
       // デモは共有DBが無いため、他タブ（追客タブ等）が参照する DEMO_DATA 自体も更新して同期させる
@@ -335,14 +373,23 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       if (idx !== -1) DEMO_DATA[idx] = { ...DEMO_DATA[idx], status }
       return
     }
+    // 保存できなかった時は画面を元のステータスに戻す（保存できたように見えたままにしない）
+    const revert = () => {
+      onFollowDelta?.(-delta)
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: item.status } : i))
+      setDetailItem(d => (d && d.id === item.id ? { ...d, status: item.status } : d))
+    }
     try {
       const res = await fetch('/api/inbound', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, status }),
       })
       // 対象が特定できなかった場合は通知して再同期（保存が黙って消えるのを防ぐ）
-      if (!res.ok) { showToast('ステータスを保存できませんでした。画面を最新に戻します'); await fetchItems() }
-    } catch (e) { console.error(e) }
+      if (!res.ok) { revert(); showToast('ステータスを保存できませんでした。画面を最新に戻します'); await fetchItems() }
+    } catch (e) {
+      console.error(e); revert()
+      showToast('ステータスを保存できませんでした（通信エラー）。もう一度お試しください')
+    }
   }
 
   // 「成約管理に登録」確定：成約管理に POST しつつ、リードのステータス・金額も更新
@@ -378,12 +425,31 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     setItems(prev => prev.map(i => i.id === lead.id ? { ...i, status: '成約', amount: payload.amount, contracted: true } : i))
     setDetailItem(d => (d && d.id === lead.id ? { ...d, status: '成約', amount: payload.amount, contracted: true } : d))
     if (isDemo) return
+    // 失敗したら画面を元に戻す（成約になったように見えたままにしない）
+    const revert = () => {
+      if (lead.status === '要追客') onFollowDelta?.(1)
+      const back = { status: lead.status, amount: lead.amount, contracted: lead.contracted }
+      setItems(prev => prev.map(i => i.id === lead.id ? { ...i, ...back } : i))
+      setDetailItem(d => (d && d.id === lead.id ? { ...d, ...back } : d))
+    }
+    // ★成約→リードの順に1つずつ送る。同時に送ると「成約だけ登録されてリードは未成約のまま」になった時、
+    //   やり直すと成約が二重に登録される。成約の登録に失敗したらリードは変えない。
+    let res
     try {
-      await Promise.all([
-        fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contract) }),
-        fetch('/api/inbound',   { method: 'PUT',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, status: '成約', amount: payload.amount, contracted: true }) }),
-      ])
-    } catch (e) { console.error(e) }
+      res = await fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contract) })
+    } catch (e) { console.error(e); res = null }
+    if (!res || !res.ok) { revert(); showToast('成約登録できませんでした。もう一度お試しください'); return false }
+    const leadBody = JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, status: '成約', amount: payload.amount, contracted: true })
+    for (let i = 0; i < 2; i++) { // リード側は1回だけやり直す（成約は登録済みなので、ここで止めたくない）
+      try {
+        const r = await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: leadBody })
+        if (r.ok) return
+      } catch (e) { console.error(e) }
+    }
+    // 成約は登録済み。完了画面に進める（入力画面に残すと、やり直して成約が二重になる）
+    revert()
+    showToast('成約は登録しましたが、リードを「成約」にできませんでした。成約登録をやり直さず、成約管理で確認してください')
+    await fetchItems()
   }
 
   // 詳細モーダルからの編集（メモ・家財）を保存
@@ -401,15 +467,28 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       if (idx !== -1) DEMO_DATA[idx] = { ...DEMO_DATA[idx], ...patch }
       return
     }
+    // 保存できなかった時は、変えた項目を画面上で元に戻す（保存できたように見えたままにしない）
+    const revert = () => {
+      const back = Object.fromEntries(Object.keys(patch).map(k => [k, item[k]]))
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...back } : i))
+      setDetailItem(d => (d && d.id === item.id ? { ...d, ...back } : d))
+    }
+    let res
     try {
-      const res = await fetch('/api/inbound', {
+      res = await fetch('/api/inbound', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, ...patch }),
       })
+    } catch (e) {
+      console.error(e); revert()
+      showToast('保存できませんでした（通信エラー）。もう一度お試しください')
+      return false // 詳細画面は編集中のまま残る（書いた内容は消えない）
+    }
+    try {
       // 保存先のリードが特定できなかった場合（404）は、画面だけ更新された状態を残さない。
       // 楽観更新のまま放置すると「保存したのに再読込で消える」ように見えるため、
       // 通知したうえでサーバの内容に再同期する。
-      if (!res.ok) { showToast('保存できませんでした。画面を最新に戻します'); await fetchItems(); return }
+      if (!res.ok) { revert(); showToast('保存できませんでした。画面を最新に戻します'); await fetchItems(); return false }
       // 金額を編集したら、紐づく成約（leadKey一致）にも反映（成約管理・売上管理に波及）
       if (patch.amount !== undefined) {
         await fetch('/api/contracts', {
@@ -806,8 +885,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
                       </div>
                     </td>
                     <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
-                      <input type="date" value={item.visitEstimateDate || ''} onChange={e => savePatch(item, { visitEstimateDate: e.target.value })}
-                        style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 5px', fontFamily: 'inherit', fontSize: 12, color: item.visitEstimateDate ? '#1E293B' : '#94A3B8', background: '#fff' }} />
+                      <VisitDateCell value={item.visitEstimateDate || ''} onCommit={v => savePatch(item, { visitEstimateDate: v })} />
                     </td>
                     <td onClick={e => e.stopPropagation()}>
                       <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} title="TimeTreeに登録済みかを記録">
