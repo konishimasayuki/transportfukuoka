@@ -1,6 +1,10 @@
+import { readItems } from './_kvstore.js'
+import { buildEstimateRows, nextEstimateNo } from '../src/lib/estimateRows.js'
+
 const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
 const KEY = 'transportfukuoka:estimates'
+const CONTRACTS_KEY = 'transportfukuoka:contracts'
 
 async function redis(command) {
   if (!REDIS_URL || !REDIS_TOKEN) {
@@ -29,6 +33,22 @@ async function setItems(items) {
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
+      const q = req.query || {}
+      // ===== 見積書タブの一覧：見積書＋成約を並べ、50件ずつ返す =====
+      //   ?list=1&offset=0&limit=50&year=2026
+      // 件数・合計金額・次の見積番号は一覧全体から出す（画面が全件を持たなくて済むように）
+      if (q.list) {
+        const offset = Math.max(parseInt(q.offset || '', 10) || 0, 0)
+        const limit = Math.min(Math.max(parseInt(q.limit || '', 10) || 50, 1), 2000)
+        const year = /^\d{4}$/.test(String(q.year || '')) ? String(q.year) : String(new Date().getFullYear())
+        const [items, contracts] = await Promise.all([getItems(), readItems(CONTRACTS_KEY)])
+        const b = buildEstimateRows(items, contracts)
+        return res.json({
+          rows: b.rows.slice(offset, offset + limit), total: b.rows.length,
+          estCount: b.estCount, conCount: b.conCount, sumEst: b.sumEst, sumCon: b.sumCon,
+          nextNo: nextEstimateNo(items, year),
+        })
+      }
       const items = await getItems()
       return res.json({ items })
     }

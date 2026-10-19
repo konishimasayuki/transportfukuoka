@@ -182,6 +182,31 @@ console.log('\n--- 広告費タブ：指定した月だけ（?months=）---')
   t(bad && bad.error, '月の指定がおかしい時はエラー')
 }
 
+console.log('\n--- 見積書タブ：一覧を50件ずつ（api/estimate.js ?list=1）---')
+{
+  const { default: est } = await import('../api/estimate.js')
+  const callE = async (query) => { let out = null; await est({ method: 'GET', query }, { setHeader() {}, status() { return this }, end() { return this }, json(o) { out = o; return this } }); return out }
+  const y = new Date().getFullYear()
+  const ests = [
+    { id: 'e1', estimateNo: `EST-${y}0007`, name: 'A', estimateDate: `${y}-10-05`, total: 1000 },
+    { id: 'e2', estimateNo: `EST-${y}0003`, name: 'B', estimateDate: `${y}-10-04`, total: 2000, contractId: 'c1' },
+    { id: 'e3', estimateNo: `EST-${y - 1}0099`, name: 'C', estimateDate: `${y - 1}-12-01`, total: 500 },
+  ]
+  const cons = Array.from({ length: 120 }, (_, i) => ({ id: 'c' + i, name: '成約' + i, status: '成約済み', salesDate: `${y}-0${1 + (i % 9)}-${String(1 + (i % 28)).padStart(2, '0')}`, amount: 100 }))
+  store.clear(); store.set('transportfukuoka:estimates', JSON.stringify(ests)); store.set('transportfukuoka:contracts', JSON.stringify(cons))
+  const p1 = await callE({ list: '1', offset: '0', limit: '50', year: String(y) })
+  t(p1.rows.length === 50 && p1.total === 122, '50件だけ返し、全体の行数も返す（成約120−見積化1＋見積3）', `${p1.rows.length}件 / 全${p1.total}`)
+  t(p1.estCount === 3 && p1.conCount === 119 && p1.sumEst === 3500 && p1.sumCon === 11900, '★件数・合計金額は一覧全体から出す', JSON.stringify({ e: p1.estCount, c: p1.conCount, se: p1.sumEst, sc: p1.sumCon }))
+  t(p1.nextNo === `EST-${y}0008`, '★次の見積番号は全見積書の続き（その年の最大＋1）', p1.nextNo)
+  const p2 = await callE({ list: '1', offset: '50', limit: '50', year: String(y) })
+  const p3 = await callE({ list: '1', offset: '100', limit: '50', year: String(y) })
+  const ids = [...p1.rows, ...p2.rows, ...p3.rows].map(r => r.id)
+  t(ids.length === 122 && new Set(ids).size === 122, '★全部読むと重複・欠落なし', `${ids.length}件`)
+  t(!ids.includes('c_c1') && ids.includes('e2'), '見積書にした成約は見積書の行だけ出る')
+  const r = [...p1.rows, ...p2.rows, ...p3.rows].find(x => x.id === 'c_c5')
+  t(r && r._contract && r._contract.id === 'c5', '成約の行は「見積書として作成」に要る成約の中身を持つ')
+}
+
 console.log('\n--- 画面側：追客・広告費・見積・上部の更新ボタン ---')
 {
   const rd = f => fs.readFileSync(new URL('../src/' + f, import.meta.url).pathname, 'utf8')
@@ -195,8 +220,27 @@ console.log('\n--- 画面側：追客・広告費・見積・上部の更新ボ�
   t(/loadedMonths\.has\(selMonth\)/.test(ad) && /fetchLeadMonths\(\[m\]\)/.test(ad), '★それより前の月は選んだ時に追加で読む')
   t(/isAutoMonth && !loadedMonths\.has\(selMonth\)/.test(ad), '★読めていない月は保存させない（0件で広告費を上書きしない）')
   t(!/fetch\('\/api\/inbound'\)/.test(est) && /\/api\/inbound\?summary=1/.test(est), '★見積タブはリード全件を読まない（直近50件）')
-  t(/rows\.slice\(0, listLimit\)/.test(est) && /setListLimit\(n => n \+ 50\)/.test(est), '見積の一覧は50行ずつ・「さらに50件表示」')
+  t(!/fetch\('\/api\/estimate'\)\.then/.test(est) && !/fetch\('\/api\/contracts'\)\.then/.test(est), '★見積タブは見積書・成約の全件を読まない')
+  t(/\/api\/estimate\?list=1&offset=\$\{offset\}&limit=\$\{limit\}/.test(est) && /onClick=\{isDemo \? \(\) => setListLimit\(n => n \+ 50\) : loadMore\}/.test(est), '見積の一覧は50件ずつ読み、「次の50件を読み込む」で追加')
   t(!/⟳ 更新/.test(top) && !/onRefresh/.test(app), '上部の「更新」ボタン（何もしていなかった）を出さない')
+}
+
+console.log('\n--- 年なしの受付日（引越し侍・ズバットの一部）の年 ---')
+{
+  const { receivedAtMs } = await import('../src/lib/sortLeads.js')
+  const ymd = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
+  const at = (rec, savedAt, updatedAt) => ymd(receivedAtMs({ receivedAt: rec, savedAt, ...(updatedAt ? { updatedAt } : {}) }))
+  t(at('10/18 09:00', '2026-10-18T01:00:00.000Z') === '2026-10-18 09:00', '通常：取得した年')
+  // 本番で実際にある形：再問い合わせで受付日時だけ後から更新される（取得の6日後）。updatedAt は付く
+  t(at('10/18 16:55', '2026-10-12T01:56:00.000Z', '2026-10-18T08:00:00.000Z') === '2026-10-18 16:55', '★受付日時が取得より後に更新されたリードも同じ年のまま（前年にしない）')
+  t(at('12/31 23:50', '2027-01-02T03:00:00.000Z') === '2026-12-31 23:50', '★年明けに取得した12月の受付は前年（今年の12月＝未来にしない）')
+  t(at('01/05 10:00', '2026-01-05T02:00:00.000Z', '2027-02-10T00:00:00.000Z') === '2026-01-05 10:00', '★1年前の1月のリードは、後で編集されても1年前のまま（今年の1月として数えない）')
+  t(at('06/01 10:00', '2027-01-20T00:00:00.000Z') === '2026-06-01 10:00', '取得がずっと後になった古いリードも、取得日より前の一番近い年')
+  // 日本時間の元日0時台に取得（UTCではまだ前年の12/31）。サーバー（UTC）でも画面（日本時間）でも翌年として読む
+  t(at('01/01 00:10', '2026-12-31T15:30:00.000Z').startsWith('2027-01-01'), '★日本時間の元日0時台に取得したリードは新しい年')
+  t(at('12/31 23:50', '2026-12-31T15:30:00.000Z').startsWith('2026-12-31'), '日本時間の大晦日の受付は前の年のまま')
+  const now = new Date(); const md = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} 00:01`
+  t(ymd(receivedAtMs({ receivedAt: md })).startsWith(String(now.getFullYear())), '日時が何も無いリードは今日を基準にする')
 }
 
 console.log('\n--- 画面側：広告費で別々に読んだ月を合わせる（mergeLeads）---')

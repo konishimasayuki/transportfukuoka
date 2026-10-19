@@ -37,9 +37,13 @@ const adTmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'adcost-')), 'adco
 fs.writeFileSync(adTmp, fs.readFileSync(path.join(REPO, 'src/lib/adcost.js'), 'utf8').replace("from './sortLeads'", `from '${path.join(REPO, 'src/lib/sortLeads.js')}'`))
 const { adCountsByMonthDay } = await import(adTmp)
 const CONTRACTS=Array.from({length:130},(_,i)=>({id:'c'+i,name:'成約'+i,status:i<5?'要追客':'成約済み',date:`2026-${String(7+(i%4)).padStart(2,'0')}-${String(1+(i%28)).padStart(2,'0')}`,salesDate:`2026-${String(7+(i%4)).padStart(2,'0')}-${String(1+(i%28)).padStart(2,'0')}`,amount:50000+i}))
-const ESTIMATES=Array.from({length:8},(_,i)=>({id:'e'+i,estimateNo:'EST-2026000'+i,name:'見積'+i,estimateDate:'2026-10-0'+(i+1),total:10000}))
+// 見積書：8件。うち2件は成約から作ったもの（元の成約の位置に並ぶ）
+const ESTIMATES=Array.from({length:8},(_,i)=>({id:'e'+i,estimateNo:'EST-2026000'+(i+1),name:'見積'+i,estimateDate:'2026-10-0'+(i+1),total:10000,...(i<2?{contractId:'c'+(10+i)}:{})}))
+store.set('transportfukuoka:contracts',JSON.stringify(CONTRACTS)); store.set('transportfukuoka:estimates',JSON.stringify(ESTIMATES))
 let expensesPosts=[], failMonth=''
 const {default:inbound}=await import(path.join(REPO, 'api/inbound.js'))
+const {default:estimateApi}=await import(path.join(REPO, 'api/estimate.js'))
+const { buildEstimateRows } = await import(path.join(REPO, 'src/lib/estimateRows.js'))
 const ROOT=path.join(REPO, 'dist')
 const MIME={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml'}
 let hits=[]
@@ -51,7 +55,9 @@ const srv=http.createServer(async(req,res)=>{const u=new URL(req.url,'http://x')
       setHeader(){},status(c){code=c;return this},end(){res.writeHead(code);res.end();return this},
       json(o){const b=JSON.stringify(o);hits.push(`${req.method} ${u.search||'(全件)'} ${(b.length/1024).toFixed(0)}KB`);res.writeHead(code,{'Content-Type':'application/json'});res.end(b);return this}}); return}
   if(u.pathname==='/api/contracts') return J({items:CONTRACTS})
-  if(u.pathname==='/api/estimate') return J({items:ESTIMATES})
+  if(u.pathname==='/api/estimate'){ let code=200; await estimateApi({method:req.method,body:raw?JSON.parse(raw):undefined,query:Object.fromEntries(u.searchParams)},{
+      setHeader(){},status(c){code=c;return this},end(){res.writeHead(code);res.end();return this},
+      json(o){const b=JSON.stringify(o);hits.push(`${req.method} /api/estimate${u.search} ${(b.length/1024).toFixed(0)}KB`);res.writeHead(code,{'Content-Type':'application/json'});res.end(b);return this}}); return }
   if(u.pathname==='/api/expenses'){ if(req.method==='POST'){expensesPosts.push(JSON.parse(raw));return J({ok:true})} return J({data:{}}) }
   if(u.pathname==='/api/lock') return J({locks:{},at:new Date().toISOString()})
   if(u.pathname==='/api/staff') return J({staff:['佐藤']})
@@ -127,14 +133,26 @@ const post=expensesPosts.at(-1); let sum=0; for(const d of Object.values(post?.v
 t(post && post.month==='2026-07' && sum===e7.yen,'★保存した値も全件で数えた値と一致',`${post?.month} ${sum}`)
 
 console.log('\n--- 見積書 ---')
+const EXPECT=buildEstimateRows(ESTIMATES,CONTRACTS) // 全件で並べた正解（130成約−見積化2＋見積8＝136行）
+const rowKeys=async()=>p.evaluate(()=>[...document.querySelectorAll('tbody tr')].map(tr=>tr.children[1].innerText.trim()+'|'+tr.children[2].innerText.trim()))
+const expKeys=(n)=>EXPECT.rows.slice(0,n).map(r=>r.estimateNo+'|'+r.name+' 様')
 await nav('見積書'); await p.locator('tbody tr').first().waitFor({timeout:30000}); await p.waitForTimeout(800)
 console.log('   通信:',hits.join(' | '))
 t(!hits.some(h=>h.includes('(全件)')),'★リード全件を読んでいない')
+t(hits.some(h=>h.includes('/api/estimate?list=1&offset=0&limit=50')),'★見積書・成約もサーバーから50件だけ受け取る')
+t(!hits.some(h=>h.startsWith('GET /api/estimate ')),'見積書の全件は読んでいない')
 const er=await p.locator('tbody tr').count(); t(er===50,'一覧は50行',String(er))
-k=await kpiVals(); t(k[0].includes('8件')&&k[0].includes('130件'),'件数は全体のまま',k[0])
-const em=p.locator('button:has-text("さらに50件表示")'); t((await em.innerText()).includes('残り88件'),'残りの表示',await em.innerText())
-await em.evaluate(el=>el.click()); await em.evaluate(el=>el.click()); await p.waitForTimeout(400)
-t(await p.locator('tbody tr').count()===138 && await em.count()===0,'★押していくと全138行・ボタンが消える',String(await p.locator('tbody tr').count()))
+t(JSON.stringify(await rowKeys())===JSON.stringify(expKeys(50)),'★並び順が全件で並べた時と同じ（成約から作った見積書は元の成約の位置）')
+k=await kpiVals(); t(k[0]==='件数（見積 ／ 成約）=8件/128件'&&k[1]==='合計金額（一覧全体）=¥'+(EXPECT.sumEst+EXPECT.sumCon).toLocaleString('ja-JP'),'★件数・合計金額は一覧全体の値',k.slice(0,2).join(' / '))
+const em=p.locator('button:has-text("次の50件を読み込む")'); t((await em.innerText()).includes('残り86件'),'残りの表示',await em.innerText())
+hits=[]; await em.evaluate(el=>el.click()); await p.waitForTimeout(800)
+t(hits.length===1 && hits[0].includes('offset=50&limit=50'),'押すと次の50件だけ受け取る',hits.join(' | '))
+await em.evaluate(el=>el.click()); await p.waitForTimeout(800)
+t(await p.locator('tbody tr').count()===136 && await em.count()===0,'★押していくと全136行・ボタンが消える',String(await p.locator('tbody tr').count()))
+t(JSON.stringify(await rowKeys())===JSON.stringify(expKeys(136)),'★全部読んだ時の並びも全件で並べた時と同じ（重複・欠落なし）')
+// 後から読んだ行（最後の行＝成約由来）から「見積書として作成」を開ける
+await p.locator('tbody tr').last().locator('button:has-text("見積書として作成")').evaluate(el=>el.click()); await p.waitForTimeout(800)
+t(await p.locator('iframe[title="御見積書"]').count()===1,'★後から読んだ成約の行からも「見積書として作成」が開く')
 
 await b.close(); await new Promise(r=>srv.close(r))
 console.log(`\n${ok} PASS / ${ng} FAIL`); process.exit(ng?1:0)
