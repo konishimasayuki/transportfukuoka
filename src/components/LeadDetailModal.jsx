@@ -2,7 +2,7 @@
 // 編集モード：✏ 編集ボタンで全項目を編集可能化（ステータス・家財・メモは常時編集可）
 // onSave(item, patch)：空文字でもキーが含まれていれば送る（明示クリア対応）
 // onCreateEstimate(item)：「📝 見積書を作成」で見積書タブへプリフィル遷移
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate, hasAmountTag, formatAmount, fillAmount } from '../lib/mailTemplate'
 import ModalPortal from './ModalPortal'
@@ -171,6 +171,11 @@ const EDITABLE_KEYS = [
   'memo',
 ]
 
+// 家財の比較用（数量0の行は保存時に落とすので、比べる時も落とす）
+function kazaiSig(list) {
+  return JSON.stringify((Array.isArray(list) ? list : []).filter(k => k && k.name && Number(k.qty) > 0).map(k => [k.name, Number(k.qty)]))
+}
+
 // 編集／閲覧共通のフィールド行
 function Row({ label, value, edit, onChange, type = 'text', options, placeholder, wide }) {
   // 閲覧時：値が空なら行を出さない（編集モードでは空でも入力欄を出す）
@@ -203,6 +208,9 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
   const [pickerOpen, setPickerOpen] = useState(false) // 家財を選ぶモーダル
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
+  // 開いた時点の内容。保存の時はこれと比べて「変えた項目だけ」送る。
+  // 全項目を送ると、開いている間に他の人が書いたメモ等を古い内容で上書きしてしまう。
+  const baseRef = useRef({ draft: {}, kazai: '[]', boxCount: '' })
   // 担当者の選択肢（設定タブで管理しているリスト）
   // ※フックは早期 return より前に置く（開閉のたびにフック数が変わると画面が真っ白になる）
   const [staffList, setStaffList] = useState(DEFAULT_STAFF)
@@ -220,6 +228,7 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
     setDraft(d)
     setKazai(Array.isArray(item.kazai) ? item.kazai.map(k => ({ ...k })) : [])
     setBoxCount(item.boxCount || '')
+    baseRef.current = { draft: d, kazai: kazaiSig(item.kazai), boxCount: item.boxCount || '' }
     setPickerOpen(false)
     setDirty(false)
     setEdit(!!isNew)
@@ -247,14 +256,25 @@ export default function LeadDetailModal({ item, isNew, onClose, onStatusChange, 
     if (!onSave) return
     setSaving(true)
     try {
-      const patch = { ...draft,
-        kazai: kazai.filter(k => k.name && Number(k.qty) > 0),
-        kazaiCount: kazai.filter(k => Number(k.qty) > 0).length,
-        kazaiUnknown: 0,
-        boxCount,
+      const kz = kazai.filter(k => k.name && Number(k.qty) > 0)
+      let patch
+      if (isNew) {
+        patch = { ...draft, kazai: kz, kazaiCount: kz.length, kazaiUnknown: 0, boxCount }
+      } else {
+        // 変えた項目だけ（開いた時点の内容と比べる）
+        const base = baseRef.current
+        patch = {}
+        EDITABLE_KEYS.forEach(k => { if (String(draft[k] ?? '') !== String(base.draft[k] ?? '')) patch[k] = draft[k] })
+        if (kazaiSig(kz) !== base.kazai) Object.assign(patch, { kazai: kz, kazaiCount: kz.length, kazaiUnknown: 0 })
+        if (String(boxCount ?? '') !== String(base.boxCount ?? '')) patch.boxCount = boxCount
       }
-      await onSave(item, patch)
-      setDirty(false); setEdit(false)
+      if (!isNew && !Object.keys(patch).length) { setDirty(false); setEdit(false); setSaving(false); return }
+      // 保存に失敗した時（呼び出し側が false を返す）は編集中のまま残す（書いた内容を消さない）
+      const ok = await onSave(item, patch)
+      if (ok !== false) {
+        if (!isNew) baseRef.current = { draft: { ...draft }, kazai: kazaiSig(kz), boxCount }
+        setDirty(false); setEdit(false)
+      }
     } catch (e) { console.error(e) }
     setSaving(false)
   }
@@ -567,11 +587,12 @@ export function ConvertToContractModal({ lead, onClose, onConfirm, onGoCalendar 
     if (!amount || !staff) return // 金額・担当者は必須
     setSaving(true)
     try {
-      await onConfirm(lead, {
+      const ok = await onConfirm(lead, {
         amount: Number(amount) || 0,
         srcLabel, date, salesDate, staff, memo, route,
       })
-      setDone(true) // 完了：閉じずに次工程へのハンドオフを表示
+      // 失敗した時（false）は入力画面のまま残す（完了と表示しない・入力した金額も消さない）
+      if (ok !== false) setDone(true) // 完了：閉じずに次工程へのハンドオフを表示
     } catch (e) { console.error(e) }
     setSaving(false)
   }
