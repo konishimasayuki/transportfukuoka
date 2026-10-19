@@ -206,6 +206,17 @@ console.log('\n--- 広告費タブ：指定した月だけ（?months=）---')
   t(r.items.length === 3, '指定した2か月のリードだけ返す（月末23:59・月初0:00も含む）', names.join(' / '))
   t(!r.items.some(l => /07\/10|08\/31/.test(l.receivedAt)), '他の月は返さない')
   t(r.items.every(l => !('kazai' in l) && !('memo' in l) && 'site' in l && 'count' in l && 'receivedAt' in l), '★集計に要る項目だけ（家財・メモなどは送らない）', Object.keys(r.items[0] || {}).join(','))
+  // ★本番で見つかった不具合：再問い合わせで受付日時が取得より後に更新されたリード（年なし）。
+  //   updatedAt を送らないと画面側で前年扱いになり、広告費が少なく出ていた
+  const { receivedAtMs } = await import('../src/lib/sortLeads.js')
+  const re = { id: 're', key: 're', site: '引越し侍', count: '1人', receivedAt: '10/18 16:55', savedAt: `${y}-10-12T01:56:00.000Z`, updatedAt: `${y}-10-18T08:00:00.000Z`, detectedAt: `${y}-10-18T08:00:00.000Z` }
+  store.set(KEY, JSON.stringify([...JSON.parse(store.get(KEY)), re]))
+  const r2 = await call('GET', undefined, { months: `${y}-10` })
+  const got = r2.items.find(l => l.key === 're')
+  t(!!got, '受付日時が後から更新されたリードも返す')
+  t(got && new Date(receivedAtMs(got)).getFullYear() === y && new Date(receivedAtMs(got)).getMonth() === 9,
+    '★受け取った項目だけで、画面でも同じ月（今年10月）に数えられる（updatedAt を送る）', got ? Object.keys(got).join(',') : '')
+  t(got && receivedAtMs(got) === receivedAtMs(re), '★画面での受付日時が全項目の時と完全に同じ')
   const bad = await call('GET', undefined, { months: 'abc' })
   t(bad && bad.error, '月の指定がおかしい時はエラー')
 }
