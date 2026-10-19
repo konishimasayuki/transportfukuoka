@@ -3,7 +3,7 @@
 //   PUT  … 定型文を保存する
 //   POST … 1通送る。送れたらリードに送信履歴を残す
 import { mailerStatus, sendMail, validAddress } from './_mailer.js'
-import { readItems, mutate, redisCmd } from './_kvstore.js'
+import { readItems, mutateWithVersion, redisCmd } from './_kvstore.js'
 import { writeMeta } from './_leadmeta.js'
 import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate, hasAmountTag } from '../src/lib/mailTemplate.js'
 
@@ -64,7 +64,7 @@ export default async function handler(req, res) {
       const at = new Date().toISOString()
       if (leadKey || phone || id) {
         try {
-          const saved = await mutate(LEADS_KEY, LEADS_VER, (items) => {
+          const { result: saved, version } = await mutateWithVersion(LEADS_KEY, LEADS_VER, (items) => {
             let idx = leadKey ? items.findIndex(x => x.key === leadKey) : -1
             if (idx === -1 && id) idx = items.findIndex(x => x.id === id)
             if (idx === -1 && phone) {
@@ -80,7 +80,7 @@ export default async function handler(req, res) {
             return { items: copy, result: copy }
           })
           // サマリ（「更新」ボタン・追客タブが読む直近分）にも送信履歴を反映する
-          if (Array.isArray(saved)) await writeMeta(saved)
+          if (Array.isArray(saved)) await writeMeta(saved, version)
         } catch (e) { console.error('mail log save failed:', e.message) }
       }
       return res.json({ ok: true, id: sent.id, provider: sent.provider, at })

@@ -806,7 +806,7 @@ export default function Estimate({ user, switchTab }) {
     try { sessionStorage.removeItem('tf_estimate_prefill') } catch {}
     if (!p || typeof p !== 'object') return
     const f = emptyForm()
-    f.estimateNo = nextNo()
+    f.estimateNo = '' // 番号はサーバーに聞いてから入れる（下の freshNextNo。一覧の読み込み前でも重ならないように）
     f.estimateDate = new Date().toISOString().slice(0, 10)
     if (p.name) f.name = p.name
     if (p.kana) f.kana = p.kana
@@ -842,6 +842,10 @@ export default function Estimate({ user, switchTab }) {
       if (boxKey) f.items[boxKey] = Number(p.boxCount) || 0
     }
     setForm(f); setEditId(null); setView('edit'); setPreview(false); setStep('basic')
+    freshNextNo().then(no => {
+      if (no) setForm(prev => (prev.estimateNo ? prev : { ...prev, estimateNo: no }))
+      else showToast('見積番号を確認できませんでした。番号を入力してください')
+    })
     // 郵便番号が空なら住所から自動補完（Googleマップキーがある時のみ）
     if (GMAPS_KEY) {
       if (f.toAddress && !f.toZip) zipFromAddress(f.toAddress).then(r => { if (r.zip) setForm(prev => ({ ...prev, toZip: r.zip })) }).catch(() => {})
@@ -912,16 +916,24 @@ export default function Estimate({ user, switchTab }) {
     return merged
   }
 
-  // 採番：EST-YYYY####（同年の既存番号の最大+1）。本番はサーバーが全見積書から出した番号を使う
-  const nextNo = () => {
+  // 採番：EST-YYYY####（同年の既存番号の最大+1）。
+  // 本番は開く直前にサーバーへ聞く（一覧は50件ずつしか持たないため。全見積書から出すので、
+  // 他の人がついさっき作った番号とも重ならない）。聞けなかった時は '' を返す（重複番号で作らない）。
+  const freshNextNo = async () => {
     const y = new Date().getFullYear()
-    if (!isDemo && list.nextNo && list.nextNo.startsWith(`EST-${y}`)) return list.nextNo
-    return nextEstimateNo(isDemo ? items : list.rows.filter(r => r._kind === 'estimate'), y)
+    if (isDemo) return nextEstimateNo(items, y)
+    try {
+      const d = await fetchList(0, 1)
+      if (d && typeof d.nextNo === 'string' && d.nextNo.startsWith(`EST-${y}`)) return d.nextNo
+    } catch (e) { console.error(e) }
+    return ''
   }
 
-  const openNew = () => {
+  const openNew = async () => {
+    const no = await freshNextNo()
+    if (!no) { showToast('見積番号を確認できませんでした。もう一度お試しください'); return }
     const f = emptyForm()
-    f.estimateNo = nextNo()
+    f.estimateNo = no
     f.estimateDate = new Date().toISOString().slice(0, 10)
     openPaper(f, null)
   }
@@ -1093,9 +1105,11 @@ export default function Estimate({ user, switchTab }) {
     const restCount = Math.max(0, built.total - rows.length)
 
     // 成約レコードを「見積書として作成」する：成約・リードの内容を入れた帳票をモーダルで開く
-    const issueFromContract = (c) => {
+    const issueFromContract = async (c) => {
+      const no = await freshNextNo()
+      if (!no) { showToast('見積番号を確認できませんでした。もう一度お試しください'); return }
       const f = emptyForm()
-      f.estimateNo = nextNo()
+      f.estimateNo = no
       // 訪問見積日があればそれを見積日に、無ければ今日
       f.estimateDate = ymd(c.visitEstimateDate) || new Date().toISOString().slice(0, 10)
       // 受付日は、リードから引き継いだ受付日時（無ければ売上登録日）

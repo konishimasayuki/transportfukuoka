@@ -81,6 +81,34 @@ console.log('\n--- 書き込みでサマリが追従するか ---')
   t(s3.count === 300 && !s3.items.some(x => x.key === k), '削除もサマリに反映される')
 }
 
+console.log('\n--- 古いサマリは使わない（他の人の新しいメモを上書きしないため）---')
+{
+  seed(300)
+  await call('GET', undefined, { summary: '1' })
+  // 2件の書き込みがほぼ同時に起き、サマリの保存順が入れ替わった状態を作る
+  const oldMeta = store.get(META), oldFull = store.get(META + ':full')
+  await call('PUT', { key: 'k0', phone: '090-1000-0000', memo: '新しいメモ' })
+  t(JSON.parse(store.get(META)).ver === store.get(KEY + ':ver'), 'サマリには本体の版が記録される', `ver=${JSON.parse(store.get(META)).ver}`)
+  store.set(META, oldMeta); store.set(META + ':full', oldFull) // 古いサマリが後から上書きした
+  reads = []
+  const s = await call('GET', undefined, { summary: '1' })
+  t(s.items.find(x => x.key === 'k0').memo === '新しいメモ', '★サマリが古い時は使わず、本体から作り直す（「更新」で古いメモが出ない）')
+  t(reads.includes(KEY), 'その時だけ全件を読む')
+  const f = await call('GET', undefined, { follow: '1' })
+  t(f.items.find(x => x.key === 'k0').memo === '新しいメモ', '★追客の1ページ目も古いサマリを使わない')
+  reads = []
+  await call('GET', undefined, { summary: '1' })
+  t(!reads.includes(KEY), '作り直した後は、また全件を読まない')
+  // 以前の形式（版が無い）のサマリが残っていても使わない（本番に出した直後）
+  const m = JSON.parse(store.get(META)); delete m.ver; store.set(META, JSON.stringify(m))
+  reads = []
+  await call('GET', undefined, { summary: '1' })
+  t(reads.includes(KEY), '版の無い古い形式のサマリは作り直す')
+  // 書き込み本体には影響しない：本体の件数・内容はそのまま
+  const body = JSON.parse(store.get(KEY))
+  t(body.length === 300 && body.find(x => x.key === 'k0').memo === '新しいメモ', '本体のデータはそのまま')
+}
+
 console.log('\n--- 件数だけ（?counts=1・左メニューの追客バッジ）---')
 {
   seed(300)
@@ -221,6 +249,8 @@ console.log('\n--- 画面側：追客・広告費・見積・上部の更新ボ�
   t(/isAutoMonth && !loadedMonths\.has\(selMonth\)/.test(ad), '★読めていない月は保存させない（0件で広告費を上書きしない）')
   t(!/fetch\('\/api\/inbound'\)/.test(est) && /\/api\/inbound\?summary=1/.test(est), '★見積タブはリード全件を読まない（直近50件）')
   t(!/fetch\('\/api\/estimate'\)\.then/.test(est) && !/fetch\('\/api\/contracts'\)\.then/.test(est), '★見積タブは見積書・成約の全件を読まない')
+  t(!/nextNo\(\)/.test(est) && (est.match(/await freshNextNo\(\)/g) || []).length === 2 && /freshNextNo\(\)\.then/.test(est), '★見積番号は開く直前にサーバーへ聞く（新規・成約から作成・リードから作成の3か所）')
+  t(/if \(!no\) \{ showToast\('見積番号を確認できませんでした/.test(est), '★番号を聞けなかった時は開かない（重複番号で作らない）')
   t(/\/api\/estimate\?list=1&offset=\$\{offset\}&limit=\$\{limit\}/.test(est) && /onClick=\{isDemo \? \(\) => setListLimit\(n => n \+ 50\) : loadMore\}/.test(est), '見積の一覧は50件ずつ読み、「次の50件を読み込む」で追加')
   t(!/⟳ 更新/.test(top) && !/onRefresh/.test(app), '上部の「更新」ボタン（何もしていなかった）を出さない')
 }

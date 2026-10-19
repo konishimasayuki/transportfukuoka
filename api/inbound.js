@@ -1,6 +1,6 @@
 import { placeCall, twilioReady } from './_twilio.js'
 import { sendPushToAll } from './_push.js'
-import { readItems, mutate, redisCmd } from './_kvstore.js'
+import { readItems, readVersioned, mutateWithVersion, redisCmd } from './_kvstore.js'
 import { receivedAtMs } from '../src/lib/sortLeads.js'
 import { META_MAX, PAGE, slimLead, newerFirst, buildMeta, writeMeta, readMeta, readMetaBoth } from './_leadmeta.js'
 
@@ -22,8 +22,8 @@ const BROADCAST_KEY = 'transportfukuoka:broadcasts'
 
 // 全件から「軽いほう＋全項目のほう」を作り、保存もしておく（サマリが無い時だけ通る）
 async function rebuildMeta() {
-  const all = await readItems(KEY)
-  writeMeta(all)
+  const { items: all, version } = await readVersioned(KEY, VER_KEY) // 本体と版を同時に読む
+  writeMeta(all, version)
   return { all, ...buildMeta(all) }
 }
 
@@ -213,7 +213,8 @@ export default async function handler(req, res) {
       }
       const items = await readItems(KEY)
       if (recent > 0) {
-        // サマリが無かった（初回・破損時）のでここで作り直しておく
+        // サマリが無かった（初回・破損時）のでここで作り直しておく。
+        // 版は付けない＝「更新」ボタン等が読む時は古いとみなされ、版付きで作り直される（安全側）
         writeMeta(items)
         let bcItems = []
         try {
@@ -252,7 +253,7 @@ export default async function handler(req, res) {
       // 楽観ロック付きで「読む→統合/追加→書き戻す」を原子的に実行。
       // 同時POSTでの取りこぼし（lost update）を防ぐ。副作用（架電・プッシュ）は
       // 書き込み確定後に一度だけ実行するため、mutator の外へ出す。
-      const result = await mutate(KEY, VER_KEY, (items) => {
+      const { result, version } = await mutateWithVersion(KEY, VER_KEY, (items) => {
         // 既に取り込み済み：空でない新フィールドだけマージ（詳細ページ取得で情報を充実させる）
         // key が null（信頼できる識別子なし）の場合は統合対象を探さない＝必ず新規リードとして追加する。
         let idx = key ? items.findIndex(i => leadKey(i) === key) : -1
@@ -300,7 +301,7 @@ export default async function handler(req, res) {
       })
 
       // サマリ（新着チェック用の軽量キー）を更新。本体の書き込みが終わってから行う。
-      if (result && result.items) await writeMeta(result.items)
+      if (result && result.items) await writeMeta(result.items, version)
       // 書き込み確定後にのみ副作用を実行（再試行で重複発火しない）。
       if (result && result.duplicate === false && result.newItem) {
         const newItem = result.newItem
@@ -329,7 +330,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'key / phone / id required' })
       }
       // 対象は findTargetIndex で「1件だけ」特定する（他リードへの波及を防ぐ）。
-      const updated = await mutate(KEY, VER_KEY, (items) => {
+      const { result: updated, version } = await mutateWithVersion(KEY, VER_KEY, (items) => {
         const idx = findTargetIndex(items, body)
         if (idx === -1) return { skipWrite: true, result: false }
         const copy = items.slice()
@@ -339,7 +340,7 @@ export default async function handler(req, res) {
       // 対象が見つからない更新は成功扱いにしない（画面側の保存が黙って消えるのを防ぐ）
       if (!updated) return res.status(404).json({ error: 'lead not found', ok: false })
       // 直近リードの氏名やコピー印が変わることがあるのでサマリも更新する
-      if (updated && updated.items) await writeMeta(updated.items)
+      if (updated && updated.items) await writeMeta(updated.items, version)
       return res.json({ ok: true })
     }
 
@@ -348,7 +349,7 @@ export default async function handler(req, res) {
       if (body.all !== true && !body.key && !body.id && !body.phone) {
         return res.status(400).json({ error: 'phone / key / id or all:true required' })
       }
-      const out = await mutate(KEY, VER_KEY, (items) => {
+      const { result: out, version } = await mutateWithVersion(KEY, VER_KEY, (items) => {
         let filtered
         if (body.all === true) {
           filtered = []
@@ -361,7 +362,7 @@ export default async function handler(req, res) {
         return { items: filtered, result: { removed: items.length - filtered.length, items: filtered } }
       })
       // 削除で件数が変わるのでサマリも更新する
-      if (out && out.items) await writeMeta(out.items)
+      if (out && out.items) await writeMeta(out.items, version)
       return res.json({ ok: true, removed: out.removed })
     }
 

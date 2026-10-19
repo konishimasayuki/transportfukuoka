@@ -151,8 +151,10 @@ await em.evaluate(el=>el.click()); await p.waitForTimeout(800)
 t(await p.locator('tbody tr').count()===136 && await em.count()===0,'★押していくと全136行・ボタンが消える',String(await p.locator('tbody tr').count()))
 t(JSON.stringify(await rowKeys())===JSON.stringify(expKeys(136)),'★全部読んだ時の並びも全件で並べた時と同じ（重複・欠落なし）')
 // 後から読んだ行（最後の行＝成約由来）から「見積書として作成」を開ける
+hits=[]
 await p.locator('tbody tr').last().locator('button:has-text("見積書として作成")').evaluate(el=>el.click()); await p.waitForTimeout(800)
 t(await p.locator('iframe[title="御見積書"]').count()===1,'★後から読んだ成約の行からも「見積書として作成」が開く')
+t(hits.some(h=>h.includes('limit=1&year=2026')),'★開く直前に次の見積番号をサーバーへ聞いている',hits.join(' | '))
 
 await b.close(); await new Promise(r=>srv.close(r))
 console.log(`\n${ok} PASS / ${ng} FAIL`); process.exit(ng?1:0)

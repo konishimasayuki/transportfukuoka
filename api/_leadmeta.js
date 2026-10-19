@@ -3,6 +3,8 @@
 // 呼ばないと「更新」ボタン・追客タブの1ページ目に古い内容が出る。
 import { redisCmd } from './_kvstore.js'
 
+const VER_KEY = 'transportfukuoka:leads:ver' // リード本体の版（書き込みのたびに+1）
+
 // 新着チェック専用の軽量サマリ。
 // ねらい：?recent=N（12秒ごとのポーリング）でリードを毎回全件読み出すと、
 // 1回あたり数MBが Upstash→Vercel に流れ、帯域課金が跳ね上がる。
@@ -66,9 +68,14 @@ export function buildMeta(items) {
   }
 }
 // サマリを保存（失敗しても本体には影響させない。次の機会に作り直される）
-export async function writeMeta(items) {
+// ver：この items を書き込んだ（読んだ）時のリード本体の版。
+//   ほぼ同時に2件書き込まれるとサマリの保存順が入れ替わり、古いサマリが残ることがある。
+//   古いサマリのメモを開いて保存すると他の人の新しいメモを上書きしてしまうため、
+//   読む側（readMetaBoth）で本体の版と比べ、違えば使わずに全件から作り直す。
+export async function writeMeta(items, ver) {
   try {
     const { meta, full } = buildMeta(items)
+    meta.ver = full.ver = ver == null ? null : String(ver)
     await Promise.all([
       redisCmd(['SET', META_KEY, JSON.stringify(meta)]),
       redisCmd(['SET', META_FULL_KEY, JSON.stringify(full)]),
@@ -84,13 +91,16 @@ export async function readMeta() {
     return (m && Array.isArray(m.items) && typeof m.count === 'number') ? m : null
   } catch { return null }
 }
-// 軽いほうと全項目のほうを両方読む（どちらか欠けていれば null）
+// 軽いほうと全項目のほうを両方読む。
+// どちらか欠けている・リード本体の版と合わない（＝古い）時は null（呼び出し側で全件から作り直す）
 export async function readMetaBoth() {
   try {
-    const [meta, raw] = await Promise.all([readMeta(), redisCmd(['GET', META_FULL_KEY])])
+    const [meta, raw, ver] = await Promise.all([readMeta(), redisCmd(['GET', META_FULL_KEY]), redisCmd(['GET', VER_KEY])])
     const full = raw ? JSON.parse(raw) : null
     if (!meta || !meta.sites || !meta.today || typeof meta.follow !== 'number') return null
     if (!full || !Array.isArray(full.items) || !Array.isArray(full.follow)) return null
+    const cur = ver == null || ver === '' ? '0' : String(ver)
+    if (meta.ver == null || meta.ver !== cur || full.ver !== cur) return null
     return { meta, full }
   } catch { return null }
 }
