@@ -37,8 +37,14 @@ function inMonths(l, months) {
   return months.has(ymOf(t)) || months.has(ymOf(t + 9 * 3600 * 1000))
 }
 // 広告費の集計に要る項目だけ（家財などを含む全項目は1件1KB超あり、2か月で3MBを超える）
+// ★updatedAt / detectedAt も必ず送る。年なしの受付日（引越し侍など）の年を決めるのに使うため
+//   （src/lib/sortLeads.js の yearlessMs）。欠けると再問い合わせで受付日時が更新されたリードが
+//   前年扱いになり、広告費が少なく出る。
 function adLead(l) {
-  return { key: l.key, site: l.site, count: l.count, receivedAt: l.receivedAt, requestedAt: l.requestedAt, savedAt: l.savedAt }
+  return {
+    key: l.key, site: l.site, count: l.count, receivedAt: l.receivedAt, requestedAt: l.requestedAt,
+    savedAt: l.savedAt, updatedAt: l.updatedAt, detectedAt: l.detectedAt,
+  }
 }
 
 // 担当者がCRM上で入力・管理する項目（＝巡回では絶対に上書きしてはならない）。
