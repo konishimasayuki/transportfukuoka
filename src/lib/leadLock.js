@@ -103,6 +103,19 @@ export function agoText(at) {
   return m < 60 ? `${m}分前` : `${Math.floor(m / 60)}時間前`
 }
 
+// 2つの「対応中」一覧が実質同じか。
+// ★取得のたびに新しい値を入れると、中身が同じでも画面全体が作り直される。
+//   リードが数千件あると、そのたびに絞り込みと並べ替えが走って10秒ごとに固まる。
+//   経過時間(at)は20秒ごとの延長で動くが、灰色の出し分けには関係しないので見ない。
+export function sameLocks(a, b) {
+  if (a === b) return true
+  if (!a || !b) return false
+  const ka = Object.keys(a), kb = Object.keys(b)
+  if (ka.length !== kb.length) return false
+  for (const k of ka) { if (!b[k] || b[k].by !== a[k].by) return false }
+  return true
+}
+
 // ===== 一覧用：いま誰かが対応中のリードを定期的に取る =====
 // 見えていない画面に印を出しても意味がないので、表示中だけ問い合わせる。
 export function useLeadLocks(enabled) {
@@ -117,7 +130,8 @@ export function useLeadLocks(enabled) {
       try {
         const d = await fetch('/api/lock', { signal: ac ? ac.signal : undefined }).then(r => r.json())
         if (d && d.at) { const sv = Date.parse(d.at); if (sv) skewMs = sv - Date.now() } // 時計のずれを補正
-        if (alive && d && d.locks) setLocks(d.locks)
+        // 中身が同じなら前の値をそのまま返す（Reactは再描画を省く）
+        if (alive && d && d.locks) setLocks(prev => sameLocks(prev, d.locks) ? prev : d.locks)
       } catch { /* 取れない時は前の状態のままにする（誤って印を消さない） */ }
       finally { clearTimeout(timer) }
     }

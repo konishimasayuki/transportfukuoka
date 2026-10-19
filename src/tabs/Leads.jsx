@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import LeadDetailModal, { ConvertToContractModal, EMPTY_LEAD, MailPanel, MailSentMark } from '../components/LeadDetailModal'
 import { useLeadLocks, useHoldLock, lockKeyOf, acquireLock, agoText, shouldLock } from '../lib/leadLock'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
@@ -140,6 +140,26 @@ const modalBox     = { background: '#fff', borderRadius: 14, width: '100%', maxW
 
 const norm = (l) => ({ ...l, status: l.status || '未架電' })
 
+// 「更新」で受け取った直近ぶんを手元の一覧に反映する。
+// 既にあるものは差し替え、無いものは先頭に足す。
+// ★差し替えを先に全部済ませてから、新しいものをまとめて先頭に足すこと。
+//   途中で先頭に足すと全員の位置が1つずれ、続く差し替えが別のリードを
+//   上書きしてしまう（新着が消えて既存が重複する）。
+export function mergeLatest(prev, latest) {
+  const idx = new Map(prev.map((x, i) => [x.key || x.id, i]))
+  const next = prev.slice()
+  const added = []
+  const seen = new Set()
+  for (const l of latest) {
+    const k = l.key || l.id
+    if (seen.has(k)) continue // 同じリードが2回来ても1回だけ反映
+    seen.add(k)
+    if (idx.has(k)) next[idx.get(k)] = l
+    else added.push(l)
+  }
+  return added.length ? [...added, ...next] : next
+}
+
 // 手入力の登録・コピーで使う受付日時（既存データと同じ MM/DD HH:MM 表記）
 function fmtNowReceived() {
   const d = new Date(), p2 = (n) => String(n).padStart(2, '0')
@@ -256,6 +276,33 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       setItems((data.items || []).map(norm))
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
+  }
+
+  // ===== 「更新」ボタン：直近50件だけ受け取って一覧に反映する =====
+  // ★全件（本番で8MB超・2.5〜4秒）を毎回取り直していたのが「更新が遅い」の原因。
+  //   新着を見るために押すボタンなので、1ページ目（50件）が最新になれば足りる。
+  //   受け取った50件は key で突き合わせ、既存は差し替え（他の人のステータス・メモも反映）、
+  //   無いものは追加する。
+  //   ・前回から50件を超えて増えた／件数が減った（誰かが削除した）時は全件を取り直す
+  //   ・2ページ目以降の他の人の変更は、タブを開き直した時に反映される
+  const [refreshing, setRefreshing] = useState(false)
+  const refreshLatest = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      const data = await fetch('/api/inbound?summary=1').then(r => r.json())
+      const latest = Array.isArray(data.items) ? data.items : null
+      const total = Number(data.count)
+      // 足りない・減った・応答がおかしい → 正確さを優先して全件
+      if (!latest || !(total >= 0) || total < items.length || total - items.length > latest.length) {
+        await fetchItems()
+        return
+      }
+      setItems(prev => mergeLatest(prev, latest.map(norm)))
+    } catch (e) {
+      console.error(e)
+      await fetchItems() // 軽い取得に失敗したら全件で取り直す
+    } finally { setRefreshing(false) }
   }
 
   // 「本日」判定（受付日時 MM/DD を優先、無ければ保存日時）
@@ -574,7 +621,9 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     setImporting(false)
   }
 
-  const filtered = items
+  // ★リードが数千件あるため、ここは1回の描画で全件を6回ふるいにかけて並べ替える。
+  //   毎回やり直すと数十〜数百ミリ秒かかり、画面が引っかかる。条件が変わった時だけ計算する。
+  const filtered = useMemo(() => items
     .filter(i => !isQuotes || i.status === '見積り') // 見積り管理：ステータス「見積り」のみ
     .filter(i => {
       if (dateFilter.type === 'day') return leadDateStr(i) === dateFilter.date
@@ -599,10 +648,17 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       if (sortKey === 'receivedAt') { const cmp = receivedAtMs(a) - receivedAtMs(b); return sortDir === 'asc' ? cmp : -cmp }
       return receivedAtMs(b) - receivedAtMs(a) // 既定：受付日時の新しい順
     })
+  , [items, isQuotes, dateFilter, search, filterStatuses, filterTimetree, filterStaffs, sortKey, sortDir])
 
-  const countBy = (s) => items.filter(i => i.status === s).length
+  // ステータス別の件数も全件走査になる。描画のたびにやり直さない。
+  const statusCounts = useMemo(() => {
+    const m = {}
+    for (const i of items) { const k = i.status || '未架電'; m[k] = (m[k] || 0) + 1 }
+    return m
+  }, [items])
+  const countBy = (s) => statusCounts[s] || 0
   // 見積り管理タブの集計母数（画面に出している対象と一致させる）
-  const quoteItems = items.filter(i => i.status === '見積り')
+  const quoteItems = useMemo(() => items.filter(i => i.status === '見積り'), [items])
 
   // ページング：直近50件ずつ表示（受付日時の新しい順）。以降は「次へ」で移動。
   const PAGE_SIZE = 50
@@ -625,7 +681,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
 
       <div className="filter-row">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 名前・フリガナ(ひらがな可)・電話・エリアで検索..." />
-        <button className="btn btn-outline btn-sm" onClick={fetchItems} disabled={isDemo}>⟳ 更新</button>
+        <button className="btn btn-outline btn-sm" onClick={refreshLatest} disabled={isDemo || refreshing}>{refreshing ? '更新中…' : '⟳ 更新'}</button>
       </div>
 
       {/* 月選択 ＋ 日付フィルター（今日〜10日前） */}

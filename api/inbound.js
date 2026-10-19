@@ -1,6 +1,8 @@
 import { placeCall, twilioReady } from './_twilio.js'
 import { sendPushToAll } from './_push.js'
-import { readItems, mutate, redisCmd } from './_kvstore.js'
+import { readItems, readVersioned, mutateWithVersion, redisCmd } from './_kvstore.js'
+import { receivedAtMs } from '../src/lib/sortLeads.js'
+import { META_MAX, PAGE, slimLead, newerFirst, buildMeta, writeMeta, readMeta, readMetaBoth } from './_leadmeta.js'
 
 const KEY     = 'transportfukuoka:leads'
 const VER_KEY = 'transportfukuoka:leads:ver'
@@ -18,42 +20,25 @@ async function maybeAutoCall(lead) {
 // お知らせメッセージ（/api/broadcast で保存）。?recent 応答に混ぜて子拡張へ届ける。
 const BROADCAST_KEY = 'transportfukuoka:broadcasts'
 
-// 新着チェック専用の軽量サマリ。
-// ねらい：?recent=N（12秒ごとのポーリング）でリードを毎回全件読み出すと、
-// 1回あたり数MBが Upstash→Vercel に流れ、帯域課金が跳ね上がる。
-// 直近数件の「通知に必要な項目だけ」を別キー（1KB未満）に持ち、そこだけ読む。
-const META_KEY = 'transportfukuoka:leads:meta'
-const META_MAX = 10 // 保持する直近件数（?recent=N が これを超えたら全件から作り直す）
+// 全件から「軽いほう＋全項目のほう」を作り、保存もしておく（サマリが無い時だけ通る）
+async function rebuildMeta() {
+  const { items: all, version } = await readVersioned(KEY, VER_KEY) // 本体と版を同時に読む
+  writeMeta(all, version)
+  return { all, ...buildMeta(all) }
+}
 
-// 通知に必要な項目だけを抜き出す（本体をそのまま入れると軽量化にならない）
-function slimLead(l) {
-  return {
-    key: l.key, id: l.id, site: l.site, name: l.name, phone: l.phone,
-    from: l.from, to: l.to, savedAt: l.savedAt,
-    ...(l.isCopy ? { isCopy: true } : null),
-  }
+// 広告費タブ用：受付日の月（YYYY-MM）。画面と同じ解釈（src/lib/sortLeads.js）を使う。
+// サーバーはUTCで動くため、保存日時で判定するリードは日本時間でも見て、どちらかが合えば返す。
+// 余分に返った分は画面側の集計で正しい月に振り分けられる（足りないよりは良い）。
+function ymOf(t) { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
+function inMonths(l, months) {
+  const t = receivedAtMs(l)
+  if (!t) return false
+  return months.has(ymOf(t)) || months.has(ymOf(t + 9 * 3600 * 1000))
 }
-// 全リードから軽量サマリを作る
-function buildMeta(items) {
-  const recentLeads = [...items]
-    .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
-    .slice(0, META_MAX)
-    .map(slimLead)
-  return { count: items.length, items: recentLeads, at: new Date().toISOString() }
-}
-// サマリを保存（失敗しても本体には影響させない。次の機会に作り直される）
-async function writeMeta(items) {
-  try { await redisCmd(['SET', META_KEY, JSON.stringify(buildMeta(items))]) }
-  catch (e) { console.error('meta write failed:', e.message) }
-}
-// サマリを読む（無い・壊れている場合は null を返して呼び出し側で全件フォールバック）
-async function readMeta() {
-  try {
-    const raw = await redisCmd(['GET', META_KEY])
-    if (!raw) return null
-    const m = JSON.parse(raw)
-    return (m && Array.isArray(m.items) && typeof m.count === 'number') ? m : null
-  } catch { return null }
+// 広告費の集計に要る項目だけ（家財などを含む全項目は1件1KB超あり、2か月で3MBを超える）
+function adLead(l) {
+  return { key: l.key, site: l.site, count: l.count, receivedAt: l.receivedAt, requestedAt: l.requestedAt, savedAt: l.savedAt }
 }
 
 // 担当者がCRM上で入力・管理する項目（＝巡回では絶対に上書きしてはならない）。
@@ -154,7 +139,61 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       // 軽量モード：?recent=N で直近N件（savedAt降順）＋総数だけ返す（新着通知ポーリング用）
       // お知らせメッセージ（broadcast）も擬似リードとして混ぜ、子拡張(無改修)に通知させる。
-      const recent = parseInt((req.query && req.query.recent) || '', 10)
+      const q = req.query || {}
+
+      // ===== 件数だけ（左メニューのバッジ用）=====
+      // 以前は「要追客が何件か」を数えるためだけに全件を読んでいた。
+      if (q.counts) {
+        const meta = await readMeta()
+        if (meta && typeof meta.follow === 'number') return res.json({ count: meta.count, follow: meta.follow })
+        const { meta: m } = await rebuildMeta()
+        return res.json({ count: m.count, follow: m.follow })
+      }
+
+      // ===== リード管理の「更新」ボタン用のまとめ =====
+      // 全件（8MB超）を取り直さず、件数と直近50件だけ返す。
+      if (q.summary) {
+        const both = (await readMetaBoth()) || (await rebuildMeta())
+        const { meta, full } = both
+        return res.json({ count: meta.count, follow: meta.follow, sites: meta.sites, today: meta.today, items: full.items })
+      }
+
+      // ===== 追客タブ：要追客のリードを新しい順に50件ずつ =====
+      //   ?follow=1                         … 最初の50件（サマリから。全件は読まない）
+      //   ?follow=1&beforeSavedAt=..&beforeKey=.. … その続き（ここだけ全件を読む）
+      //   ?follow=1&limit=N                 … 先頭からN件（保存失敗で画面を戻す時、読んだ件数のまま取り直す）
+      // 返す rest は「まだ読んでいない要追客の件数」。
+      if (q.follow) {
+        const limit = Math.min(Math.max(parseInt(q.limit || '', 10) || PAGE, 1), 2000)
+        const hasCursor = q.beforeSavedAt !== undefined || q.beforeKey !== undefined
+        if (!hasCursor && limit <= PAGE) {
+          const both = await readMetaBoth()
+          if (both) {
+            const items = both.full.follow.slice(0, limit)
+            return res.json({ items, total: both.meta.follow, rest: Math.max(0, both.meta.follow - items.length) })
+          }
+        }
+        const all = await readItems(KEY)
+        let follows = all.filter(l => l.status === '要追客').sort(newerFirst)
+        if (hasCursor) {
+          const cur = { savedAt: String(q.beforeSavedAt || ''), key: String(q.beforeKey || '') }
+          follows = follows.filter(l => newerFirst(cur, l) < 0) // cur より古いものだけ
+        }
+        const items = follows.slice(0, limit)
+        return res.json({ items, total: all.filter(l => l.status === '要追客').length, rest: follows.length - items.length })
+      }
+
+      // ===== 広告費タブ：指定した月のリードだけ（集計に要る項目のみ）=====
+      //   ?months=2026-09,2026-10
+      if (q.months) {
+        const list = String(q.months).split(',').map(x => x.trim()).filter(x => /^\d{4}-\d{2}$/.test(x)).slice(0, 3)
+        if (!list.length) return res.status(400).json({ error: 'months は YYYY-MM をカンマ区切りで指定してください' })
+        const months = new Set(list)
+        const all = await readItems(KEY)
+        return res.json({ months: list, items: all.filter(l => inMonths(l, months)).map(adLead) })
+      }
+
+      const recent = parseInt(q.recent || '', 10)
       // ★帯域対策：直近N件で足りるうちは軽量サマリだけ読む（リード全件を転送しない）。
       //   サマリが無い・壊れている・N が保持件数を超える場合だけ全件から作り直す。
       if (recent > 0 && recent <= META_MAX) {
@@ -165,14 +204,17 @@ export default async function handler(req, res) {
             key: 'bc_' + b.id, site: b.title || 'お知らせ', name: '📢 ' + (b.body || ''),
             savedAt: b.savedAt, broadcast: true,
           })) } catch (e) { /* broadcast取得失敗は無視 */ }
-          const merged = [...meta.items.slice(0, recent), ...bc]
+          // 新着通知のポーリング（12秒ごと）には通知に要る項目だけ返す。
+          // このキーは元から通知用の項目だけ。古い形式で全項目が入っていても削って返す。
+          const merged = [...meta.items.slice(0, recent).map(slimLead), ...bc]
             .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
           return res.json({ count: meta.count, items: merged })
         }
       }
       const items = await readItems(KEY)
       if (recent > 0) {
-        // サマリが無かった（初回・破損時）のでここで作り直しておく
+        // サマリが無かった（初回・破損時）のでここで作り直しておく。
+        // 版は付けない＝「更新」ボタン等が読む時は古いとみなされ、版付きで作り直される（安全側）
         writeMeta(items)
         let bcItems = []
         try {
@@ -191,6 +233,7 @@ export default async function handler(req, res) {
         const recentLeads = [...items]
           .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
           .slice(0, recent)
+          .map(slimLead)
         const merged = [...recentLeads, ...bcItems]
           .sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
         return res.json({ count: items.length, items: merged })
@@ -210,7 +253,7 @@ export default async function handler(req, res) {
       // 楽観ロック付きで「読む→統合/追加→書き戻す」を原子的に実行。
       // 同時POSTでの取りこぼし（lost update）を防ぐ。副作用（架電・プッシュ）は
       // 書き込み確定後に一度だけ実行するため、mutator の外へ出す。
-      const result = await mutate(KEY, VER_KEY, (items) => {
+      const { result, version } = await mutateWithVersion(KEY, VER_KEY, (items) => {
         // 既に取り込み済み：空でない新フィールドだけマージ（詳細ページ取得で情報を充実させる）
         // key が null（信頼できる識別子なし）の場合は統合対象を探さない＝必ず新規リードとして追加する。
         let idx = key ? items.findIndex(i => leadKey(i) === key) : -1
@@ -258,7 +301,7 @@ export default async function handler(req, res) {
       })
 
       // サマリ（新着チェック用の軽量キー）を更新。本体の書き込みが終わってから行う。
-      if (result && result.items) await writeMeta(result.items)
+      if (result && result.items) await writeMeta(result.items, version)
       // 書き込み確定後にのみ副作用を実行（再試行で重複発火しない）。
       if (result && result.duplicate === false && result.newItem) {
         const newItem = result.newItem
@@ -287,7 +330,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'key / phone / id required' })
       }
       // 対象は findTargetIndex で「1件だけ」特定する（他リードへの波及を防ぐ）。
-      const updated = await mutate(KEY, VER_KEY, (items) => {
+      const { result: updated, version } = await mutateWithVersion(KEY, VER_KEY, (items) => {
         const idx = findTargetIndex(items, body)
         if (idx === -1) return { skipWrite: true, result: false }
         const copy = items.slice()
@@ -297,7 +340,7 @@ export default async function handler(req, res) {
       // 対象が見つからない更新は成功扱いにしない（画面側の保存が黙って消えるのを防ぐ）
       if (!updated) return res.status(404).json({ error: 'lead not found', ok: false })
       // 直近リードの氏名やコピー印が変わることがあるのでサマリも更新する
-      if (updated && updated.items) await writeMeta(updated.items)
+      if (updated && updated.items) await writeMeta(updated.items, version)
       return res.json({ ok: true })
     }
 
@@ -306,7 +349,7 @@ export default async function handler(req, res) {
       if (body.all !== true && !body.key && !body.id && !body.phone) {
         return res.status(400).json({ error: 'phone / key / id or all:true required' })
       }
-      const out = await mutate(KEY, VER_KEY, (items) => {
+      const { result: out, version } = await mutateWithVersion(KEY, VER_KEY, (items) => {
         let filtered
         if (body.all === true) {
           filtered = []
@@ -319,7 +362,7 @@ export default async function handler(req, res) {
         return { items: filtered, result: { removed: items.length - filtered.length, items: filtered } }
       })
       // 削除で件数が変わるのでサマリも更新する
-      if (out && out.items) await writeMeta(out.items)
+      if (out && out.items) await writeMeta(out.items, version)
       return res.json({ ok: true, removed: out.removed })
     }
 

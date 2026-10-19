@@ -78,11 +78,13 @@ export default function App() {
     }
     (async () => {
       try {
+        // ★以前はバッジの数字ひとつのために全リード（本番で8MB超）を読んでいた。
+        //   件数はサーバー側が保持しているので、それだけ受け取る。
         const [leadsRes, contractsRes] = await Promise.all([
-          fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
+          fetch('/api/inbound?counts=1').then(r => r.json()).catch(() => ({ follow: 0 })),
           fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
         ])
-        const n = (leadsRes.items || []).filter(l => l.status === '要追客').length +
+        const n = (typeof leadsRes.follow === 'number' ? leadsRes.follow : (leadsRes.items || []).filter(l => l.status === '要追客').length) +
                   (contractsRes.items || []).filter(c => c.status === '要追客').length
         if (!cancelled) setFollowCount(n)
       } catch { if (!cancelled) setFollowCount(0) }
@@ -109,11 +111,6 @@ export default function App() {
     setTimeout(() => setLoading(false), 400)
   }, [])
 
-  const refresh = useCallback(() => {
-    setLoading(true)
-    setTimeout(() => setLoading(false), 500)
-  }, [])
-
   if (!user) return <Login users={USERS} onLogin={handleLogin} />
 
   // 開発者(デバッグ)非表示ユーザー（デモ含む）は debug / debugreq に入れない（ガード）
@@ -134,7 +131,7 @@ export default function App() {
       />
       <Sidebar activeTab={activeTab} onTabChange={switchTab} isOpen={sidebarOpen} user={user} onLogout={handleLogout} followCount={followCount} />
       <div className="main">
-        <Topbar activeTab={activeTab} onMenuClick={() => setSidebarOpen(true)} onRefresh={refresh} loading={loading} user={user} />
+        <Topbar activeTab={activeTab} onMenuClick={() => setSidebarOpen(true)} loading={loading} user={user} />
         <div className="content">
           {/* 巡回が止まったら各タブの上に警告を出す（設定タブは除く） */}
           {safeTab !== 'settings' && <SiteAlert isDemo={user.mode === 'demo'} />}

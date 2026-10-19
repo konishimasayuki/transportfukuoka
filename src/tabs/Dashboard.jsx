@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { autoAdCostForMonth } from '../lib/adcost'
+import { receivedAtMs } from '../lib/sortLeads'
 
 const num = (v) => Number(v) || 0
 const yen = (n) => '¥' + Math.round(num(n)).toLocaleString('ja-JP')
@@ -170,9 +171,11 @@ function LiveDashboard({ switchTab }) {
     // 成約は「売り上げ登録日」優先で当月判定（無ければ引越し日）。売上管理タブと整合。
     const ofMonth = (rows) => rows.filter(r => monthKeyOf(r.salesDate || r.date || r.receivedAt || r.savedAt) === thisMonthKey)
     const monthContracts = ofMonth(contracts)
+    // リードの受付月は共通の解釈（年なしの引越し侍は取得日時から年を決める）で判定する
     const ofMonthLeads = leads.filter(l => {
-      const k = monthKeyOf(l.receivedAt) || monthKeyOf(l.savedAt)
-      return k === thisMonthKey
+      const t = receivedAtMs(l); if (!t) return false
+      const d = new Date(t)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === thisMonthKey
     })
     const salesAmt = monthContracts
       .filter(c => c.status === '成約済み')

@@ -13,7 +13,7 @@ const TITLES = {
   debugreq:  'デバッグ依頼',
 }
 
-export default function Topbar({ activeTab, onMenuClick, onRefresh, loading, user }) {
+export default function Topbar({ activeTab, onMenuClick, loading, user }) {
   const now = new Date()
   const dateStr = now.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
 
@@ -32,7 +32,6 @@ export default function Topbar({ activeTab, onMenuClick, onRefresh, loading, use
               padding: '3px 8px', borderRadius: 20, border: '1px solid #FCD34D',
             }}>デモ</span>
           )}
-          <button className="topbar-btn" onClick={onRefresh}>⟳ 更新</button>
         </div>
       </div>
       <div className={`loading-bar ${loading ? 'run' : ''}`} />

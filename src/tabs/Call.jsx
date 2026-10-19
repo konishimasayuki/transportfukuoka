@@ -147,18 +147,24 @@ function monHealth(label, status) {
 export default function Call({ user, switchTab }) {
   const isDemo = user?.mode === 'demo'
   const [callOn, setCallOn] = useState(true)
-  const [leads, setLeads]   = useState([])
+  const [leads, setLeads]   = useState([])   // 直近ぶんだけ（本日の架電ログ用）
+  const [summary, setSummary] = useState(null) // 流入元ごとの件数・本日の件数
   const [statuses, setStatuses] = useState({})
 
-  // ライブモード：保存済みリードと監視ステータスを取得し、15秒ごとに最新化
+  // ライブモード：15秒ごとに最新化する。
+  // ★以前はここで /api/inbound を全件（本番で8MB超）取っていた。
+  //   15秒ごとなので1人あたり1時間で2GBになり、サーバーを占有して
+  //   他の操作（更新ボタン等）まで遅くしていた。
+  //   この画面が要るのは「流入元ごとの件数」「本日の件数」「直近のリード」だけなので、
+  //   サーバー側でまとめた軽い応答に切り替える。
   useEffect(() => {
     if (isDemo) return
     let alive = true
     const load = async () => {
       try {
-        const res = await fetch('/api/inbound')
+        const res = await fetch('/api/inbound?summary=1')
         const data = await res.json()
-        if (alive) setLeads(data.items || [])
+        if (alive) { setLeads(data.items || []); setSummary(data) }
       } catch (e) { console.error(e) }
       try {
         const sres = await fetch('/api/status')
@@ -194,7 +200,13 @@ export default function Call({ user, switchTab }) {
     }
     return false
   }
+  // 手元にあるのは直近ぶんだけなので、本日の「件数」はサマリの数字を使う。
+  // 一覧として出すのは手元の直近ぶんから本日のものだけ（表示は上位5件）。
   const todaysLeads = sortedLeads.filter(isToday)
+  const todayMDNow = todayMD
+  const todayTotal = (summary && summary.today && summary.today.md === todayMDNow)
+    ? summary.today.total          // 日付が一致している時だけ使う（日またぎで前日の数字を出さない）
+    : todaysLeads.length
 
   const liveLogs = todaysLeads.map(l => ({
     icon: '🆕', bg: '#EFF6FF',
@@ -313,7 +325,8 @@ export default function Call({ user, switchTab }) {
   }
 
   // サイト別 取得済み件数＋最終取得時刻（監視カード用）。3サイト（ズバット/引越し侍/価格.com）とも表示。
-  const siteCount = (name) => leads.filter(l => l.site === name).length
+  // 流入元ごとの取得件数は全期間ぶん。手元には直近しか無いのでサマリから読む。
+  const siteCount = (name) => (summary && summary.sites && summary.sites[name]) || 0
   const liveSites = MON_SITES.map(name => {
     const st = statuses[STATUS_SRC[name]]
     return {
@@ -331,7 +344,8 @@ export default function Call({ user, switchTab }) {
 
   // サイト別 新規検知（本日の取得をサイトで集計）
   const detCounts = {}
-  todaysLeads.forEach(l => { const k = l.site || 'その他'; detCounts[k] = (detCounts[k] || 0) + 1 })
+  if (summary && summary.today && summary.today.md === todayMDNow) Object.assign(detCounts, summary.today.sites || {})
+  else todaysLeads.forEach(l => { const k = l.site || 'その他'; detCounts[k] = (detCounts[k] || 0) + 1 })
   const chartSites = Array.from(new Set([...MON_SITES, ...Object.keys(detCounts)]))
   const maxDet = Math.max(1, ...chartSites.map(s => detCounts[s] || 0))
   const liveDetections = chartSites.map(s => ({
@@ -361,7 +375,7 @@ export default function Call({ user, switchTab }) {
         setCallOn={setCallOn}
         sites={isDemo ? demoSites : liveSites}
         logs={isDemo ? DEMO_LOGS : liveLogs}
-        stats={isDemo ? { total:7, success:5 } : { total: todaysLeads.length, success: 0 }}
+        stats={isDemo ? { total:7, success:5 } : { total: todayTotal, success: 0 }}
         detections={isDemo ? DEMO_DETECTIONS : liveDetections}
         onOpenLog={setDetailItem}
       />

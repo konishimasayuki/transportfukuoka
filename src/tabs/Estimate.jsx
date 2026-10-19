@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { DEMO_CONTRACTS } from '../lib/demoData'
 import { GMAPS_KEY, zipFromAddress } from '../lib/gmaps'
 import { canonKazai } from '../lib/kazaiName'
+import { buildEstimateRows, nextEstimateNo } from '../lib/estimateRows'
 import ModalPortal from '../components/ModalPortal'
 
 /* =========================================================================
@@ -775,10 +776,17 @@ function openPrintPreview(form) {
 
 export default function Estimate({ user, switchTab }) {
   const isDemo = user?.mode === 'demo'
+  // デモ用（画面の中だけで持つ）。本番は一覧をサーバーから50件ずつ受け取る（下の list）
   const [items, setItems]         = useState([])
-  const [contracts, setContracts] = useState(isDemo ? DEMO_CONTRACTS : []) // 成約管理由来の行をマージ表示するため
+  const [contracts] = useState(isDemo ? DEMO_CONTRACTS : [])
+  // 本番の一覧：見積書＋成約を新しい順に50件ずつ読む（「次の50件を読み込む」で追加）。
+  // 件数・合計金額・次の見積番号は、サーバーが一覧全体から出した値を使う。
+  const [list, setList] = useState({ rows: [], total: 0, estCount: 0, conCount: 0, sumEst: 0, sumCon: 0, nextNo: '' })
+  const [moreLoading, setMoreLoading] = useState(false)
+  const leadsRef = useRef([]) // 家財の後追い紐付け用の直近リード
   const [loading, setLoading]     = useState(!isDemo)
   const [view, setView]       = useState('list')      // 'list' | 'edit'
+  const [listLimit, setListLimit] = useState(50)      // デモの表示件数
   const [form, setForm]       = useState(emptyForm())
   const [editId, setEditId]   = useState(null)
   const [saving, setSaving]   = useState(false)
@@ -798,7 +806,7 @@ export default function Estimate({ user, switchTab }) {
     try { sessionStorage.removeItem('tf_estimate_prefill') } catch {}
     if (!p || typeof p !== 'object') return
     const f = emptyForm()
-    f.estimateNo = nextNo()
+    f.estimateNo = '' // 番号はサーバーに聞いてから入れる（下の freshNextNo。一覧の読み込み前でも重ならないように）
     f.estimateDate = new Date().toISOString().slice(0, 10)
     if (p.name) f.name = p.name
     if (p.kana) f.kana = p.kana
@@ -834,6 +842,10 @@ export default function Estimate({ user, switchTab }) {
       if (boxKey) f.items[boxKey] = Number(p.boxCount) || 0
     }
     setForm(f); setEditId(null); setView('edit'); setPreview(false); setStep('basic')
+    freshNextNo().then(no => {
+      if (no) setForm(prev => (prev.estimateNo ? prev : { ...prev, estimateNo: no }))
+      else showToast('見積番号を確認できませんでした。番号を入力してください')
+    })
     // 郵便番号が空なら住所から自動補完（Googleマップキーがある時のみ）
     if (GMAPS_KEY) {
       if (f.toAddress && !f.toZip) zipFromAddress(f.toAddress).then(r => { if (r.zip) setForm(prev => ({ ...prev, toZip: r.zip })) }).catch(() => {})
@@ -841,17 +853,43 @@ export default function Estimate({ user, switchTab }) {
     }
   }, [])
 
+  const fetchList = async (offset, limit) => {
+    const y = new Date().getFullYear()
+    const r = await fetch(`/api/estimate?list=1&offset=${offset}&limit=${limit}&year=${y}`)
+    if (!r.ok) throw new Error('HTTP ' + r.status)
+    return r.json()
+  }
+  // 成約由来の行に、家財の後追い紐付けをかける
+  const withKazai = (rows) => {
+    const cons = rows.filter(r => r._kind === 'contract').map(r => r._contract)
+    const fixed = Object.fromEntries(backfillContractKazai(cons, leadsRef.current).map(c => [c.id, c]))
+    return rows.map(r => (r._kind === 'contract' && fixed[r._contract.id]) ? { ...r, _contract: fixed[r._contract.id] } : r)
+  }
+  // 最初の読み込みと、保存・削除の後。読んでいた件数のまま先頭から読み直す。
   const fetchItems = async () => {
     setLoading(true)
     try {
-      const [eRes, cRes, lRes] = await Promise.all([
-        fetch('/api/estimate').then(r => r.json()).catch(() => ({ items: [] })),
-        fetch('/api/contracts').then(r => r.json()).catch(() => ({ items: [] })),
-        fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })), // 家財の後追い紐付け用
+      const [d, lRes] = await Promise.all([
+        fetchList(0, Math.max(50, list.rows.length)),
+        // 家財の後追い紐付け用。リード全件（8MB超）ではなく直近50件だけ読む。
+        // 過去の成約は既に紐付け済み（本番で確認：紐付けが必要な成約は0件）で、新しく対象になるのは最近のリードから作った成約のため。
+        fetch('/api/inbound?summary=1').then(r => r.json()).catch(() => ({ items: [] })),
       ])
-      setItems(eRes.items || [])
-      setContracts(backfillContractKazai(cRes.items || [], lRes.items || []))
-    } catch (e) { console.error(e) } finally { setLoading(false) }
+      leadsRef.current = lRes.items || []
+      setList({ ...d, rows: withKazai(d.rows || []) })
+    } catch (e) { console.error(e); showToast('一覧を読み込めませんでした') } finally { setLoading(false) }
+  }
+  // 「次の50件を読み込む」
+  const loadMore = async () => {
+    if (moreLoading) return
+    setMoreLoading(true)
+    try {
+      const d = await fetchList(list.rows.length, 50)
+      setList(prev => {
+        const have = new Set(prev.rows.map(r => r.id))
+        return { ...d, rows: [...prev.rows, ...withKazai(d.rows || []).filter(r => !have.has(r.id))] }
+      })
+    } catch (e) { console.error(e); showToast('読み込めませんでした') } finally { setMoreLoading(false) }
   }
 
   // 過去の成約（家財未保存）に、元リード(leadKey一致)の家財を後から紐付けして保管する。
@@ -878,22 +916,24 @@ export default function Estimate({ user, switchTab }) {
     return merged
   }
 
-  // 採番：EST-YYYY####（同年の既存件数+1）
-  const nextNo = () => {
+  // 採番：EST-YYYY####（同年の既存番号の最大+1）。
+  // 本番は開く直前にサーバーへ聞く（一覧は50件ずつしか持たないため。全見積書から出すので、
+  // 他の人がついさっき作った番号とも重ならない）。聞けなかった時は '' を返す（重複番号で作らない）。
+  const freshNextNo = async () => {
     const y = new Date().getFullYear()
-    const prefix = `EST-${y}`
-    const used = items
-      .map(i => i.estimateNo)
-      .filter(no => typeof no === 'string' && no.startsWith(prefix))
-      .map(no => parseInt(no.slice(prefix.length), 10))
-      .filter(n => Number.isFinite(n))
-    const seq = (used.length ? Math.max(...used) : 0) + 1
-    return `${prefix}${String(seq).padStart(4, '0')}`
+    if (isDemo) return nextEstimateNo(items, y)
+    try {
+      const d = await fetchList(0, 1)
+      if (d && typeof d.nextNo === 'string' && d.nextNo.startsWith(`EST-${y}`)) return d.nextNo
+    } catch (e) { console.error(e) }
+    return ''
   }
 
-  const openNew = () => {
+  const openNew = async () => {
+    const no = await freshNextNo()
+    if (!no) { showToast('見積番号を確認できませんでした。もう一度お試しください'); return }
     const f = emptyForm()
-    f.estimateNo = nextNo()
+    f.estimateNo = no
     f.estimateDate = new Date().toISOString().slice(0, 10)
     openPaper(f, null)
   }
@@ -1054,48 +1094,22 @@ export default function Estimate({ user, switchTab }) {
 
   /* ===================== 一覧ビュー ===================== */
   if (view === 'list') {
-    // 見積書 + 成約管理 をマージ表示。成約由来は見積書化されていないものだけ（contractId で重複排除）
-    const issuedContractIds = new Set(items.map(i => i.contractId).filter(Boolean))
-    // 成約から起こした見積書は、元の成約と同じ並び順（売上登録日＋成約の並び）のままにする。
-    // 見積日で並べ替えると「見積書として作成」を押した瞬間に行が別の場所へ飛ぶため。
-    const conById = {}
-    contracts.forEach((c, ix) => { conById[c.id] = { c, ix } })
-    const fromEst = items.map(i => {
-      const h = i.contractId ? conById[i.contractId] : null
-      return { ...i, _kind: 'estimate',
-        _sortDate: (h && (h.c.salesDate || h.c.date)) || i.estimateDate || i.moveDate || '',
-        _tie: h ? 1000 + h.ix : 0 }
-    })
-    const fromCon = contracts
-      .filter(c => !issuedContractIds.has(c.id))
-      .map(c => ({
-        _kind: 'contract',
-        _contract: c,
-        id: 'c_' + c.id,
-        estimateNo: '（成約由来）',
-        name: c.name || '',
-        moveDate: c.date || '',
-        salesDate: c.salesDate || '',
-        total: num(c.amount),
-        points: 0,
-        status: c.status || '成約',
-        _sortDate: c.salesDate || c.date || '', // 売り上げ登録日を優先して並べ替え
-      }))
-    // 同じ日付の中でも位置が変わらないよう、成約由来は成約一覧の並びを副キーにする
-    const conIx = Object.fromEntries(contracts.map((c, ix) => [c.id, ix]))
-    fromCon.forEach(r => { r._tie = 1000 + conIx[r._contract.id] })
-    const rows = [...fromEst, ...fromCon]
-      .sort((a, b) => String(b._sortDate).localeCompare(String(a._sortDate)) || (a._tie - b._tie))
-    const estCount = items.length
-    const conCount = fromCon.length
-    const sumEst = items.reduce((s, i) => s + num(i.total), 0)
-    const sumCon = fromCon.reduce((s, i) => s + num(i.total), 0)
+    // 見積書 + 成約管理 をマージ表示（並べ方は src/lib/estimateRows.js）。
+    // 本番はサーバーが並べた結果を50件ずつ受け取る。デモは画面の中で並べる。
+    const built = isDemo
+      ? (() => { const b = buildEstimateRows(items, contracts); return { ...b, total: b.rows.length, rows: b.rows.slice(0, listLimit) } })()
+      : list
+    const rows = built.rows
+    const { estCount, conCount, sumEst, sumCon } = built
     const sumAll = sumEst + sumCon
+    const restCount = Math.max(0, built.total - rows.length)
 
     // 成約レコードを「見積書として作成」する：成約・リードの内容を入れた帳票をモーダルで開く
-    const issueFromContract = (c) => {
+    const issueFromContract = async (c) => {
+      const no = await freshNextNo()
+      if (!no) { showToast('見積番号を確認できませんでした。もう一度お試しください'); return }
       const f = emptyForm()
-      f.estimateNo = nextNo()
+      f.estimateNo = no
       // 訪問見積日があればそれを見積日に、無ければ今日
       f.estimateDate = ymd(c.visitEstimateDate) || new Date().toISOString().slice(0, 10)
       // 受付日は、リードから引き継いだ受付日時（無ければ売上登録日）
@@ -1191,6 +1205,13 @@ export default function Estimate({ user, switchTab }) {
                 </tbody>
               </table>
             </div>
+            {restCount > 0 && (
+              <div style={{ textAlign: 'center', padding: '12px 0 16px' }}>
+                <button className="btn btn-outline btn-sm" onClick={isDemo ? () => setListLimit(n => n + 50) : loadMore} disabled={moreLoading}>
+                  {moreLoading ? '読み込み中…' : `次の50件を読み込む（残り${restCount}件）`}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

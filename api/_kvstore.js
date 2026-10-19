@@ -50,7 +50,7 @@ export async function readItems(dataKey) {
 //   場合に後続の version まで欠落し、version を 0 と誤読 → CAS が永久に失敗して
 //   全ての書き込みが 500 になる（＝リード取り込みが停止する）。
 //   nil を返さないよう Lua 側で必ず既定値に落とす。
-async function readVersioned(dataKey, verKey) {
+export async function readVersioned(dataKey, verKey) {
   const script = "return { redis.call('GET', KEYS[1]) or '', redis.call('GET', KEYS[2]) or '0' }"
   const r = await redisCmd(['EVAL', script, 2, dataKey, verKey])
   const raw = r && r[0]
@@ -81,13 +81,19 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 // 同じタイミングで再衝突し続ける（lockstep）のを防ぐ。CAS は毎ラウンド必ず
 // 1件は成功するため、ジッターで散らせば同時多数書き込みでも短時間で収束する。
 export async function mutate(dataKey, verKey, mutator, attempts = 15) {
+  return (await mutateWithVersion(dataKey, verKey, mutator, attempts)).result
+}
+
+// mutate と同じ。加えて、書き込んだ時の version を返す（書き込み省略時は null）。
+// リードのサマリに「どの版から作ったか」を記録し、古いサマリを見分けるために使う。
+export async function mutateWithVersion(dataKey, verKey, mutator, attempts = 15) {
   for (let a = 0; a < attempts; a++) {
     const { items, version } = await readVersioned(dataKey, verKey)
     const out = mutator(items) || {}
-    if (out.skipWrite) return out.result
+    if (out.skipWrite) return { result: out.result, version: null }
     const newVersion = String((Number(version) || 0) + 1)
     const ok = await casWrite(dataKey, verKey, version, JSON.stringify(out.items), newVersion)
-    if (ok) return out.result
+    if (ok) return { result: out.result, version: newVersion }
     // 競合時のみ：8ms + ランダム(指数的に拡大)。ジッターで再衝突を分散させる。
     await sleep(8 + Math.floor(Math.random() * (12 * (a + 1))))
   }

@@ -3,7 +3,7 @@
 // - 日別項目：サムライ単身 / サムライ家族 / 価格 / ズバッと（+ 日合計）
 // - 月別項目：SUUMO / チラシ / 企業紹介・その他
 // - 掲載費(/api/expenses) に保存（売上管理とデータ共有）。一括貼り付け対応。
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 // 広告費（反響課金）自動算出の単価・集計ロジックは src/lib/adcost.js に集約（売上管理と共有）
 import { SAMURAI_SINGLE_UNIT, SAMURAI_FAMILY_UNIT, KAKAKU_UNIT, ZUBATTO_UNIT, AD_AUTO_FROM, AD_KEYS, AD_UNIT, adCountsByMonthDay } from '../lib/adcost'
 import { DEMO_LEADS } from '../lib/demoData'
@@ -74,6 +74,9 @@ export default function AdCost({ user }) {
   const [expenses, setExpenses] = useState({})
   const [leads, setLeads]       = useState(isDemo ? DEMO_LEADS : []) // 引越し侍の広告費 自動算出用
   const [loading, setLoading]   = useState(!isDemo)
+  // リードは「当月と先月」だけ最初に読む（全件8MB超を読まない）。
+  // それより前の月は、月を選んだ時にその月の分を追加で読む。読めた月だけここに入る。
+  const [loadedMonths, setLoadedMonths] = useState(() => new Set())
   const [saving, setSaving]     = useState(false)
   const [draftExp, setDraftExp] = useState({ daily: {}, monthly: {}, note: '' })
   const [bulkPaste, setBulkPaste] = useState('')
@@ -82,6 +85,18 @@ export default function AdCost({ user }) {
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2200) }
 
   useEffect(() => { if (!isDemo) fetchAll() }, [isDemo])
+  // まだ読んでいない月（自動算出の対象月）を選んだら、その月のリードを追加で読む
+  // （最初の読み込み中に月を切り替えた場合も、読み込みが終わった時点でここが動く）
+  const monthFailRef = useRef('') // 読めなかった月（失敗のたびに読み直しを繰り返さない。再読込で解除）
+  useEffect(() => {
+    if (isDemo || loading || selMonth < AUTO_FROM || loadedMonths.has(selMonth) || monthFailRef.current === selMonth) return
+    const m = selMonth
+    setLoading(true)
+    fetchLeadMonths([m])
+      .then(got => { setLeads(prev => mergeLeads(prev, got)); setLoadedMonths(prev => new Set([...prev, m])) })
+      .catch(e => { console.error(e); monthFailRef.current = m; showToast('この月のリードを読み込めませんでした（再読込してください）') })
+      .finally(() => setLoading(false))
+  }, [selMonth, loading, loadedMonths])
   useEffect(() => { setActiveBar(null) }, [selMonth]) // 月を切り替えたら吹き出しを閉じる
 
   useEffect(() => {
@@ -94,15 +109,36 @@ export default function AdCost({ user }) {
     setBulkPaste('')
   }, [selMonth, expenses])
 
+  // 指定した月のリード（集計に要る項目だけ）を読む。サーバーは1回3か月までなので分けて頼む。
+  const fetchLeadMonths = async (keys) => {
+    const want = [...new Set(keys)].filter(k => k >= AUTO_FROM)
+    const chunks = []
+    for (let i = 0; i < want.length; i += 3) chunks.push(want.slice(i, i + 3))
+    const res = await Promise.all(chunks.map(c =>
+      fetch('/api/inbound?months=' + c.join(',')).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json() })))
+    return res.flatMap(d => d.items || [])
+  }
+  // 別々に読んだ月の境目（月末・月初）で同じリードが重なることがあるので、キーで重複を除く
+  // （受け取った分どうしの重複も除く。分けて頼んだ結果どうしでも重なるため）
+  const mergeLeads = (prev, add) => {
+    const have = new Set(prev.map(l => l.key))
+    const out = prev.slice()
+    for (const l of add) { if (!have.has(l.key)) { have.add(l.key); out.push(l) } }
+    return out
+  }
+  // 最初の読み込みと「再読込」・保存後。経費と、当月・先月（＋既に読んだ月）のリードを読み直す。
   const fetchAll = async () => {
+    monthFailRef.current = ''
     setLoading(true)
+    const want = [...new Set([months[0].key, months[1].key, selMonth, ...loadedMonths])].filter(k => k >= AUTO_FROM)
     try {
-      const [eRes, lRes] = await Promise.all([
+      const [eRes, got] = await Promise.all([
         fetch('/api/expenses').then(r => r.json()).catch(() => ({ data: {} })),
-        fetch('/api/inbound').then(r => r.json()).catch(() => ({ items: [] })),
+        fetchLeadMonths(want).then(items => ({ items }), e => { console.error(e); return null }),
       ])
       setExpenses(eRes.data || {})
-      setLeads(lRes.items || [])
+      if (got) { setLeads(mergeLeads([], got.items)); setLoadedMonths(new Set(want)) }
+      else { setLeads([]); setLoadedMonths(new Set()); showToast('リードを読み込めませんでした（再読込してください）') }
     } catch (e) { console.error(e) }
     setLoading(false)
   }
@@ -188,6 +224,8 @@ export default function AdCost({ user }) {
 
   const saveExpenses = async () => {
     if (isDemo) { showToast('デモモード：保存は無効です'); return }
+    // この月のリードを読めていないと件数が0のまま保存され、正しい広告費を0で上書きしてしまう
+    if (isAutoMonth && !loadedMonths.has(selMonth)) { showToast('この月のリードを読み込めていないため保存できません（再読込してください）'); return }
     setSaving(true)
     try {
       const dailyClean = {}
