@@ -2,6 +2,7 @@
 import { execFileSync } from 'node:child_process'
 const SUITES = [
   ['dup',       '重複リード：メモ/ステータス保護・二重登録の防止'],
+  ['relist',    '同じ依頼の送り直しで受付日時を上書きしない（古いリードを先頭に移さない）'],
   ['audit',     '混入バグの総合監査'],
   ['fillonly',  '住所・要望・家財の保護（空欄のみ補完）'],
   ['bugcheck',  'Lua/移行/破損・成約の重複登録'],

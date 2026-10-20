@@ -75,6 +75,10 @@ const FILL_ONLY_FIELDS = new Set([
   'request', 'option',
   // 家財
   'kazai', 'kazaiCount', 'kazaiUnknown', 'boxCount',
+  // 受付日時・検知時刻（最初に取り込んだ時の値を保つ）
+  // ★取得元の一覧で同じ依頼の日付が新しくなると、巡回が「今日の依頼」として送り直してくる。
+  //   受付日時を上書きすると、対応済みの古いリードが新着として一覧の先頭に移ってしまう。
+  'receivedAt', 'requestedAt', 'detectedAt', 'timing',
 ])
 
 const isEmptyValue = (v) =>
