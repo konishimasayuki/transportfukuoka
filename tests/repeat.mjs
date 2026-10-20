@@ -81,5 +81,34 @@ console.log('\n--- 新しいリードにしない場合 ---')
   t(all().length === 2 && oldLead().memo === OLD.memo, '同じ電話番号でもキーが違う別のリードは今まで通り別（古いリードに触らない）')
 }
 
+console.log('\n--- 以前に別サイトとまとめたリードで、最初の依頼が30日以上あとに再表示された ---')
+{
+  // 8/1 引越し侍（111）→ 8/5 ズバット（Z5）とまとめた時に、流入元・依頼番号がズバットに上書きされた（記録の仕組みの前）
+  const LEGACY = { ...OLD, site: 'ズバット', orderId: 'Z5', savedAt: iso(80), moveDate: '2026年11月15日 午前中', moveDateDetail: '2026年11月15日 午前中',
+    to: '福岡市博多区', toAddress: '福岡市博多区博多駅前3-3', status: '見積り', memo: '見積り済み・返事待ち', contracted: false }
+  seed(LEGACY)
+  // 引越し侍の一覧で 111 が再表示 → 巡回が送り直す（希望日・引越し先は同じ）
+  await call('POST', { site: '引越し侍', key: PHONE, phone: PHONE, orderId: '111', name: '山田 太郎', count: '1人', receivedAt: md,
+    moveDate: '11月15日 午前中', to: '福岡県福岡市博多区', detail: true })
+  t(all().length === 1, '★希望日と引越し先が同じなら、前の依頼の再表示としてまとめる（新しいリードにしない）', `${all().length}件`)
+  t(all()[0].memo === '見積り済み・返事待ち' && all()[0].status === '見積り' && all()[0].receivedAt === '06/10 10:00', 'メモ・ステータス・受付日時はそのまま')
+  // 表記違い（2026/11/15・番地まで）でも同じと分かる
+  seed(LEGACY)
+  await call('POST', { site: '価格.com', key: PHONE, phone: PHONE, orderId: 'A9', name: '山田 太郎', receivedAt: md, moveDate: '2026/11/15', toAddress: '福岡県福岡市博多区博多駅前３－３', detail: true })
+  t(all().length === 1, '希望日・引越し先の表記が違っても（2026/11/15・全角の番地）同じ引越しと分かる')
+  // 希望日が違う → 新しい引越し
+  seed(LEGACY)
+  await call('POST', { site: '引越し侍', key: PHONE, phone: PHONE, orderId: '222', name: '山田 太郎', receivedAt: md, moveDate: '03月20日 午後', to: '福岡県福岡市博多区', detail: true })
+  t(all().length === 2 && oldLead().memo === '見積り済み・返事待ち', '★希望日が違えば新しい引越しとして新しいリード（古いリードはそのまま）')
+  // 希望日は同じでも引越し先が違う → 新しい引越し
+  seed(LEGACY)
+  await call('POST', { site: '引越し侍', key: PHONE, phone: PHONE, orderId: '333', name: '山田 太郎', receivedAt: md, moveDate: '11月15日', to: '北九州市小倉北区', detail: true })
+  t(all().length === 2, '希望日が同じでも引越し先が違えば新しいリード')
+  // 希望日が無い → 確かめられないので新しいリード（埋もれさせない）
+  seed(LEGACY)
+  await call('POST', { site: '引越し侍', key: PHONE, phone: PHONE, orderId: '444', name: '山田 太郎', receivedAt: md, to: '福岡県福岡市博多区', detail: true })
+  t(all().length === 2, '希望日が無くて確かめられない時は新しいリード（埋もれさせない）')
+}
+
 console.log(`\n${ok} PASS / ${ng} FAIL`)
 process.exit(ng ? 1 : 0)

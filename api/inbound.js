@@ -144,6 +144,29 @@ function hasOrder(l, site, orderId) {
   if (l.site === site && l.orderId != null && String(l.orderId) === o) return true
   return Array.isArray(l.inquiries) && l.inquiries.some(q => q.site === site && q.orderId === o)
 }
+// 同じ引越しか（引越し希望日の月日が同じで、引越し先が食い違わない）。
+// 希望日はサイトで表記が違う（「11月15日 午前中」「2026年11月15日」「2026/11/15」）ので月日だけ比べる。
+// 引越し先はサイトで細かさが違う（「福岡市博多区」と番地まで）ので、片方がもう片方に含まれれば同じとみなす。
+// 希望日が片方でも無ければ確かめられないので「同じではない」とする。
+function moveMD(l) {
+  const s = String(l.moveDateDetail || l.moveDate || '')
+  let m = s.match(/(\d{1,2})月\s*(\d{1,2})日/)
+  if (!m) { const y = s.match(/\d{4}[/-](\d{1,2})[/-](\d{1,2})/); if (y) m = [null, y[1], y[2]] }
+  return m ? `${Number(m[1])}-${Number(m[2])}` : ''
+}
+function normAddr(v) {
+  return String(v || '')
+    .replace(/[０-９Ａ-Ｚａ-ｚ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[\s　〒]/g, '').replace(/^福岡県/, '').replace(/[ー－―‐]/g, '-')
+}
+function sameMove(a, b) {
+  const ma = moveMD(a), mb = moveMD(b)
+  if (!ma || !mb || ma !== mb) return false
+  const ta = normAddr(a.toAddress || a.to), tb = normAddr(b.toAddress || b.to)
+  if (!ta || !tb) return true // 引越し先が片方に無ければ希望日だけで判断する
+  return ta.includes(tb) || tb.includes(ta)
+}
+
 // そのリードの最後の申し込みを取り込んだ日時（記録が無ければリードを取り込んだ日時）
 function lastInquiryAt(l) {
   const ts = [Date.parse(l.savedAt || '')]
@@ -353,7 +376,9 @@ export default async function handler(req, res) {
             // ★前の申し込みから30日以上たって別の依頼番号で来たら、新しい引越しの依頼として
             //   新しいリードにする。まとめると、古いリード（成約済み・メモあり）の中に埋もれて
             //   新着通知も出ず、住所・家財も前回のまま残ってしまう。古いリードには一切触らない。
-            if (body.orderId && AD_SITES.includes(body.site) && Date.now() - bestT >= REPEAT_GAP_MS) {
+            //   ただし引越しの内容（引越し希望日・引越し先）が同じなら、前の依頼の再表示とみなしてまとめる。
+            //   （以前に別サイトとまとめたリードは最初の依頼番号が上書きされて残っておらず、番号では見分けられない）
+            if (body.orderId && AD_SITES.includes(body.site) && Date.now() - bestT >= REPEAT_GAP_MS && !sameMove(items[idx], body)) {
               idx = -1
               repeatKey = `rep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` // 電話番号のキーと重ねない
             }
