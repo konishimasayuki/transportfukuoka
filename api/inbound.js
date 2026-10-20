@@ -32,9 +32,11 @@ async function rebuildMeta() {
 // 余分に返った分は画面側の集計で正しい月に振り分けられる（足りないよりは良い）。
 function ymOf(t) { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 function inMonths(l, months) {
-  const t = receivedAtMs(l)
-  if (!t) return false
-  return months.has(ymOf(t)) || months.has(ymOf(t + 9 * 3600 * 1000))
+  // 申し込みの記録があれば、そのどれかが指定の月に入っていれば返す（広告費は記録ごとに数えるため）
+  const ts = Array.isArray(l.inquiries) && l.inquiries.length
+    ? l.inquiries.map(q => receivedAtMs({ receivedAt: q.receivedAt, savedAt: q.at || l.savedAt }))
+    : [receivedAtMs(l)]
+  return ts.some(t => t && (months.has(ymOf(t)) || months.has(ymOf(t + 9 * 3600 * 1000))))
 }
 // 広告費の集計に要る項目だけ（家財などを含む全項目は1件1KB超あり、2か月で3MBを超える）
 // ★updatedAt / detectedAt も必ず送る。年なしの受付日（引越し侍など）の年を決めるのに使うため
@@ -44,6 +46,7 @@ function adLead(l) {
   return {
     key: l.key, site: l.site, count: l.count, receivedAt: l.receivedAt, requestedAt: l.requestedAt,
     savedAt: l.savedAt, updatedAt: l.updatedAt, detectedAt: l.detectedAt,
+    ...(Array.isArray(l.inquiries) && l.inquiries.length ? { inquiries: l.inquiries } : null),
   }
 }
 
@@ -107,6 +110,29 @@ function summarizeRepair(results) {
   const count = { fixed: 0, changed: 0, notfound: 0 }
   results.forEach(x => { count[x.result]++ })
   return { count, skipped: results.filter(x => x.result !== 'fixed') }
+}
+
+// ===== 申し込みの記録（広告費を正しく数えるため）=====
+// リードは電話番号でまとめるため、同じお客様が別のサイトからも申し込むと1件になる。
+// 掲載費はサイトごとに申し込み1件ずつかかるので、まとめた時に申し込みを記録として残し、
+// 広告費はこの記録の件数で数える（src/lib/adcost.js）。リードの表示・メモ・家財などは変えない。
+//   inquiries: [{ site, orderId, receivedAt, count, at }]  at＝その申し込みを取り込んだ日時
+// 同じサイト・同じ依頼番号の再表示は同じ申し込みなので記録を増やさない。
+function inquiryOf(l, at) {
+  return { site: l.site || '', orderId: l.orderId != null ? String(l.orderId) : '', receivedAt: l.receivedAt || l.requestedAt || '', count: l.count || '', at: at || '' }
+}
+const sameInquiry = (a, b) => a.site === b.site && (a.orderId === b.orderId || !a.orderId || !b.orderId)
+const AD_SITES = ['引越し侍', 'ズバット', 'ズバッと', '価格.com']
+// まとめる時に呼ぶ。新しい申し込みなら記録を足した配列を、そうでなければ null を返す。
+function mergedInquiries(existing, body, now) {
+  if (!body.site || !AD_SITES.includes(body.site)) return null
+  const list = Array.isArray(existing.inquiries) && existing.inquiries.length
+    ? existing.inquiries.slice()
+    : [inquiryOf(existing, existing.savedAt)] // 最初の申し込み（まとめる前のリードそのもの）
+  const inc = inquiryOf(body, now)
+  if (list.some(x => sameInquiry(x, inc))) return null
+  list.push(inc)
+  return list
 }
 
 const isEmptyValue = (v) =>
@@ -307,6 +333,7 @@ export default async function handler(req, res) {
           let changed = false
           for (const [k, v] of Object.entries(body)) {
             if (k === 'key' || k === 'id' || k === 'savedAt') continue
+            if (k === 'inquiries') continue // 申し込みの記録はサーバーだけが付ける（送られてきた値では変えない）
             // 担当者所有の項目は「自動巡回」では上書きしない（メモ・ステータス等の保護）。
             // 人手の取り込み（_manual）は担当者の意思なので従来どおり更新を許可する。
             if (!manual && CRM_OWNED_FIELDS.has(k)) continue
@@ -314,6 +341,12 @@ export default async function handler(req, res) {
             if (!manual && FILL_ONLY_FIELDS.has(k) && !isEmptyValue(next[k])) continue
             const empty = isEmptyValue(v)
             if (!empty && JSON.stringify(next[k]) !== JSON.stringify(v)) { next[k] = v; changed = true }
+          }
+          // 別のサイト（または別の依頼番号）からの申し込みなら、広告費のために記録を残す。
+          // 人手の取り込み（CSV等）は申し込みではないので記録しない。
+          if (!manual) {
+            const inq = mergedInquiries(items[idx], body, new Date().toISOString())
+            if (inq) { next.inquiries = inq; changed = true }
           }
           // 電話が後から判明したらキーを電話に昇格させる。
           // これで以後は他サイトから同じ電話で届いても同一リードとして統合できる。
