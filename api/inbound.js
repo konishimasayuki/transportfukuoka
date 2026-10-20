@@ -135,6 +135,49 @@ function mergedInquiries(existing, body, now) {
   return list
 }
 
+// 同じお客様からの新しい引越しの依頼とみなす間隔（前の申し込みからこれ以上空いて、別の依頼番号）
+const REPEAT_GAP_MS = 30 * 24 * 3600 * 1000
+// そのリードに、このサイト・依頼番号の申し込みが入っているか（まとめた申し込みの記録も見る）
+function hasOrder(l, site, orderId) {
+  if (!site || orderId == null || orderId === '') return false
+  const o = String(orderId)
+  if (l.site === site && l.orderId != null && String(l.orderId) === o) return true
+  return Array.isArray(l.inquiries) && l.inquiries.some(q => q.site === site && q.orderId === o)
+}
+// 同じ引越しか（引越し希望日の月日が同じで、引越し先が食い違わない）。
+// 希望日はサイトで表記が違う（「11月15日 午前中」「2026年11月15日」「2026/11/15」）ので月日だけ比べる。
+// 引越し先はサイトで細かさが違う（「福岡市博多区」と番地まで）ので、片方がもう片方に含まれれば同じとみなす。
+// 希望日が片方でも無ければ確かめられないので「同じではない」とする。
+function moveMD(l) {
+  const s = String(l.moveDateDetail || l.moveDate || '')
+  let m = s.match(/(\d{1,2})月\s*(\d{1,2})日/)
+  if (!m) { const y = s.match(/\d{4}[/-](\d{1,2})[/-](\d{1,2})/); if (y) m = [null, y[1], y[2]] }
+  if (m) return `${Number(m[1])}-${Number(m[2])}`
+  // 日が決まっていない表記（「11月上旬」「2026/11/中旬」）は旬で比べる
+  const j = s.match(/(\d{1,2})月\s*(上旬|中旬|下旬)/) || s.match(/\d{4}[/-](\d{1,2})[/-]\s*(上旬|中旬|下旬)/)
+  return j ? `${Number(j[1])}-${j[2]}` : ''
+}
+function normAddr(v) {
+  return String(v || '')
+    .replace(/[０-９Ａ-Ｚａ-ｚ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[\s　〒]/g, '').replace(/^福岡県/, '').replace(/[ー－―‐]/g, '-')
+}
+function sameMove(a, b) {
+  const ma = moveMD(a), mb = moveMD(b)
+  if (!ma || !mb || ma !== mb) return false
+  const ta = normAddr(a.toAddress || a.to), tb = normAddr(b.toAddress || b.to)
+  if (!ta || !tb) return true // 引越し先が片方に無ければ希望日だけで判断する
+  return ta.includes(tb) || tb.includes(ta)
+}
+
+// そのリードの最後の申し込みを取り込んだ日時（記録が無ければリードを取り込んだ日時）
+function lastInquiryAt(l) {
+  const ts = [Date.parse(l.savedAt || '')]
+  if (Array.isArray(l.inquiries)) l.inquiries.forEach(q => ts.push(Date.parse(q.at || '')))
+  const ok = ts.filter(t => !isNaN(t))
+  return ok.length ? Math.max(...ok) : 0
+}
+
 const isEmptyValue = (v) =>
   v == null || v === '' || (Array.isArray(v) && v.length === 0)
 
@@ -320,11 +363,36 @@ export default async function handler(req, res) {
       const { result, version } = await mutateWithVersion(KEY, VER_KEY, (items) => {
         // 既に取り込み済み：空でない新フィールドだけマージ（詳細ページ取得で情報を充実させる）
         // key が null（信頼できる識別子なし）の場合は統合対象を探さない＝必ず新規リードとして追加する。
-        let idx = key ? items.findIndex(i => leadKey(i) === key) : -1
+        let idx = -1, repeatKey = null
+        if (!manual) {
+          // 同じお客様（同じキー。30日以上空いて作った新しいリードも含む）のリードを集める。
+          //   ※電話番号だけの一致では探さない（同居の家族など、同じ電話でも別のリードがあるため）
+          //   ※依頼番号だけでも探さない（別のお客様と依頼番号が重なった時に、他人のリードへ混ざるため）
+          const cands = []
+          if (key) items.forEach((i, n) => { if (leadKey(i) === key || i.repeatOf === key) cands.push(n) })
+          // ① その中に同じサイト・同じ依頼番号の申し込みがあれば、それにまとめる（再表示・送り直し）
+          idx = cands.find(n => hasOrder(items[n], body.site, body.orderId)) ?? -1
+          // ② 無ければ、いちばん新しいリードにまとめる
+          if (idx === -1 && cands.length) {
+            let bestT = -Infinity
+            for (const n of cands) { const tt = lastInquiryAt(items[n]); if (tt > bestT) { bestT = tt; idx = n } }
+            // ★前の申し込みから30日以上たって別の依頼番号で来たら、新しい引越しの依頼として
+            //   新しいリードにする。まとめると、古いリード（成約済み・メモあり）の中に埋もれて
+            //   新着通知も出ず、住所・家財も前回のまま残ってしまう。古いリードには一切触らない。
+            //   ただし引越しの内容（引越し希望日・引越し先）が同じなら、前の依頼の再表示とみなしてまとめる。
+            //   （以前に別サイトとまとめたリードは最初の依頼番号が上書きされて残っておらず、番号では見分けられない）
+            if (body.orderId && AD_SITES.includes(body.site) && Date.now() - bestT >= REPEAT_GAP_MS && !sameMove(items[idx], body)) {
+              idx = -1
+              repeatKey = `rep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` // 電話番号のキーと重ねない
+            }
+          }
+        } else {
+          idx = key ? items.findIndex(i => leadKey(i) === key) : -1
+        }
         // 電話の取得可否でキーが変わっても同一リードとみなす。
         // 例：1回目は電話が取れず key='引越し侍:123'、2回目に電話が取れて key=電話 になると
         //     別リードとして重複登録されてしまうため、サイト＋受付番号でも照合する。
-        if (idx === -1 && body.site && body.orderId) {
+        if (idx === -1 && !repeatKey && body.site && body.orderId) {
           idx = items.findIndex(i => i.site === body.site && i.orderId != null && i.orderId !== '' &&
                                      String(i.orderId) === String(body.orderId))
         }
@@ -333,7 +401,7 @@ export default async function handler(req, res) {
           let changed = false
           for (const [k, v] of Object.entries(body)) {
             if (k === 'key' || k === 'id' || k === 'savedAt') continue
-            if (k === 'inquiries') continue // 申し込みの記録はサーバーだけが付ける（送られてきた値では変えない）
+            if (k === 'inquiries' || k === 'repeatOf') continue // サーバーだけが付ける項目（送られてきた値では変えない）
             // 担当者所有の項目は「自動巡回」では上書きしない（メモ・ステータス等の保護）。
             // 人手の取り込み（_manual）は担当者の意思なので従来どおり更新を許可する。
             if (!manual && CRM_OWNED_FIELDS.has(k)) continue
@@ -350,7 +418,9 @@ export default async function handler(req, res) {
           }
           // 電話が後から判明したらキーを電話に昇格させる。
           // これで以後は他サイトから同じ電話で届いても同一リードとして統合できる。
-          if (isPhoneLike(body.phone) && !isPhoneLike(next.key)) { next.key = String(body.phone); changed = true }
+          // ※30日以上空いて作った新しいリード（repeatOf あり）は昇格させない。昇格すると古いリードと
+          //   同じキーになり、画面からの保存（キーで探す）が古い／新しいリードを取り違える。
+          if (isPhoneLike(body.phone) && !isPhoneLike(next.key) && !next.repeatOf) { next.key = String(body.phone); changed = true }
           if (!changed) {
             return { skipWrite: true, result: { ok: true, duplicate: true, merged: false } }
           }
@@ -361,9 +431,12 @@ export default async function handler(req, res) {
         }
 
         // key が null のときは一意キーを発行し、以後この行が他リードへ統合されないようにする。
+        const { inquiries: _iq, repeatOf: _ro, ...fresh } = body // サーバーだけが付ける項目は受け取らない
         const newItem = {
-          ...body,
-          key: key || `u:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          ...fresh,
+          key: repeatKey || key || `u:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          // 30日以上空いた新しい依頼のリードには、元のお客様のキーを残す（次の申し込みをこちらにまとめるため）
+          ...(repeatKey ? { repeatOf: key } : null),
           id: body.id || Date.now().toString(),
           savedAt: new Date().toISOString(),
         }
