@@ -81,6 +81,34 @@ const FILL_ONLY_FIELDS = new Set([
   'receivedAt', 'requestedAt', 'detectedAt', 'timing',
 ])
 
+// 受付日時の修復で直してよい項目（これ以外は受け付けない）
+const REPAIR_FIELDS = ['receivedAt', 'requestedAt', 'detectedAt']
+const REPAIR_MAX = 300
+function checkRepair(list) {
+  if (!Array.isArray(list) || !list.length || list.length > REPAIR_MAX) return { error: `repairReceived は1〜${REPAIR_MAX}件の配列で指定してください` }
+  const seen = new Set()
+  for (const p of list) {
+    if (!p || typeof p.key !== 'string' || !p.key) return { error: 'key が不正です' }
+    if (seen.has(p.key)) return { error: `key が重複しています: ${p.key}` }
+    seen.add(p.key)
+    for (const side of ['from', 'to']) {
+      const o = p[side]
+      if (!o || typeof o !== 'object' || Array.isArray(o)) return { error: `${side} が不正です` }
+      const ks = Object.keys(o)
+      if (!ks.length || ks.some(k => !REPAIR_FIELDS.includes(k))) return { error: `${side} に直せない項目があります（${REPAIR_FIELDS.join('・')} だけ）` }
+      if (ks.some(k => typeof o[k] !== 'string' || o[k].length > 40)) return { error: `${side} の値が不正です` }
+    }
+    if (!p.to.receivedAt) return { error: 'to.receivedAt は必須です' }
+    if (!Object.keys(p.to).every(k => k in p.from)) return { error: 'to で直す項目は from にも今の値を書いてください' }
+  }
+  return { list }
+}
+function summarizeRepair(results) {
+  const count = { fixed: 0, changed: 0, notfound: 0 }
+  results.forEach(x => { count[x.result]++ })
+  return { count, skipped: results.filter(x => x.result !== 'fixed') }
+}
+
 const isEmptyValue = (v) =>
   v == null || v === '' || (Array.isArray(v) && v.length === 0)
 
@@ -336,6 +364,43 @@ export default async function handler(req, res) {
 
     if (req.method === 'PUT') {
       const body = req.body || {}
+      // ===== 受付日時の修復（一度きりの後始末用）=====
+      // 巡回の送り直しで受付日時が上書きされ、古いリードが新着として先頭に移っていた分を元に戻す。
+      // 1件ずつ保存すると全件（約8.4MB）の読み書きが件数分起きるため、1回の書き込みでまとめて直す。
+      //   body: { repairReceived: [{ key, from: {receivedAt,...}, to: {receivedAt,...} }], dryRun }
+      //   ・直せるのは受付日時・依頼日時・検知時刻だけ（ステータス・メモ等は受け付けない）
+      //   ・今の値が from と一致するリードだけ直す（確認後に誰かが触ったリードには手を出さない）
+      //   ・dryRun: true なら書き込まず、直す予定の結果だけ返す
+      if (body.repairReceived !== undefined) {
+        const r = checkRepair(body.repairReceived)
+        if (r.error) return res.status(400).json({ error: r.error })
+        const plan = r.list
+        const apply = (items) => {
+          const byKey = new Map(items.map((l, i) => [l.key, i]))
+          const copy = items.slice()
+          const results = plan.map(p => {
+            const i = byKey.get(p.key)
+            if (i === undefined) return { key: p.key, result: 'notfound' }
+            const cur = copy[i]
+            const same = REPAIR_FIELDS.every(f => !(f in p.from) || String(cur[f] ?? '') === String(p.from[f] ?? ''))
+            if (!same) return { key: p.key, result: 'changed' } // 確認後に値が変わっている → 触らない
+            copy[i] = { ...cur, ...p.to }
+            return { key: p.key, result: 'fixed' }
+          })
+          return { copy, results }
+        }
+        if (body.dryRun === true) {
+          const { results } = apply(await readItems(KEY))
+          return res.json({ dryRun: true, ...summarizeRepair(results) })
+        }
+        const { result: out, version } = await mutateWithVersion(KEY, VER_KEY, (items) => {
+          const { copy, results } = apply(items)
+          if (!results.some(x => x.result === 'fixed')) return { skipWrite: true, result: { results } }
+          return { items: copy, result: { results, items: copy } }
+        })
+        if (out.items) await writeMeta(out.items, version)
+        return res.json({ dryRun: false, ...summarizeRepair(out.results) })
+      }
       if (!body.key && !body.phone && !body.id) {
         return res.status(400).json({ error: 'key / phone / id required' })
       }
