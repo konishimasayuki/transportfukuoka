@@ -152,7 +152,10 @@ function moveMD(l) {
   const s = String(l.moveDateDetail || l.moveDate || '')
   let m = s.match(/(\d{1,2})月\s*(\d{1,2})日/)
   if (!m) { const y = s.match(/\d{4}[/-](\d{1,2})[/-](\d{1,2})/); if (y) m = [null, y[1], y[2]] }
-  return m ? `${Number(m[1])}-${Number(m[2])}` : ''
+  if (m) return `${Number(m[1])}-${Number(m[2])}`
+  // 日が決まっていない表記（「11月上旬」「2026/11/中旬」）は旬で比べる
+  const j = s.match(/(\d{1,2})月\s*(上旬|中旬|下旬)/) || s.match(/\d{4}[/-](\d{1,2})[/-]\s*(上旬|中旬|下旬)/)
+  return j ? `${Number(j[1])}-${j[2]}` : ''
 }
 function normAddr(v) {
   return String(v || '')
@@ -415,7 +418,9 @@ export default async function handler(req, res) {
           }
           // 電話が後から判明したらキーを電話に昇格させる。
           // これで以後は他サイトから同じ電話で届いても同一リードとして統合できる。
-          if (isPhoneLike(body.phone) && !isPhoneLike(next.key)) { next.key = String(body.phone); changed = true }
+          // ※30日以上空いて作った新しいリード（repeatOf あり）は昇格させない。昇格すると古いリードと
+          //   同じキーになり、画面からの保存（キーで探す）が古い／新しいリードを取り違える。
+          if (isPhoneLike(body.phone) && !isPhoneLike(next.key) && !next.repeatOf) { next.key = String(body.phone); changed = true }
           if (!changed) {
             return { skipWrite: true, result: { ok: true, duplicate: true, merged: false } }
           }
@@ -426,8 +431,9 @@ export default async function handler(req, res) {
         }
 
         // key が null のときは一意キーを発行し、以後この行が他リードへ統合されないようにする。
+        const { inquiries: _iq, repeatOf: _ro, ...fresh } = body // サーバーだけが付ける項目は受け取らない
         const newItem = {
-          ...body,
+          ...fresh,
           key: repeatKey || key || `u:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           // 30日以上空いた新しい依頼のリードには、元のお客様のキーを残す（次の申し込みをこちらにまとめるため）
           ...(repeatKey ? { repeatOf: key } : null),

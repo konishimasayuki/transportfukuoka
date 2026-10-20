@@ -110,5 +110,28 @@ console.log('\n--- 以前に別サイトとまとめたリードで、最初の�
   t(all().length === 2, '希望日が無くて確かめられない時は新しいリード（埋もれさせない）')
 }
 
+console.log('\n--- バグチェックで見つけた不具合 ---')
+{
+  // ① 本番のリードの多くはキーが電話番号の表記そのまま。新しいリードに別サイトの申し込みがまとまった時、
+  //    新しいリードのキーが電話番号に変わり、古いリードと同じキーになっていた
+  seed({ ...OLD, key: PHONE })
+  await call('POST', NEW)
+  await call('POST', { site: 'ズバット', key: PHONE, phone: PHONE, orderId: 'Z5', name: '山田 太郎', receivedAt: md, moveDate: '11月15日', detail: true })
+  t(all().length === 2 && newLead().key !== PHONE && newLead().key.startsWith('rep_'), '★新しいリードのキーは電話番号に変わらない（古いリードと同じキーにならない）', newLead().key)
+  await call('PUT', { key: PHONE, phone: PHONE, memo: '古いリードに書いたメモ' })
+  t(oldLead().memo === '古いリードに書いたメモ' && !newLead().memo, '★古いリードへの保存が新しいリードに入らない')
+  // ② 新しくリードを作る時も、送られてきた inquiries / repeatOf は受け取らない
+  store.clear(); store.set(KEY, '[]'); store.set(KEY + ':ver', '1')
+  await call('POST', { ...NEW, key: '080-0000-0001', phone: '080-0000-0001', inquiries: [{ site: 'ズバット', orderId: 'x' }], repeatOf: 'tel:09012345678' })
+  t(!all()[0].inquiries && !all()[0].repeatOf, '★新規でも送られてきた inquiries / repeatOf は受け取らない')
+  // ③ 引越し希望日が「上旬」など日が無い表記でも、同じ引越しと分かる
+  seed({ ...OLD, site: 'ズバット', orderId: 'Z5', savedAt: iso(80), moveDate: '2026年11月上旬', moveDateDetail: '2026年11月上旬', to: '福岡市博多区', toAddress: '福岡市博多区博多駅前3-3' })
+  await call('POST', { site: '引越し侍', key: PHONE, phone: PHONE, orderId: '111', receivedAt: md, moveDate: '11月上旬', to: '福岡県福岡市博多区', detail: true })
+  t(all().length === 1, '★希望日が「11月上旬」でも同じ引越しの再表示としてまとめる')
+  seed({ ...OLD, site: 'ズバット', orderId: 'Z5', savedAt: iso(80), moveDate: '2026年11月上旬', to: '福岡市博多区' })
+  await call('POST', { site: '引越し侍', key: PHONE, phone: PHONE, orderId: '112', receivedAt: md, moveDate: '11月下旬', to: '福岡県福岡市博多区', detail: true })
+  t(all().length === 2, '上旬と下旬は別の引越しとして新しいリード')
+}
+
 console.log(`\n${ok} PASS / ${ng} FAIL`)
 process.exit(ng ? 1 : 0)
