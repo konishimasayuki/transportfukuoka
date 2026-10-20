@@ -146,7 +146,7 @@ t(JSON.stringify(await rowKeys())===JSON.stringify(expKeys(50)),'★並び順が
 k=await kpiVals(); t(k[0]==='件数（見積 ／ 成約）=8件/128件'&&k[1]==='合計金額（一覧全体）=¥'+(EXPECT.sumEst+EXPECT.sumCon).toLocaleString('ja-JP'),'★件数・合計金額は一覧全体の値',k.slice(0,2).join(' / '))
 const em=p.locator('button:has-text("次の50件を読み込む")'); t((await em.innerText()).includes('残り86件'),'残りの表示',await em.innerText())
 hits=[]; await em.evaluate(el=>el.click()); await p.waitForTimeout(800)
-t(hits.length===1 && hits[0].includes('offset=50&limit=50'),'押すと次の50件だけ受け取る',hits.join(' | '))
+{ const h=hits.filter(x=>!x.includes('recent=')); t(h.length===1 && h[0].includes('offset=50&limit=50'),'押すと次の50件だけ受け取る（12秒ごとの新着通知の通信は除いて数える）',hits.join(' | ')) }
 await em.evaluate(el=>el.click()); await p.waitForTimeout(800)
 t(await p.locator('tbody tr').count()===136 && await em.count()===0,'★押していくと全136行・ボタンが消える',String(await p.locator('tbody tr').count()))
 t(JSON.stringify(await rowKeys())===JSON.stringify(expKeys(136)),'★全部読んだ時の並びも全件で並べた時と同じ（重複・欠落なし）')

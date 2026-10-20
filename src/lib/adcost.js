@@ -12,12 +12,23 @@ export const AD_AUTO_FROM = '2026-07'
 export const AD_KEYS = ['samurai_single', 'samurai_family', 'kakaku', 'zubatto']
 export const AD_UNIT = { samurai_single: SAMURAI_SINGLE_UNIT, samurai_family: SAMURAI_FAMILY_UNIT, kakaku: KAKAKU_UNIT, zubatto: ZUBATTO_UNIT }
 
-// リードを「受付日(YYYY-MM → DD)」でサイト別に集計。
+// 広告費を数える単位（申し込み）。
+// 同じお客様が別のサイトからも申し込むとリードは1件にまとまるが、掲載費はサイトごとにかかる。
+// まとめた時にサーバーが残した申し込みの記録（inquiries）があれば、それを1件ずつ数える。
+// 記録の無いリード（まとめられていない）は、リードそのものを1件として数える（今まで通り）。
+export function adInquiriesOf(l) {
+  if (Array.isArray(l.inquiries) && l.inquiries.length) {
+    return l.inquiries.map(q => ({ site: q.site, count: q.count, receivedAt: q.receivedAt, savedAt: q.at || l.savedAt }))
+  }
+  return [l]
+}
+
+// 申し込みを「受付日(YYYY-MM → DD)」でサイト別に集計。
 // { 'YYYY-MM': { 'DD': { single, family, kakaku, zubatto } } }（件数）
 export function adCountsByMonthDay(leads) {
   const map = {}
   const bucket = (ym, day) => { map[ym] = map[ym] || {}; map[ym][day] = map[ym][day] || { single: 0, family: 0, kakaku: 0, zubatto: 0 }; return map[ym][day] }
-  for (const l of (leads || [])) {
+  for (const l of (leads || []).filter(Boolean).flatMap(adInquiriesOf)) {
     if (!l || !l.site) continue
     const t = receivedAtMs(l); if (!t) continue
     const d = new Date(t)
