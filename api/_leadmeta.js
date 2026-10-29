@@ -82,6 +82,39 @@ export async function writeMeta(items, ver) {
     ])
   } catch (e) { console.error('meta write failed:', e.message) }
 }
+// ---------------------------------------------------------------------
+// 目次からサマリを作る（1件だけ保存した時用。全件を読まない）
+// ---------------------------------------------------------------------
+// 目次（リード1件ごとの key/id/電話/サイト/ステータス/日時と保存ID __sid）には、
+// 件数・並び順の計算に要る項目がすべて入っている。buildMeta をそのまま目次に使って
+// 件数・サイト別・本日・要追客を全件分正確に数え、画面に出す直近分だけ本体を読む。
+// ＝全件から作った時と同じ内容になる（差分で足し引きしないので数字がずれない）。
+
+// サマリに要る本体の保存ID（直近50件と、要追客の直近50件）
+export function metaSidsFromEntries(entries) {
+  const { full } = buildMeta(entries)
+  return [...full.items, ...full.follow].map(e => e.__sid)
+}
+
+// 目次と、読んだ本体（保存ID→リード）からサマリを作って保存する。
+// 本体が1件でも欠けていたら保存しない（版が合わなくなり、読む側が全件から作り直すので安全）。
+export async function writeMetaFromEntries(entries, fetched, ver) {
+  try {
+    const built = buildMeta(entries)
+    const pick = (list) => list.map(e => fetched.get(e.__sid))
+    const items = pick(built.full.items)
+    const follow = pick(built.full.follow)
+    if (items.some(x => !x) || follow.some(x => !x)) return
+    const meta = { ...built.meta, items: items.slice(0, META_MAX).map(slimLead) }
+    const full = { items, follow }
+    meta.ver = full.ver = ver == null ? null : String(ver)
+    await Promise.all([
+      redisCmd(['SET', META_KEY, JSON.stringify(meta)]),
+      redisCmd(['SET', META_FULL_KEY, JSON.stringify(full)]),
+    ])
+  } catch (e) { console.error('meta write failed:', e.message) }
+}
+
 // サマリを読む（無い・壊れている場合は null を返して呼び出し側で全件フォールバック）
 export async function readMeta() {
   try {

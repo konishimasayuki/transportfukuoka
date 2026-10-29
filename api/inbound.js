@@ -1,8 +1,8 @@
 import { placeCall, twilioReady } from './_twilio.js'
 import { sendPushToAll } from './_push.js'
-import { readItems, readVersioned, mutateWithVersion, redisCmd } from './_kvstore.js'
+import { readItems, readVersioned, mutateWithVersion, updateOne, redisCmd } from './_kvstore.js'
 import { receivedAtMs } from '../src/lib/sortLeads.js'
-import { META_MAX, PAGE, slimLead, newerFirst, buildMeta, writeMeta, readMeta, readMetaBoth } from './_leadmeta.js'
+import { META_MAX, PAGE, slimLead, newerFirst, buildMeta, writeMeta, readMeta, readMetaBoth, metaSidsFromEntries, writeMetaFromEntries } from './_leadmeta.js'
 
 const KEY     = 'transportfukuoka:leads'
 const VER_KEY = 'transportfukuoka:leads:ver'
@@ -511,6 +511,19 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'key / phone / id required' })
       }
       // 対象は findTargetIndex で「1件だけ」特定する（他リードへの波及を防ぐ）。
+      // まずは目次と対象の1件だけを読む方式で保存する（全件を読まない）。
+      // 探し方は全件方式と同じ findTargetIndex（目次は本体と同じ並び・同じ key/id/電話を持つ）。
+      const one = await updateOne(KEY, VER_KEY, {
+        pick: (entries) => findTargetIndex(entries, body),
+        update: (item) => ({ item: { ...item, ...body, updatedAt: new Date().toISOString() }, result: true }),
+        extraSids: metaSidsFromEntries,
+      })
+      if (one.notFound) return res.status(404).json({ error: 'lead not found', ok: false })
+      if (!one.fallback) {
+        await writeMetaFromEntries(one.entries, one.fetched, one.version)
+        return res.json({ ok: true })
+      }
+      // この方式で扱えない時（初回の目次作成前など）だけ、従来の全件方式で保存する
       const { result: updated, version } = await mutateWithVersion(KEY, VER_KEY, (items) => {
         const idx = findTargetIndex(items, body)
         if (idx === -1) return { skipWrite: true, result: false }

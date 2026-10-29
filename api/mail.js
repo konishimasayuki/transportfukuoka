@@ -3,8 +3,8 @@
 //   PUT  … 定型文を保存する
 //   POST … 1通送る。送れたらリードに送信履歴を残す
 import { mailerStatus, sendMail, validAddress } from './_mailer.js'
-import { readItems, mutateWithVersion, redisCmd } from './_kvstore.js'
-import { writeMeta } from './_leadmeta.js'
+import { readItems, mutateWithVersion, updateOne, redisCmd } from './_kvstore.js'
+import { writeMeta, metaSidsFromEntries, writeMetaFromEntries } from './_leadmeta.js'
 import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate, hasAmountTag } from '../src/lib/mailTemplate.js'
 
 const LEADS_KEY = 'transportfukuoka:leads'
@@ -64,23 +64,42 @@ export default async function handler(req, res) {
       const at = new Date().toISOString()
       if (leadKey || phone || id) {
         try {
-          const { result: saved, version } = await mutateWithVersion(LEADS_KEY, LEADS_VER, (items) => {
-            let idx = leadKey ? items.findIndex(x => x.key === leadKey) : -1
-            if (idx === -1 && id) idx = items.findIndex(x => x.id === id)
+          // 対象の探し方（key → id → 電話が1件だけ一致）。全件方式と1件方式で共通。
+          const findIdx = (list) => {
+            let idx = leadKey ? list.findIndex(x => x.key === leadKey) : -1
+            if (idx === -1 && id) idx = list.findIndex(x => x.id === id)
             if (idx === -1 && phone) {
               const hits = []
-              items.forEach((x, i) => { if (x.phone === phone) hits.push(i) })
+              list.forEach((x, i) => { if (x.phone === phone) hits.push(i) })
               idx = hits.length === 1 ? hits[0] : -1
             }
-            if (idx === -1) return { skipWrite: true, result: false }
-            const copy = items.slice()
-            const log = Array.isArray(copy[idx].mailLog) ? copy[idx].mailLog.slice(-19) : []
+            return idx
+          }
+          const withLog = (lead) => {
+            const log = Array.isArray(lead.mailLog) ? lead.mailLog.slice(-19) : []
             log.push({ at, to, subject })
-            copy[idx] = { ...copy[idx], email: to, mailedAt: at, mailLog: log, updatedAt: at }
-            return { items: copy, result: copy }
+            return { ...lead, email: to, mailedAt: at, mailLog: log, updatedAt: at }
+          }
+          // まずは目次と対象の1件だけを読む方式で記録する（全件を読まない）
+          const one = await updateOne(LEADS_KEY, LEADS_VER, {
+            pick: findIdx,
+            update: (item) => ({ item: withLog(item), result: true }),
+            extraSids: metaSidsFromEntries,
           })
-          // サマリ（「更新」ボタン・追客タブが読む直近分）にも送信履歴を反映する
-          if (Array.isArray(saved)) await writeMeta(saved, version)
+          if (!one.fallback) {
+            // サマリ（「更新」ボタン・追客タブが読む直近分）にも送信履歴を反映する
+            if (!one.notFound) await writeMetaFromEntries(one.entries, one.fetched, one.version)
+          } else {
+            // この方式で扱えない時だけ、従来の全件方式で記録する
+            const { result: saved, version } = await mutateWithVersion(LEADS_KEY, LEADS_VER, (items) => {
+              const idx = findIdx(items)
+              if (idx === -1) return { skipWrite: true, result: false }
+              const copy = items.slice()
+              copy[idx] = withLog(copy[idx])
+              return { items: copy, result: copy }
+            })
+            if (Array.isArray(saved)) await writeMeta(saved, version)
+          }
         } catch (e) { console.error('mail log save failed:', e.message) }
       }
       return res.json({ ok: true, id: sent.id, provider: sent.provider, at })

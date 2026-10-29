@@ -65,6 +65,20 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 // 分割保存（リード用）
 // =====================================================================
 
+// 目次（並び順）に持たせる項目。リードを探す（key/id/電話）・件数を数える（サイト/ステータス/日時）のに使う。
+// 目次は本体と同じ1回の書き込みで更新するので、本体とずれることはない。
+// 目次の1件 = [保存ID, key, id, phone, site, status, savedAt, receivedAt]
+const DIR_FIELDS = ['key', 'id', 'phone', 'site', 'status', 'savedAt', 'receivedAt']
+const dirEntry = (sid, item) => [sid, ...DIR_FIELDS.map(f => (item && item[f] !== undefined ? item[f] : null))]
+// 目次の1件 → 探す・数える用の軽いオブジェクト（__sid に保存ID）
+function entryObj(e) {
+  const o = { __sid: e[0] }
+  DIR_FIELDS.forEach((f, i) => { if (e[i + 1] !== null && e[i + 1] !== undefined) o[f] = e[i + 1] })
+  return o
+}
+// 目次の要素から保存IDを取り出す（旧形式は保存IDの文字列だけ）
+const sidOf = (e) => (Array.isArray(e) ? e[0] : e)
+
 const hashKey   = (k) => k + ':h'
 const orderKey  = (k) => k + ':order'
 const backupKey = (k) => k + ':backup'
@@ -122,7 +136,7 @@ async function migrateToSplit(dataKey) {
     for (const item of items) {
       const sid = newSid(used)
       const json = JSON.stringify(item)
-      order.push(sid)
+      order.push(dirEntry(sid, item))
       batch.push(sid, json)
       batchBytes += Buffer.byteLength(json) + 40
       if (batchBytes >= MIGRATE_BATCH_BYTES) await flush()
@@ -154,7 +168,8 @@ async function readSplit(dataKey, verKey) {
       const items = []
       const refs = new Map()   // 読んだオブジェクト → 保存ID（変更されていない物を素早く見分ける）
       const rawToSids = new Map() // JSON文字列 → 保存ID（作り直されただけで中身が同じ物を見分ける）
-      for (const sid of order) {
+      for (const e of order) {
+        const sid = sidOf(e)
         const raw = byId.get(sid)
         if (raw == null) continue // 並び順にあって本体が無い（通常起きない）→ 飛ばす
         let item
@@ -188,15 +203,15 @@ async function writeSplit(dataKey, verKey, expectedVersion, state, newItems, new
   for (const item of newItems) {
     // ① 読んだオブジェクトそのまま（変更なし）
     const refSid = state.refs.get(item)
-    if (refSid && !usedOld.has(refSid)) { usedOld.add(refSid); order.push(refSid); continue }
+    if (refSid && !usedOld.has(refSid)) { usedOld.add(refSid); order.push(dirEntry(refSid, item)); continue }
     // ② 作り直されたが中身が同じ
     const json = JSON.stringify(item)
     const cand = state.rawToSids.get(json)
     const same = cand && cand.find(s => !usedOld.has(s))
-    if (same) { usedOld.add(same); order.push(same); continue }
+    if (same) { usedOld.add(same); order.push(dirEntry(same, item)); continue }
     // ③ 新規 or 変更 → 新しい保存IDで書く（古い方は下で消える）
     const sid = newSid(allIds)
-    order.push(sid)
+    order.push(dirEntry(sid, item))
     sets.push(sid, json)
   }
   const dels = [...state.sids].filter(s => !usedOld.has(s))
@@ -211,6 +226,84 @@ async function writeSplit(dataKey, verKey, expectedVersion, state, newItems, new
   }
   const r = await redisCmd(cmd)
   return r === 1 || r === '1'
+}
+
+// ---------------------------------------------------------------------
+// 1件だけ読んで1件だけ書く（分割保存のキー専用）
+// ---------------------------------------------------------------------
+// 全件（約10MB）を読まず、目次（全件の数%）と対象の1件だけを読む。
+//   pick(entries)   … 目次（軽いオブジェクトの配列。並びは本体と同じ）から対象の位置を返す。無ければ -1
+//   update(item)    … 対象の1件を受け取り { item: 新しい1件, result } か { skipWrite: true, result } を返す
+//   extraSids(entries) … 書き込みと同時に読みたい他のリードの保存ID（サマリ用）。書き込み後の目次が渡る
+// 戻り値：
+//   { fallback: true }                         … この方式では扱えない（呼び出し側で従来の全件方式に切り替える）
+//   { notFound: true }                         … 対象が見つからない
+//   { skipped: true, result }                  … 変更なし
+//   { result, version, entries, fetched }      … 書き込み済み。entries は書き込み後の目次、fetched は 保存ID→リード
+// 版（version）は全件方式と共通。全件方式の書き込みと同時に起きても、版の照合で必ずどちらかがやり直す。
+const READ_DIR_SCRIPT =
+  "local o = redis.call('GET', KEYS[1]) " +
+  "local v = redis.call('GET', KEYS[2]) or '0' " +
+  "if not o then return { '', v } end " +
+  "return { o, v }"
+
+// ARGV: [期待する版, 新しい版, 保存ID, JSON, 目次を書くか('1'/'0'), 目次JSON, 同時に読む保存ID...]
+const WRITE_ONE_SCRIPT =
+  "if (redis.call('GET', KEYS[3]) or '0') ~= ARGV[1] then return { 0 } end " +
+  "redis.call('HSET', KEYS[1], ARGV[3], ARGV[4]) " +
+  "if ARGV[5] == '1' then redis.call('SET', KEYS[2], ARGV[6]) end " +
+  "redis.call('SET', KEYS[3], ARGV[2]) " +
+  "if #ARGV > 6 then return { 1, redis.call('HMGET', KEYS[1], unpack(ARGV, 7)) } end " +
+  "return { 1, {} }"
+
+export async function updateOne(dataKey, verKey, { pick, update, extraSids }, attempts = 15) {
+  if (!SPLIT_KEYS.has(dataKey)) return { fallback: true }
+  for (let a = 0; a < attempts; a++) {
+    const r = await redisCmd(['EVAL', READ_DIR_SCRIPT, 2, orderKey(dataKey), verKey])
+    const orderRaw = r && r[0]
+    const version = (r && r[1] != null && r[1] !== '') ? String(r[1]) : '0'
+    if (!orderRaw) return { fallback: true } // 未移行・データなし
+    const dir = parseItems(orderRaw, orderKey(dataKey))
+    if (dir.some(e => !Array.isArray(e) || e.length !== DIR_FIELDS.length + 1)) return { fallback: true } // 目次が旧形式
+    const entries = dir.map(entryObj)
+    const idx = pick(entries)
+    if (idx === -1) return { notFound: true }
+    const sid = entries[idx].__sid
+    const raw = await redisCmd(['HGET', hashKey(dataKey), sid])
+    if (raw == null) return { fallback: true } // 目次にあって本体が無い（通常起きない）
+    let item
+    try { item = JSON.parse(raw) } catch {
+      throw new Error(`stored data is corrupted (invalid JSON): ${hashKey(dataKey)} ${sid}`)
+    }
+    const out = update(item) || {}
+    if (out.skipWrite) return { skipped: true, result: out.result }
+    const newItem = out.item
+    if (!newItem || typeof newItem !== 'object' || Array.isArray(newItem)) throw new Error('update must return item object')
+    const json = JSON.stringify(newItem)
+    const newDir = dir.slice()
+    newDir[idx] = dirEntry(sid, newItem)
+    const dirChanged = JSON.stringify(newDir[idx]) !== JSON.stringify(dir[idx])
+    const newEntries = dirChanged ? newDir.map(entryObj) : entries
+    const want = extraSids ? [...new Set(extraSids(newEntries))].filter(s => s !== sid) : []
+    const newVersion = String((Number(version) || 0) + 1)
+    const cmd = ['EVAL', WRITE_ONE_SCRIPT, 3, hashKey(dataKey), orderKey(dataKey), verKey,
+      version, newVersion, sid, json, dirChanged ? '1' : '0', dirChanged ? JSON.stringify(newDir) : '', ...want]
+    if (Buffer.byteLength(JSON.stringify(cmd)) > SAFE_REQUEST_BYTES) return { fallback: true }
+    const w = await redisCmd(cmd)
+    if (w && (w[0] === 1 || w[0] === '1')) {
+      const fetched = new Map([[sid, newItem]])
+      const vals = (w[1]) || []
+      want.forEach((s, i) => {
+        const v = vals[i]
+        if (v == null) return
+        try { fetched.set(s, JSON.parse(v)) } catch { /* 読めない物はサマリを作らない（次回作り直し） */ }
+      })
+      return { result: out.result, version: newVersion, entries: newEntries, fetched }
+    }
+    // 版が変わっていた（他の書き込みと競合）→ 少し待ってやり直す
+    await sleep(8 + Math.floor(Math.random() * (12 * (a + 1))))
+  }
+  throw new Error('write conflict: retries exhausted')
 }
 
 // =====================================================================
