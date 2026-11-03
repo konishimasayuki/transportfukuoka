@@ -91,16 +91,21 @@ function newSid(used) {
   }
 }
 
-// 並び順・版・全件を1往復（原子的）で読む。
-// 並び順が無い（未移行・データなし）時は先頭を '' で返す。
-// ★Lua の配列は nil で打ち切られるため、nil を返さないよう必ず既定値に落とす。
-const READ_SPLIT_SCRIPT =
-  "local o = redis.call('GET', KEYS[2]) " +
-  "local v = redis.call('GET', KEYS[3]) or '0' " +
-  "if not o then return { '', v, {} } end " +
-  "return { o, v, redis.call('HGETALL', KEYS[1]) }"
+// ※全件を1回のEVALで読むと、Upstash はEVAL内で読んだ量も送信上限(10MB)に数えるため、
+//   全件が10MBを超えると読み込み自体が失敗する（2026-11-03 発生）。
+//   そのため全件は「目次＋版」を読んだ後、HMGET で小分け（約1MBずつ）に読み、
+//   最後に版が変わっていないことを確かめる（変わっていたら読み直す）。
+//   書き込みは必ず版を上げるので、前後で版が同じなら途中で書き込みは起きていない＝一貫した内容。
+// 目次（並び順）と版を読む（どちらも小さい）
+const READ_DIR_SCRIPT =
+  "local o = redis.call('GET', KEYS[1]) " +
+  "local v = redis.call('GET', KEYS[2]) or '0' " +
+  "if not o then return { '', v } end " +
+  "return { o, v }"
 
-// 版が一致する時だけ、変わったリードの書き込み・消えたリードの削除・並び順・版の更新を行う。
+const READ_BATCH = 800 // 1回に読む件数（1件 約1KB × 800 ≒ 1MB）
+const READ_PARALLEL = 4 // 同時に投げる数
+
 // ARGV: [期待する版, 新しい版, 書く件数, (保存ID, JSON)..., 消す件数, 保存ID..., 並び順を書くか('1'/'0'), 並び順JSON]
 const WRITE_SPLIT_SCRIPT =
   "if (redis.call('GET', KEYS[3]) or '0') ~= ARGV[1] then return 0 end " +
@@ -157,31 +162,46 @@ async function migrateToSplit(dataKey) {
 // 分割保存を読む。items に加えて、書き込みの差分を出すための元情報（state）を返す。
 async function readSplit(dataKey, verKey) {
   for (let a = 0; a < 90; a++) {
-    const r = await redisCmd(['EVAL', READ_SPLIT_SCRIPT, 3, hashKey(dataKey), orderKey(dataKey), verKey])
+    const r = await redisCmd(['EVAL', READ_DIR_SCRIPT, 2, orderKey(dataKey), verKey])
     const orderRaw = r && r[0]
     const version = (r && r[1] != null && r[1] !== '') ? String(r[1]) : '0'
     if (orderRaw) {
       const order = parseItems(orderRaw, orderKey(dataKey))
-      const flat = (r && r[2]) || []
-      const byId = new Map()
-      for (let i = 0; i + 1 < flat.length; i += 2) byId.set(flat[i], flat[i + 1])
+      const sidList = order.map(sidOf)
+      // 本体を小分けに読む
+      const chunks = []
+      for (let i = 0; i < sidList.length; i += READ_BATCH) chunks.push(sidList.slice(i, i + READ_BATCH))
+      const values = new Array(chunks.length)
+      for (let i = 0; i < chunks.length; i += READ_PARALLEL) {
+        const part = chunks.slice(i, i + READ_PARALLEL)
+        const res = await Promise.all(part.map(c => redisCmd(['HMGET', hashKey(dataKey), ...c])))
+        res.forEach((v, j) => { values[i + j] = v || [] })
+      }
+      // 読んでいる間に書き込みがあったら読み直す
+      const ver2 = await redisCmd(['GET', verKey])
+      const v2 = (ver2 == null || ver2 === '') ? '0' : String(ver2)
+      if (v2 !== version) { await sleep(20 + Math.floor(Math.random() * 80)); continue }
       const items = []
+      const sids = new Set()
       const refs = new Map()   // 読んだオブジェクト → 保存ID（変更されていない物を素早く見分ける）
       const rawToSids = new Map() // JSON文字列 → 保存ID（作り直されただけで中身が同じ物を見分ける）
-      for (const e of order) {
-        const sid = sidOf(e)
-        const raw = byId.get(sid)
-        if (raw == null) continue // 並び順にあって本体が無い（通常起きない）→ 飛ばす
-        let item
-        try { item = JSON.parse(raw) } catch {
-          throw new Error(`stored data is corrupted (invalid JSON): ${hashKey(dataKey)} ${sid}`)
+      let k = 0
+      for (const vals of values) {
+        for (const raw of vals) {
+          const sid = sidList[k++]
+          if (raw == null) continue // 目次にあって本体が無い（通常起きない）→ 飛ばす
+          let item
+          try { item = JSON.parse(raw) } catch {
+            throw new Error(`stored data is corrupted (invalid JSON): ${hashKey(dataKey)} ${sid}`)
+          }
+          items.push(item)
+          sids.add(sid)
+          refs.set(item, sid)
+          if (!rawToSids.has(raw)) rawToSids.set(raw, [])
+          rawToSids.get(raw).push(sid)
         }
-        items.push(item)
-        refs.set(item, sid)
-        if (!rawToSids.has(raw)) rawToSids.set(raw, [])
-        rawToSids.get(raw).push(sid)
       }
-      return { items, version, state: { orderRaw, sids: new Set(byId.keys()), refs, rawToSids } }
+      return { items, version, state: { orderRaw, sids, refs, rawToSids } }
     }
     // 並び順が無い：旧形式が残っていれば移行、何も無ければ空
     const oldExists = await redisCmd(['EXISTS', dataKey])
@@ -191,7 +211,7 @@ async function readSplit(dataKey, verKey) {
     const done = await migrateToSplit(dataKey)
     if (!done) await sleep(1000) // 他の処理が移行中 → 少し待って読み直す
   }
-  throw new Error('migration in progress: please retry')
+  throw new Error('read retries exhausted: please retry')
 }
 
 // 新しい配列と読んだ時の状態から、変わった分だけを版付きで書く。成功=true。
@@ -241,12 +261,6 @@ async function writeSplit(dataKey, verKey, expectedVersion, state, newItems, new
 //   { skipped: true, result }                  … 変更なし
 //   { result, version, entries, fetched }      … 書き込み済み。entries は書き込み後の目次、fetched は 保存ID→リード
 // 版（version）は全件方式と共通。全件方式の書き込みと同時に起きても、版の照合で必ずどちらかがやり直す。
-const READ_DIR_SCRIPT =
-  "local o = redis.call('GET', KEYS[1]) " +
-  "local v = redis.call('GET', KEYS[2]) or '0' " +
-  "if not o then return { '', v } end " +
-  "return { o, v }"
-
 // ARGV: [期待する版, 新しい版, 保存ID, JSON, 目次を書くか('1'/'0'), 目次JSON, 同時に読む保存ID...]
 const WRITE_ONE_SCRIPT =
   "if (redis.call('GET', KEYS[3]) or '0') ~= ARGV[1] then return { 0 } end " +
