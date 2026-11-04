@@ -759,7 +759,8 @@ export default function Contracts({ user, mode, onFollowDelta }) {
     const auto = { sales: false, recv: false, move: false }
     if (showSalesFilter && salesYears.includes(cy)) { setFSalesYear(cy); auto.sales = true }
     if (showRecvFilter && recvYears.includes(cy)) { setFRecvYear(cy); auto.recv = true }
-    if (moveYears.includes(cy)) { setFMoveYear(cy); auto.move = true }
+    // 引越し日の年は自動では絞らない。今年売上登録した成約でも引越し日が来年のことがあり、
+    // 今年で絞ると一覧から消えてしまう（売上登録日の年の絞り込みで一覧の範囲は保たれる）。
     setAutoYear(auto)
     yearInitRef.current = true
   }, [loading, salesYears.join(), recvYears.join(), moveYears.join()])
