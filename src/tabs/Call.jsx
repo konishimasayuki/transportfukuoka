@@ -235,7 +235,7 @@ export default function Call({ user, switchTab }) {
     try {
       await fetch('/api/inbound', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, status }),
+        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, id: item.id, status }),
       })
     } catch (e) { console.error(e) }
   }
@@ -259,7 +259,7 @@ export default function Call({ user, switchTab }) {
     try {
       await Promise.all([
         fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contract) }),
-        fetch('/api/inbound',   { method: 'PUT',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, status: '成約', amount: payload.amount }) }),
+        fetch('/api/inbound',   { method: 'PUT',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, id: lead.id, status: '成約', amount: payload.amount }) }),
       ])
     } catch (e) { console.error(e) }
   }
@@ -272,7 +272,7 @@ export default function Call({ user, switchTab }) {
     try {
       await fetch('/api/inbound', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, ...patch }),
+        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, id: item.id, ...patch }),
       })
       // 金額編集は紐づく成約(leadKey一致)へも反映（成約管理・売上管理に波及）
       if (patch.amount !== undefined) {

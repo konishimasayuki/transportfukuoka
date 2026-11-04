@@ -382,7 +382,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     try {
       const res = await fetch('/api/inbound', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, status }),
+        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, id: item.id, status }),
       })
       // 対象が特定できなかった場合は通知して再同期（保存が黙って消えるのを防ぐ）
       if (!res.ok) { revert(); showToast('ステータスを保存できませんでした。画面を最新に戻します'); await fetchItems() }
@@ -439,7 +439,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       res = await fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contract) })
     } catch (e) { console.error(e); res = null }
     if (!res || !res.ok) { revert(); showToast('成約登録できませんでした。もう一度お試しください'); return false }
-    const leadBody = JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, status: '成約', amount: payload.amount, contracted: true })
+    const leadBody = JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, id: lead.id, status: '成約', amount: payload.amount, contracted: true })
     for (let i = 0; i < 2; i++) { // リード側は1回だけやり直す（成約は登録済みなので、ここで止めたくない）
       try {
         const r = await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: leadBody })
@@ -467,7 +467,10 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       if (idx !== -1) DEMO_DATA[idx] = { ...DEMO_DATA[idx], ...patch }
       return
     }
-    // 保存できなかった時は、変えた項目を画面上で元に戻す（保存できたように見えたままにしない）
+    // ※保存の相手はキー・電話番号に加えて id でも探してもらう（id は取り込み時から変わらない）。
+  //   画面を長く開いたままだと、その間に電話番号が分かってキーが変わったリードを見失い、
+  //   何度保存しても「保存できませんでした」になっていた。
+  // 保存できなかった時は、変えた項目を画面上で元に戻す（保存できたように見えたままにしない）
     const revert = () => {
       const back = Object.fromEntries(Object.keys(patch).map(k => [k, item[k]]))
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...back } : i))
@@ -477,7 +480,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     try {
       res = await fetch('/api/inbound', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, ...patch }),
+        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, id: item.id, ...patch }),
       })
     } catch (e) {
       console.error(e); revert()
@@ -636,7 +639,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     try {
       await fetch('/api/inbound', {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone }),
+        body: JSON.stringify({ key: item.key || item.phone, phone: item.phone, id: item.id }),
       })
       await fetchItems()
     } catch (e) { console.error(e) }
