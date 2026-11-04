@@ -417,7 +417,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
         if (!isDemo) {
           try {
             await fetch('/api/inbound', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, status: '成約', contracted: true, amount: newItem.amount }) })
+              body: JSON.stringify({ key: lead.key || lead.phone, phone: lead.phone, id: lead.id, status: '成約', contracted: true, amount: newItem.amount }) })
           } catch (e) { console.error(e) }
         } else {
           const idx = DEMO_LEADS.findIndex(l => l.id === lead.id)
@@ -604,7 +604,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
   const updateLeadStaff = async (row, staff) => {
     setFollowLeads(prev => prev.map(l => l.id === row._lead.id ? { ...l, staff } : l))
     if (isDemo) return
-    await putOrResync('/api/inbound', { key: row._lead.key || row._lead.phone, phone: row._lead.phone, staff }, refetchFollowLeads)
+    await putOrResync('/api/inbound', { key: row._lead.key || row._lead.phone, phone: row._lead.phone, id: row._lead.id, staff }, refetchFollowLeads)
   }
   // リード由来行のタイムツリー登録チェックをインライン変更（/api/inbound を更新）
   const updateLeadTimetree = async (row, timetree) => {
@@ -614,7 +614,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
       if (idx !== -1) DEMO_LEADS[idx] = { ...DEMO_LEADS[idx], timetree }
       return
     }
-    await putOrResync('/api/inbound', { key: row._lead.key || row._lead.phone, phone: row._lead.phone, timetree }, refetchFollowLeads)
+    await putOrResync('/api/inbound', { key: row._lead.key || row._lead.phone, phone: row._lead.phone, id: row._lead.id, timetree }, refetchFollowLeads)
   }
   const leadTtCheckbox = (item) => (
     <label onClick={e => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} title="TimeTreeに登録済みかを記録">
@@ -635,7 +635,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
       if (idx !== -1) DEMO_LEADS[idx] = { ...DEMO_LEADS[idx], status }
       return
     }
-    await putOrResync('/api/inbound', { key: row._lead.key || row._lead.phone, phone: row._lead.phone, status }, refetchFollowLeads)
+    await putOrResync('/api/inbound', { key: row._lead.key || row._lead.phone, phone: row._lead.phone, id: row._lead.id, status }, refetchFollowLeads)
   }
   // 追客タブのリードを成約にする：リード管理の「成約登録」と同じ内容をプリフィルして
   // 成約の新規登録モーダルを開く。保存確定時に成約を作り、リード側も成約済みにする。
@@ -676,7 +676,7 @@ export default function Contracts({ user, mode, onFollowDelta }) {
       if (idx !== -1) DEMO_LEADS[idx] = { ...DEMO_LEADS[idx], ...patch }
       return
     }
-    await putOrResync('/api/inbound', { key: lead.key || lead.phone, phone: lead.phone, ...patch }, refetchFollowLeads)
+    await putOrResync('/api/inbound', { key: lead.key || lead.phone, phone: lead.phone, id: lead.id, ...patch }, refetchFollowLeads)
   }
 
   // CSVエクスポート（現在の一覧をすべて）
