@@ -320,6 +320,42 @@ export async function updateOne(dataKey, verKey, { pick, update, extraSids }, at
   throw new Error('write conflict: retries exhausted')
 }
 
+// ---------------------------------------------------------------------
+// 目次で選んだリードだけを読む（分割保存のキー専用）
+// ---------------------------------------------------------------------
+// 全件（約10MB）を読まず、目次（全件の数%）を読んで pick で選んだ分だけ本体から読む。
+//   pick(entries) … 目次（軽いオブジェクトの配列）から、読みたい位置を並べたい順に返す
+// 戻り値：{ items, entries }。分割保存でない・未移行の時は null（呼び出し側で全件から選ぶ）。
+// 読んでいる間に書き込みがあり、選んだリードが消えていた（新しい保存IDに置き換わった）時は読み直す。
+export async function readByDir(dataKey, verKey, pick, attempts = 10) {
+  if (!SPLIT_KEYS.has(dataKey)) return null
+  for (let a = 0; a < attempts; a++) {
+    const r = await redisCmd(['EVAL', READ_DIR_SCRIPT, 2, orderKey(dataKey), verKey])
+    const orderRaw = r && r[0]
+    if (!orderRaw) return null // 未移行・データなし
+    const dir = parseItems(orderRaw, orderKey(dataKey))
+    if (dir.some(e => !Array.isArray(e) || e.length !== DIR_FIELDS.length + 1)) return null // 目次が旧形式
+    const entries = dir.map(entryObj)
+    const idxs = pick(entries)
+    const sids = idxs.map(i => entries[i].__sid)
+    const chunks = []
+    for (let i = 0; i < sids.length; i += READ_BATCH) chunks.push(sids.slice(i, i + READ_BATCH))
+    const values = []
+    for (let i = 0; i < chunks.length; i += READ_PARALLEL) {
+      const res = await Promise.all(chunks.slice(i, i + READ_PARALLEL).map(c => redisCmd(['HMGET', hashKey(dataKey), ...c])))
+      res.forEach(v => values.push(...(v || [])))
+    }
+    if (values.some(v => v == null)) { await sleep(20 + Math.floor(Math.random() * 80)); continue }
+    const items = values.map((raw, i) => {
+      try { return JSON.parse(raw) } catch {
+        throw new Error(`stored data is corrupted (invalid JSON): ${hashKey(dataKey)} ${sids[i]}`)
+      }
+    })
+    return { items, entries }
+  }
+  throw new Error('read retries exhausted: please retry')
+}
+
 // =====================================================================
 // 従来の単一値保存（リード以外：成約・見積書など）
 // =====================================================================

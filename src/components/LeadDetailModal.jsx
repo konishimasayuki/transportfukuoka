@@ -8,7 +8,7 @@ import { DEFAULT_MAIL_TEMPLATE, fillMailTemplate, hasAmountTag, formatAmount, fi
 import ModalPortal from './ModalPortal'
 import { canonKazai } from '../lib/kazaiName'
 
-const STATUS_LIST  = ['未架電', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
+const STATUS_LIST  = ['未架電', '架電対応中', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
 // 手入力で新規登録するときの初期値（査定サイト由来ではないので流入元は「その他」）
 export const EMPTY_LEAD = {
   name: '', kana: '', phone: '', email: '', count: '', ageGender: '', job: '',
@@ -18,7 +18,7 @@ export const EMPTY_LEAD = {
   request: '', option: '', referenceFee: '', memo: '', works: {},
   site: 'その他', status: '未架電', kazai: [], boxCount: '',
 }
-const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '見積り': 'bc', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
+const STATUS_BADGE = { '未架電': 'bo', '架電対応中': 'br', '架電済': 'bb', '留守': 'by', '見積り': 'bc', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
 const YN = ['', 'あり', 'なし']
 
 // 家財のカテゴリ分け（追加候補プルダウンと表示の両方で使用）

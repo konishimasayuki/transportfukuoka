@@ -197,14 +197,15 @@ console.log('\n--- 印を付ける対象（未架電のあいだ ＋ 新着10分
   const fs = await import('node:fs')
   const src = fs.readFileSync(new URL('../src/lib/leadLock.js', import.meta.url).pathname, 'utf8')
   const cut = (a, b) => { const i = src.indexOf(a); return src.slice(i, src.indexOf(b, i) + b.length) }
-  const { withinLockWindow, LOCK_WINDOW_MS, isUncalled, shouldLock } = new Function(`
+  const { withinLockWindow, LOCK_WINDOW_MS, isUncalled, isCalling, shouldLock } = new Function(`
     ${cut('export const LOCK_WINDOW_MS', '\n')}
     let skewMs = 0
     ${cut('export const serverNow', '\n')}
     ${cut('export function withinLockWindow(item) {', '\n}')}
     ${cut('export const isUncalled', '\n')}
+    ${cut('export const isCalling', '\n')}
     ${cut('export const shouldLock', '\n')}
-    return { withinLockWindow, LOCK_WINDOW_MS, isUncalled, shouldLock }
+    return { withinLockWindow, LOCK_WINDOW_MS, isUncalled, isCalling, shouldLock }
   `.replace(/export /g, ''))()
   t(LOCK_WINDOW_MS === 10 * 60 * 1000, `窓は10分（${LOCK_WINDOW_MS / 60000}分）`)
   const at = ms => ({ savedAt: new Date(Date.now() - ms).toISOString() })
@@ -225,6 +226,8 @@ console.log('\n--- 印を付ける対象（未架電のあいだ ＋ 新着10分
   t(shouldLock(lead('未架電')) === true, '★1時間前の未架電リードもまだ対象（気づくのが遅れても守る）')
   t(shouldLock(lead('架電済', 60 * 1000)) === true, '手は付いたが新着1分 → 10分窓で守る（付け替え操作の最中）')
   t(shouldLock(lead('架電済', 20 * 60 * 1000)) === false, '手が付いて20分 → 対象外（灰色だらけにしない）')
+  t(isCalling(lead('架電対応中')) === true && isUncalled(lead('架電対応中')) === false, '架電対応中は未架電ではない')
+  t(shouldLock(lead('架電対応中')) === true, '★1時間前でも架電対応中のあいだは印を続ける')
 }
 {
   // 画面側：長電話の最中に窓が切れても、印は消さない
@@ -236,7 +239,7 @@ console.log('\n--- 印を付ける対象（未架電のあいだ ＋ 新着10分
   t(/lockedBy\(item\)/.test(leads), '一覧の灰色は確保の有無で決める（窓の外でも対応中は見える）')
   // 「閉じる」以外の経路（コピー・成約登録・見積書作成・配車ボードへ移動）でも
   // 詳細は閉じる。個別に解放を書くと書き漏らし、そのリードが灰色のまま残る。
-  t(/useEffect\(\(\) => \{ if \(!detailItem\) setHeldKey\(null\) \}, \[detailItem\]\)/.test(leads),
+  t(/useEffect\(\(\) => \{\s*if \(detailItem\) \{[\s\S]*?return\s*\}\s*setHeldKey\(null\)[\s\S]*?\}, \[detailItem\]\)/.test(leads),
     '★詳細が閉じたことを1か所で捕まえて解放する（閉じる経路の書き漏らし対策）')
   const closers = (leads.match(/setDetailItem\(null\)/g) || []).length
   t(closers >= 5, `閉じる経路は ${closers} 箇所ある（個別対応では漏れる）`)
