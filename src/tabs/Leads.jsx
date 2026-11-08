@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import LeadDetailModal, { ConvertToContractModal, EMPTY_LEAD, MailPanel, MailSentMark } from '../components/LeadDetailModal'
-import { useLeadLocks, useHoldLock, lockKeyOf, acquireLock, agoText, shouldLock } from '../lib/leadLock'
+import LeadDetailModal, { ConvertToContractModal, EMPTY_LEAD, MailPanel } from '../components/LeadDetailModal'
+import { useLeadLocks, useHoldLock, lockKeyOf, acquireLock, agoText, shouldLock, isUncalled } from '../lib/leadLock'
 import { toCSV, parseCSV, downloadCSV } from '../lib/csv'
 import { fetchStaffList, DEFAULT_STAFF } from '../lib/staff'
 import { receivedAtMs } from '../lib/sortLeads'
@@ -50,8 +50,12 @@ function parseLeadMoveDate(raw) {
   return { date: `${y}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`, ap }
 }
 
-const STATUS_LIST  = ['未架電', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
-const STATUS_BADGE = { '未架電': 'bo', '架電済': 'bb', '留守': 'by', '見積り': 'bc', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
+const STATUS_LIST  = ['未架電', '架電対応中', '架電済', '留守', '見積り', '要追客', '成約', '見送り']
+// 新規リードを開いた後、閉じる時に選んでもらうステータス（初回だけ。未架電には戻さない）
+const CLOSE_CHOICES = ['架電済', '留守', '見積り', '要追客', '成約', '見送り']
+// リード管理・見積り管理に出す件数（受付日時の新しい順）
+const LATEST_N = 300
+const STATUS_BADGE = { '未架電': 'bo', '架電対応中': 'br', '架電済': 'bb', '留守': 'by', '見積り': 'bc', '要追客': 'bp', '成約': 'bg', '見送り': 'bk' }
 
 // CSV入出力の列定義
 const CSV_COLUMNS = [
@@ -160,37 +164,46 @@ export function mergeLatest(prev, latest) {
   return added.length ? [...added, ...next] : next
 }
 
-// 一覧の「訪問見積もり日」。
-// ★キーボードで年を打つと 0002→0020→0202→2026 と1文字ごとに変更が起きる。そのたびに保存すると
-//   途中の値がサーバーに書かれ、送信の順番が入れ替わると途中の値が残ってしまう。
-//   入力中は画面の中だけで持ち、日付が確定してから少し待つか、入力欄から離れた時に1回だけ保存する。
-//   年が2000年より前（打ちかけ）の値は保存しない。
-const VISIT_SAVE_WAIT_MS = 800
-const okVisitDate = (v) => v === '' || (/^\d{4}-\d{2}-\d{2}$/.test(v) && Number(v.slice(0, 4)) >= 2000 && Number(v.slice(0, 4)) <= 2100)
-export function VisitDateCell({ value, onCommit }) {
-  const [v, setV] = useState(value)
-  const timer = useRef(null)
-  const sent = useRef(value) // 最後に保存した（または元の）値
-  // 他の人の変更などで元の値が変わったら、入力中でなければ合わせる
-  useEffect(() => { if (!timer.current) { setV(value); sent.current = value } }, [value])
-  useEffect(() => () => clearTimeout(timer.current), [])
-  const commit = (x) => {
-    clearTimeout(timer.current); timer.current = null
-    if (x === sent.current || !okVisitDate(x)) return
-    sent.current = x
-    onCommit(x)
+// ステータス欄の下に出す移り変わり（データは statusLog に年月日・時刻で残す）。
+// 初回の流れ（架電対応中 → その次）を残したまま、最新の変更を足す。今日でない時刻は日付も付ける。
+//   例：「14:05から対応中（3分前から）」「14:05から対応中 → 14:12 架電済 → 11/08 10:20 留守」
+function fmtFlowTime(iso) {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const t = new Date(), hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  const same = d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate()
+  return same ? hm : `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${hm}`
+}
+export function statusFlowParts(lead, nowMs = Date.now()) {
+  const log = Array.isArray(lead && lead.statusLog) ? lead.statusLog.filter(x => x && x.status && x.at) : []
+  if (!log.length) return []
+  const ci = log.findIndex(x => x.status === '架電対応中')
+  const picked = ci === -1 ? [log[log.length - 1]] : [log[ci], log[ci + 1], log[log.length - 1]].filter(Boolean)
+  const uniq = picked.filter((x, i) => picked.indexOf(x) === i)
+  return uniq.map((x, i) => {
+    if (x.status === '架電対応中') {
+      const isNow = i === uniq.length - 1 && (lead.status || '') === '架電対応中'
+      const min = Math.max(0, Math.floor((nowMs - Date.parse(x.at)) / 60000))
+      return `${fmtFlowTime(x.at)}から対応中${isNow ? `（${min}分前から）` : ''}`
+    }
+    return `${fmtFlowTime(x.at)} ${x.status}`
+  })
+}
+function StatusFlow({ lead }) {
+  const parts = statusFlowParts(lead)
+  if (!parts.length) return null
+  return <div style={{ fontSize: 10.5, color: '#64748B', marginTop: 3, whiteSpace: 'nowrap' }}>{parts.join(' → ')}</div>
+}
+
+// 受付日時の絞り込み → サーバーに頼む期間（'YYYY-MM-DD_YYYY-MM-DD'）。絞り込みが無ければ ''
+function rangeKeyOf(f) {
+  if (!f || f.type === 'all') return ''
+  if (f.type === 'day' && f.date) return `${f.date}_${f.date}`
+  if (f.type === 'month' && f.month) {
+    const [y, m] = f.month.split('-').map(Number)
+    return `${f.month}-01_${f.month}-${pad2(new Date(y, m, 0).getDate())}`
   }
-  return (
-    <input type="date" value={v}
-      onChange={e => {
-        const x = e.target.value
-        setV(x)
-        clearTimeout(timer.current)
-        timer.current = okVisitDate(x) ? setTimeout(() => commit(x), VISIT_SAVE_WAIT_MS) : null
-      }}
-      onBlur={() => commit(v)}
-      style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '3px 5px', fontFamily: 'inherit', fontSize: 12, color: v ? '#1E293B' : '#94A3B8', background: '#fff' }} />
-  )
+  return ''
 }
 
 // 手入力の登録・コピーで使う受付日時（既存データと同じ MM/DD HH:MM 表記）
@@ -204,7 +217,20 @@ function fmtNowReceived() {
 export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   const isQuotes = mode === 'quotes'
   const isDemo = user?.mode === 'demo'
-  const [items, setItems]       = useState(isDemo ? DEMO_DATA.map(norm) : [])
+  // ===== 一覧のもと =====
+  // 全件（約7,000件・約10MB）を読むと表示までに時間がかかるため、ふだんは受付日時の新しい順に300件だけ読む。
+  //   ・受付日時で絞り込んだ時 … その期間と前後3日分をサーバーから読む（rangeData）
+  //   ・検索した時・CSV出力 … 全件を一度だけ読む（fullData。以後は使い回す）
+  // 画面の保存（楽観更新）はどのもとにも同じように反映する（setItems）。
+  const [latest, setLatest]       = useState(isDemo ? DEMO_DATA.map(norm) : [])
+  const [rangeData, setRangeData] = useState(null) // { key: 'from_to', items }
+  const [fullData, setFullData]   = useState(null)
+  const [subLoading, setSubLoading] = useState('') // 期間・全件を読んでいる間の表示
+  const setItems = (fn) => {
+    setLatest(fn)
+    setRangeData(p => (p ? { ...p, items: fn(p.items) } : p))
+    setFullData(p => (p ? fn(p) : p))
+  }
   const [loading, setLoading]   = useState(!isDemo)
   const [search, setSearch]     = useState('')
   const [dateFilter, setDateFilter] = useState({ type: 'all' }) // {type:'all'|'day'(date)|'month'(month)}
@@ -212,6 +238,13 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   const [filterStatuses, setFilterStatuses] = useState([])
   const [filterTimetree, setFilterTimetree] = useState([]) // 'done'（登録済）／'none'（未登録）
   const [filterStaffs, setFilterStaffs] = useState([])     // ''＝未割当も選択肢に含む
+  // いま一覧に使うもと：検索中は全件、受付日時の絞り込み中はその期間、それ以外は直近300件
+  const rangeKey = rangeKeyOf(dateFilter)
+  const usingFull = !isDemo && normJa(search) !== ''
+  const usingRange = !isDemo && !usingFull && !!rangeKey
+  const items = usingFull ? (fullData || [])
+    : usingRange ? ((rangeData && rangeData.key === rangeKey) ? rangeData.items : [])
+    : latest
   const [showFilterPanel, setShowFilterPanel] = useState(false)
   const filterPanelRef = useRef(null)
   const [page, setPage] = useState(0) // リード一覧のページ（1ページ50件）
@@ -251,13 +284,56 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       return
     }
     setHeldKey(k)
+    // 新規リード（未架電・コピーではない）を自分が開いた時は「架電対応中」にする。
+    // 閉じる時に一度だけステータスを選んでもらう（closeLead）。
+    if (isUncalled(item) && !item.isCopy) {
+      const calling = { ...item, status: '架電対応中' }
+      callingRef.current = calling
+      setDetailItem(calling)
+      updateStatus(item, '架電対応中')
+      return
+    }
     setDetailItem(item)
   }
-  const closeLead = () => { setDetailItem(null); setHeldKey(null) }
+  // 自分が「架電対応中」にした新規リード（閉じる時にステータスを選んでもらう対象）
+  const callingRef = useRef(null)
+  const [pickFor, setPickFor] = useState(null) // 閉じる時のステータス選択を出しているリード
+  const closeLead = () => {
+    const d = detailItem
+    // 新規リードの初回：まだ架電対応中なら、閉じる前にステータスを選んでもらう
+    if (d && callingRef.current && callingRef.current.id === d.id && d.status === '架電対応中') { setPickFor(d); return }
+    callingRef.current = null
+    setDetailItem(null); setHeldKey(null)
+  }
+  // 閉じる時のステータス選択で選んだ
+  const chooseCloseStatus = (status) => {
+    const d = pickFor
+    setPickFor(null)
+    if (!d) return
+    // 成約は今まで通り成約登録の画面を開く（登録できたら成約になる。やめたら架電対応中のまま詳細に戻る）
+    if (status === '成約') {
+      if (isContracted(d)) { showToast('このリードは既に成約登録済みです。編集は成約管理で行えます。'); return }
+      setConvertLead(d); return
+    }
+    callingRef.current = null
+    updateStatus(d, status)
+    setDetailItem(null)
+  }
   // ★詳細を閉じる経路は「閉じる」ボタンだけではない（コピー・成約登録・見積書作成・
   //   配車ボードへ移動…で setDetailItem(null) している）。個別に解放を書くと必ず
   //   書き漏らし、そのリードが灰色のまま残る。閉じたことを1か所で捕まえて解放する。
-  useEffect(() => { if (!detailItem) setHeldKey(null) }, [detailItem])
+  // 新規リードの初回でステータスを選ばずに離れた時（コピー・見積書作成などで画面を移った）は「架電済」にする。
+  // ※ブラウザを閉じた・PCが落ちた時は、サーバーが「対応中」の印が切れた時に架電済にする（api/lock.js）。
+  useEffect(() => {
+    if (detailItem) {
+      if (callingRef.current && callingRef.current.id === detailItem.id) callingRef.current = detailItem
+      return
+    }
+    setHeldKey(null)
+    const c = callingRef.current
+    callingRef.current = null
+    if (c && c.status === '架電対応中') updateStatus(c, '架電済')
+  }, [detailItem])
   const [newLead, setNewLead] = useState(null) // 手入力の新規リード登録モーダル
   const [convertLead, setConvertLead] = useState(null) // ステータス「成約」変更時の登録モーダル
   // メール送信（サーバ側で履歴を残しているので、画面はその内容に合わせるだけ）
@@ -298,47 +374,76 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [showFilterPanel])
 
-  useEffect(() => { if (!isDemo) fetchItems() }, [])
+  // リード管理と見積り管理は同じ画面を使い回すので、切り替えた時も読み直す
+  useEffect(() => { if (!isDemo) fetchItems() }, [isQuotes])
   useEffect(() => { if (isDemo) { setStaffList(DEFAULT_STAFF); return } fetchStaffList().then(setStaffList) }, [isDemo])
 
+  // 直近300件（見積り管理は「見積り」の直近300件）と、上の件数（本日・未架電・見積り）を読む。
+  // 保存に失敗した時の読み直しにも使う。期間・全件のもとは捨てて、使う時に読み直す。
+  const [counts, setCounts] = useState({ today: null, statuses: {} })
+  const fetchCounts = async () => {
+    try {
+      const [sm, sc] = await Promise.all([
+        fetch('/api/inbound?summary=1').then(r => r.json()),
+        fetch('/api/inbound?statusCounts=1').then(r => r.json()),
+      ])
+      setCounts({ today: sm && sm.today ? Number(sm.today.total) || 0 : null, statuses: (sc && sc.statuses) || {} })
+    } catch (e) { console.error(e) }
+  }
   const fetchItems = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/inbound')
+      const res = await fetch(`/api/inbound?latest=${LATEST_N}${isQuotes ? '&status=' + encodeURIComponent('見積り') : ''}`)
+      if (!res.ok) throw new Error('HTTP ' + res.status)
       const data = await res.json()
-      setItems((data.items || []).map(norm))
-    } catch (e) { console.error(e) }
+      setLatest((data.items || []).map(norm))
+      setRangeData(null); setFullData(null)
+    } catch (e) { console.error(e); showToast('リードを読み込めませんでした') }
     finally { setLoading(false) }
+    fetchCounts()
   }
+  // 受付日時で絞り込んだ時：その期間と前後3日分を読む
+  useEffect(() => {
+    if (!usingRange || (rangeData && rangeData.key === rangeKey)) return
+    let alive = true
+    const [from, to] = rangeKey.split('_')
+    setSubLoading('この期間のリードを読み込み中…')
+    fetch(`/api/inbound?from=${from}&to=${to}`).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json() })
+      .then(d => { if (alive) setRangeData({ key: rangeKey, items: (d.items || []).map(norm) }) })
+      .catch(e => { console.error(e); if (alive) showToast('この期間のリードを読み込めませんでした') })
+      .finally(() => { if (alive) setSubLoading('') })
+    return () => { alive = false }
+  }, [usingRange, rangeKey, rangeData && rangeData.key])
+  // 全件（検索・CSV出力で使う）。一度読んだら使い回す
+  const fullLoadingRef = useRef(null)
+  const loadFull = () => {
+    if (fullData) return Promise.resolve(fullData)
+    if (fullLoadingRef.current) return fullLoadingRef.current
+    setSubLoading('全件から探しています…')
+    fullLoadingRef.current = fetch('/api/inbound').then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json() })
+      .then(d => { const all = (d.items || []).map(norm); setFullData(all); return all })
+      .catch(e => { console.error(e); showToast('全件を読み込めませんでした'); return null })
+      .finally(() => { fullLoadingRef.current = null; setSubLoading('') })
+    return fullLoadingRef.current
+  }
+  useEffect(() => { if (usingFull && !fullData) loadFull() }, [usingFull])
 
-  // ===== 「更新」ボタン：直近50件だけ受け取って一覧に反映する =====
-  // ★全件（本番で8MB超・2.5〜4秒）を毎回取り直していたのが「更新が遅い」の原因。
-  //   新着を見るために押すボタンなので、1ページ目（50件）が最新になれば足りる。
-  //   受け取った50件は key で突き合わせ、既存は差し替え（他の人のステータス・メモも反映）、
-  //   無いものは追加する。
-  //   ・前回から50件を超えて増えた／件数が減った（誰かが削除した）時は全件を取り直す
-  //   ・2ページ目以降の他の人の変更は、タブを開き直した時に反映される
+  // ===== 「更新」ボタン：いま使っているもとを読み直す =====
+  // ふだんは直近300件（約0.4MB）だけ。全件（約10MB）は検索中だけ読み直す。
   const [refreshing, setRefreshing] = useState(false)
   const refreshLatest = async () => {
     if (refreshing) return
     setRefreshing(true)
     try {
-      const data = await fetch('/api/inbound?summary=1').then(r => r.json())
-      const latest = Array.isArray(data.items) ? data.items : null
-      const total = Number(data.count)
-      // 足りない・減った・応答がおかしい → 正確さを優先して全件
-      if (!latest || !(total >= 0) || total < items.length || total - items.length > latest.length) {
-        await fetchItems()
-        return
-      }
-      const fresh = latest.map(norm)
-      // 反映後の件数がサーバーの件数と合わない（例：削除1件と新着1件が同時にあった）時は全件で取り直す。
-      // そのままだと削除済みのリードが一覧に残り、件数も合わない。
-      if (mergeLatest(items, fresh).length !== total) { await fetchItems(); return }
-      setItems(prev => mergeLatest(prev, fresh))
+      const res = await fetch(`/api/inbound?latest=${LATEST_N}${isQuotes ? '&status=' + encodeURIComponent('見積り') : ''}`)
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      const data = await res.json()
+      setLatest((data.items || []).map(norm))
+      setRangeData(null) // 期間の絞り込み中なら読み直す（上の useEffect）
+      if (fullData) { setFullData(null); if (usingFull) loadFull() }
+      fetchCounts()
     } catch (e) {
-      console.error(e)
-      await fetchItems() // 軽い取得に失敗したら全件で取り直す
+      console.error(e); showToast('更新できませんでした')
     } finally { setRefreshing(false) }
   }
 
@@ -366,7 +471,11 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     }
     const delta = (status === '要追客' ? 1 : 0) - (item.status === '要追客' ? 1 : 0)
     onFollowDelta?.(delta)
-    setItems(prev => prev.map(i => i.id === item.id ? { ...i, status } : i)) // 楽観更新
+    // 楽観更新。ステータスの移り変わりの記録も画面側に足す（サーバーも同じ時刻ごろで記録する）
+    const logged = (i) => ((i.status || '未架電') === status ? { ...i, status }
+      : { ...i, status, statusLog: [...(Array.isArray(i.statusLog) ? i.statusLog : []), { status, at: new Date().toISOString() }] })
+    setItems(prev => prev.map(i => i.id === item.id ? logged(i) : i))
+    setDetailItem(d => (d && d.id === item.id ? logged(d) : d))
     if (isDemo) {
       // デモは共有DBが無いため、他タブ（追客タブ等）が参照する DEMO_DATA 自体も更新して同期させる
       const idx = DEMO_DATA.findIndex(i => i.id === item.id)
@@ -376,8 +485,9 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     // 保存できなかった時は画面を元のステータスに戻す（保存できたように見えたままにしない）
     const revert = () => {
       onFollowDelta?.(-delta)
-      setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: item.status } : i))
-      setDetailItem(d => (d && d.id === item.id ? { ...d, status: item.status } : d))
+      const back = { status: item.status, statusLog: item.statusLog }
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...back } : i))
+      setDetailItem(d => (d && d.id === item.id ? { ...d, ...back } : d))
     }
     try {
       const res = await fetch('/api/inbound', {
@@ -536,7 +646,9 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     const body = {
       ...src,
       id, key: id, site: 'その他', isCopy: true, contracted: false,
-      status: item.status === '成約' ? '未架電' : (item.status || '未架電'),
+      // 架電対応中は写さない（誰も電話していないコピーが対応中に見えてしまう）。
+      // 元のリードは、ステータスを選ばずに離れたので架電済になる。コピーもそれに合わせる。
+      status: item.status === '成約' ? '未架電' : item.status === '架電対応中' ? '架電済' : (item.status || '未架電'),
       receivedAt: fmtNowReceived(), savedAt: new Date().toISOString(),
       _manual: true,
     }
@@ -647,8 +759,11 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
   }
 
   // CSVエクスポート（現在の全リード）
-  const handleExport = () => {
-    const csv = toCSV(items, CSV_COLUMNS)
+  // CSV出力は全件（一覧は直近300件だけなので、全件を読んでから出す）
+  const handleExport = async () => {
+    const all = isDemo ? latest : await loadFull()
+    if (!all) return
+    const csv = toCSV(isQuotes ? all.filter(i => i.status === '見積り') : all, CSV_COLUMNS)
     const stamp = new Date().toISOString().slice(0, 10)
     downloadCSV(`${isQuotes ? '見積り管理' : 'リード管理'}_${stamp}.csv`, csv)
   }
@@ -754,12 +869,20 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
     <div>
       <div className="page-hdr"><h1>{isQuotes ? '見積り管理' : 'リード管理'}</h1><p>{isQuotes ? 'ステータスが「見積り」のお客様の一覧です' : '一括査定サイトから取得した新規リードを管理します'}</p></div>
 
-      <div className="kpi-row kpi-3">
-        {/* 見積り管理では、そのタブで見えている母数に合わせた集計を出す（総リード数のままだと実数と食い違う） */}
-        <div className="kpi-card c-blue"><div className="kpi-label">{isQuotes ? '見積り件数' : '総リード数'}</div><div className="kpi-val">{isQuotes ? quoteItems.length : items.length}<span>件</span></div></div>
-        <div className="kpi-card c-teal"><div className="kpi-label">本日</div><div className="kpi-val">{(isQuotes ? quoteItems : items).filter(isToday).length}<span>件</span></div></div>
-        <div className="kpi-card c-orange"><div className="kpi-label">{isQuotes ? '担当者未割当' : '未架電'}</div><div className="kpi-val">{isQuotes ? quoteItems.filter(i => !i.staff).length : countBy('未架電')}<span>件</span></div></div>
-      </div>
+      {isQuotes ? (
+        <div className="kpi-row kpi-3">
+          {/* 見積り管理では、そのタブで見えている母数に合わせた集計を出す */}
+          <div className="kpi-card c-blue"><div className="kpi-label">見積り件数</div><div className="kpi-val">{counts.statuses['見積り'] != null ? counts.statuses['見積り'] : quoteItems.length}<span>件</span></div></div>
+          <div className="kpi-card c-teal"><div className="kpi-label">本日</div><div className="kpi-val">{quoteItems.filter(isToday).length}<span>件</span></div></div>
+          <div className="kpi-card c-orange"><div className="kpi-label">担当者未割当</div><div className="kpi-val">{quoteItems.filter(i => !i.staff).length}<span>件</span></div></div>
+        </div>
+      ) : (
+        <div className="kpi-row kpi-2">
+          {/* 一覧は直近300件だけなので、件数はサーバーの全体の数を出す */}
+          <div className="kpi-card c-teal"><div className="kpi-label">本日</div><div className="kpi-val">{counts.today != null ? counts.today : items.filter(isToday).length}<span>件</span></div></div>
+          <div className="kpi-card c-orange"><div className="kpi-label">未架電</div><div className="kpi-val">{counts.statuses['未架電'] != null ? counts.statuses['未架電'] : countBy('未架電')}<span>件</span></div></div>
+        </div>
+      )}
 
       <div className="filter-row">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 名前・フリガナ(ひらがな可)・電話・エリアで検索..." />
@@ -851,18 +974,23 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
         )
       })()}
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: '#64748B' }}>読み込み中...</div>
+      {!isDemo && !usingFull && !usingRange && (
+        <div style={{ fontSize: 11, color: '#94A3B8', margin: '-4px 0 8px' }}>
+          受付日時の新しい{LATEST_N}件を表示しています。それより前のリードは、月・日付で絞り込むか検索すると表示されます。
+        </div>
+      )}
+      {(loading || (usingRange && !(rangeData && rangeData.key === rangeKey)) || (usingFull && !fullData)) ? (
+        <div style={{ textAlign: 'center', padding: 40, color: '#64748B' }}>{subLoading || '読み込み中...'}</div>
       ) : (
         <div className="card">
           <div className="card-body scroll-x" style={{ padding: '0 16px' }}>
             <table>
               <thead>
-                <tr>{sortableTh('receivedAt', '受付日時')}<th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>訪問見積もり日</th><th>タイムツリー</th><th>メモ</th><th>ステータス</th><th>メール送信</th><th>担当者</th><th>操作</th></tr>
+                <tr>{sortableTh('receivedAt', '受付日時')}<th>流入元</th><th>名前</th><th>電話</th><th>区間</th><th>人数</th><th>引越し希望日</th><th>メモ</th><th>ステータス</th><th>担当者</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={13} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
+                  <tr><td colSpan={11} style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>リードがありません</td></tr>
                 ) : paged.map(item => {
                   return (
                   <tr key={item.id} onClick={() => openLead(item)}
@@ -873,6 +1001,7 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
                     <td style={{ whiteSpace: 'nowrap' }}>{fmtReceived(item.receivedAt || item.requestedAt || '')}</td>
                     <td style={{ whiteSpace: 'nowrap' }}><SourceTag site={item.site} /></td>
                     <td><b>{item.name || '（名前なし）'}</b>
+                      {item.isCopy && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '1px 6px', whiteSpace: 'nowrap' }}>コピーしたリード</span>}
                       {lockedBy(item) && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: '#B45309', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '1px 6px', whiteSpace: 'nowrap' }}>対応中</span>}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}><a href={`tel:${item.phone}`} onClick={e => e.stopPropagation()} style={{ color: '#1E5FA8', textDecoration: 'none', fontWeight: 700 }}>{item.phone}</a></td>
@@ -886,15 +1015,6 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
                       <div style={{ maxWidth: 84, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {item.moveDate || item.moveDateDetail || ''}
                       </div>
-                    </td>
-                    <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
-                      <VisitDateCell value={item.visitEstimateDate || ''} onCommit={v => savePatch(item, { visitEstimateDate: v })} />
-                    </td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }} title="TimeTreeに登録済みかを記録">
-                        <input type="checkbox" checked={!!item.timetree} onChange={() => savePatch(item, { timetree: !item.timetree })}
-                          style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0E8A7A' }} />
-                      </label>
                     </td>
                     <td title={item.memo || ''}>
                       <div style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748B' }}>
@@ -911,8 +1031,8 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
                       >
                         {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
+                      <StatusFlow lead={item} />
                     </td>
-                    <td><MailSentMark lead={item} /></td>
                     <td>
                       <select
                         value={item.staff || ''}
@@ -981,6 +1101,27 @@ export default function Leads({ user, switchTab, onFollowDelta, mode }) {
       {/* 電話が繋がらなかったお客様へのメール */}
       {mailLead && (
         <MailPanel lead={mailLead} onClose={() => setMailLead(null)} onSent={onMailSent} />
+      )}
+
+      {/* 新規リードの初回：閉じる時にステータスを選んでもらう（選ぶまで閉じない。戻ると詳細に戻る） */}
+      {pickFor && (
+        <ModalPortal><div style={{ ...modalOverlay, zIndex: 1200 }}>
+          <div style={{ ...modalBox, maxWidth: 420 }}>
+            <div style={{ padding: 20 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>ステータスを選んでください</div>
+              <div style={{ fontSize: 12, color: '#64748B', marginBottom: 14 }}>{pickFor.name || '（名前なし）'} 様 ／ 架電対応中から変更します</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {CLOSE_CHOICES.map(st => (
+                  <button key={st} className={`btn badge ${STATUS_BADGE[st] || 'bk'}`} onClick={() => chooseCloseStatus(st)}
+                    style={{ padding: '12px 6px', fontSize: 13, fontWeight: 800, border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>{st}</button>
+                ))}
+              </div>
+              <div style={{ textAlign: 'right', marginTop: 14 }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setPickFor(null)}>詳細に戻る</button>
+              </div>
+            </div>
+          </div>
+        </div></ModalPortal>
       )}
 
       {convertLead && (

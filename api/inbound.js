@@ -1,6 +1,7 @@
 import { placeCall, twilioReady } from './_twilio.js'
 import { sendPushToAll } from './_push.js'
-import { readItems, readVersioned, mutateWithVersion, updateOne, redisCmd } from './_kvstore.js'
+import { readItems, readVersioned, mutateWithVersion, updateOne, readByDir, redisCmd } from './_kvstore.js'
+import { withStatusLog } from './_leadstatus.js'
 import { receivedAtMs } from '../src/lib/sortLeads.js'
 import { META_MAX, PAGE, slimLead, newerFirst, buildMeta, writeMeta, readMeta, readMetaBoth, metaSidsFromEntries, writeMetaFromEntries } from './_leadmeta.js'
 
@@ -178,6 +179,9 @@ function lastInquiryAt(l) {
   return ok.length ? Math.max(...ok) : 0
 }
 
+// 受付日時で絞り込んだ時に、前後に足して返す日数
+const RANGE_MARGIN_DAYS = 3
+
 const isEmptyValue = (v) =>
   v == null || v === '' || (Array.isArray(v) && v.length === 0)
 
@@ -288,6 +292,53 @@ export default async function handler(req, res) {
         }
         const items = follows.slice(0, limit)
         return res.json({ items, total: all.filter(l => l.status === '要追客').length, rest: follows.length - items.length })
+      }
+
+      // ===== リード管理・見積り管理：受付日時の新しい順に N 件（全件を読まない）=====
+      //   ?latest=300            … 全リードから
+      //   ?latest=300&status=見積り … そのステータスのリードから（見積り管理）
+      if (q.latest) {
+        const n = Math.min(Math.max(parseInt(q.latest, 10) || 300, 1), 1000)
+        const st = q.status ? String(q.status) : ''
+        const pick = (list) => list
+          .map((e, i) => ({ i, t: receivedAtMs(e) || Date.parse(e.savedAt || '') || 0, s: String(e.savedAt || '') }))
+          .filter(x => !st || (list[x.i].status || '未架電') === st)
+          .sort((a, b) => (b.t - a.t) || b.s.localeCompare(a.s))
+          .slice(0, n).map(x => x.i)
+        const got = await readByDir(KEY, VER_KEY, pick)
+        if (got) return res.json({ items: got.items, total: got.entries.length })
+        const all = await readItems(KEY) // 分割保存でない時だけ全件から選ぶ
+        return res.json({ items: pick(all).map(i => all[i]), total: all.length })
+      }
+
+      // ===== 受付日時で絞り込んだ時：その期間と前後3日分（全件を読まない）=====
+      //   ?from=2026-10-01&to=2026-10-31   （どちらも受付日の日付・YYYY-MM-DD）
+      // 前後3日分も返すのは、日付の境目（日本時間とサーバーの時刻の違いなど）で取りこぼさないため。
+      // 画面側で指定の日付どおりに絞り込む。
+      if (q.from || q.to) {
+        const ok = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))
+        if (!ok(q.from) || !ok(q.to)) return res.status(400).json({ error: 'from / to は YYYY-MM-DD で指定してください' })
+        const [fy, fm, fd] = String(q.from).split('-').map(Number), [ty, tm, td] = String(q.to).split('-').map(Number)
+        const lo = new Date(fy, fm - 1, fd - RANGE_MARGIN_DAYS).getTime()
+        const hi = new Date(ty, tm - 1, td + 1 + RANGE_MARGIN_DAYS).getTime()
+        if (!(lo < hi) || hi - lo > 400 * 86400000) return res.status(400).json({ error: '期間が正しくありません（最大1年強）' })
+        const pick = (list) => list
+          .map((e, i) => ({ i, t: receivedAtMs(e) || Date.parse(e.savedAt || '') || 0 }))
+          .filter(x => x.t >= lo && x.t < hi)
+          .sort((a, b) => b.t - a.t).map(x => x.i)
+        const got = await readByDir(KEY, VER_KEY, pick)
+        if (got) return res.json({ items: got.items, from: q.from, to: q.to, marginDays: RANGE_MARGIN_DAYS })
+        const all = await readItems(KEY)
+        return res.json({ items: pick(all).map(i => all[i]), from: q.from, to: q.to, marginDays: RANGE_MARGIN_DAYS })
+      }
+
+      // ===== ステータスごとの件数（リード管理の「未架電」など）。目次だけ読む =====
+      if (q.statusCounts) {
+        const got = await readByDir(KEY, VER_KEY, () => [])
+        const list = got ? got.entries : await readItems(KEY)
+        const statuses = {}
+        for (const e of list) { const k = e.status || '未架電'; statuses[k] = (statuses[k] || 0) + 1 }
+        return res.json({ count: list.length, statuses })
       }
 
       // ===== 広告費タブ：指定した月のリードだけ（集計に要る項目のみ）=====
@@ -515,7 +566,7 @@ export default async function handler(req, res) {
       // 探し方は全件方式と同じ findTargetIndex（目次は本体と同じ並び・同じ key/id/電話を持つ）。
       const one = await updateOne(KEY, VER_KEY, {
         pick: (entries) => findTargetIndex(entries, body),
-        update: (item) => ({ item: { ...item, ...body, updatedAt: new Date().toISOString() }, result: true }),
+        update: (item) => ({ item: withStatusLog(item, { ...item, ...body, updatedAt: new Date().toISOString() }), result: true }),
         extraSids: metaSidsFromEntries,
       })
       if (one.notFound) return res.status(404).json({ error: 'lead not found', ok: false })
@@ -528,7 +579,7 @@ export default async function handler(req, res) {
         const idx = findTargetIndex(items, body)
         if (idx === -1) return { skipWrite: true, result: false }
         const copy = items.slice()
-        copy[idx] = { ...copy[idx], ...body, updatedAt: new Date().toISOString() }
+        copy[idx] = withStatusLog(copy[idx], { ...copy[idx], ...body, updatedAt: new Date().toISOString() })
         return { items: copy, result: { ok: true, items: copy } }
       })
       // 対象が見つからない更新は成功扱いにしない（画面側の保存が黙って消えるのを防ぐ）

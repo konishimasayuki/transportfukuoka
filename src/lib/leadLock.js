@@ -34,8 +34,10 @@ export const isUncalled = (item) => ((item && item.status) || '未架電') === '
 // 「対応中」の印を付ける対象か。
 // ・未架電のあいだ … 誰も架電していないので、飛びつきが起こりうる
 // ・新着から10分  … 架電直後にステータスを付け替える操作の最中も守る
-// どちらかに当てはまれば対象。古くて手の付いたリードは対象外（灰色にしない）。
-export const shouldLock = (item) => isUncalled(item) || withinLockWindow(item)
+// ・架電対応中のあいだ … 担当者が開いて電話している最中（閉じてステータスを選ぶまで続ける）
+// どれかに当てはまれば対象。古くて手の付いたリードは対象外（灰色にしない）。
+export const isCalling = (item) => !!item && item.status === '架電対応中'
+export const shouldLock = (item) => isUncalled(item) || isCalling(item) || withinLockWindow(item)
 
 // 応答待ちの上限。Vercelの関数はしばらく使われないと起動に数秒かかることがあり、
 // 上限を設けないと「リードを押したのに画面が開かない」状態になる。
@@ -89,7 +91,8 @@ export const releaseLock = (key) => post('release', key)
 export function releaseBeacon(key) {
   if (!key) return
   try {
-    const body = JSON.stringify({ action: 'release', key, by: clientId() })
+    // unload：ブラウザ・タブを閉じた時の解放。サーバーは、そのリードが架電対応中のままなら架電済にする
+    const body = JSON.stringify({ action: 'release', key, by: clientId(), unload: true })
     if (navigator.sendBeacon) navigator.sendBeacon('/api/lock', new Blob([body], { type: 'application/json' }))
   } catch { /* 届かなくても60秒で自動的に無効になる */ }
 }

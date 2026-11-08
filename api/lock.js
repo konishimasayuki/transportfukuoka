@@ -9,6 +9,8 @@
 //
 // 取りこぼし対策：ブラウザが落ちる・タブごと閉じる等で解放されないことがある。
 // TTL_MS のあいだ更新が無い確保は無効とみなし、次に開いた人が取れるようにする。
+import { markCalledIfAbandoned } from './_leadstatus.js'
+
 const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
 const KEY = 'transportfukuoka:leadlocks' // hash: リードのkey → "取得時刻|ブラウザID"
@@ -65,7 +67,13 @@ export default async function handler(req, res) {
         }
       }
       // 掃除は1コマンドにまとめる。失敗しても表示には影響しないので握りつぶす。
-      if (stale.length) { try { await redis(['HDEL', KEY, ...stale]) } catch { /* 次回でよい */ } }
+      if (stale.length) {
+        let removed = 0
+        try { removed = await redis(['HDEL', KEY, ...stale]) } catch { /* 次回でよい */ }
+        // 印が切れた（ブラウザを閉じた・PCが落ちた等）リードが架電対応中のままなら架電済にする。
+        // HDEL で実際に消した時だけ行う（同時に来た他の画面と二重に処理しないため）。
+        if (removed) for (const k of stale) await markCalledIfAbandoned(k)
+      }
       return res.json({ locks, ttlMs: TTL_MS, at: new Date().toISOString() })
     }
 
@@ -90,7 +98,8 @@ export default async function handler(req, res) {
       }
       if (fresh(cur, now)) return res.json({ ok: false, held: cur }) // 他の人が対応中
       // 期限切れ：捨ててから取り直す。ここで競合しても「誰もいない」状態なので実害は無い。
-      await redis(['HDEL', KEY, key])
+      // 前に開いていた人のリードが架電対応中のままなら架電済にする（印が切れた＝画面が閉じられた）。
+      if (cur && await redis(['HDEL', KEY, key])) await markCalledIfAbandoned(key)
       if (await redis(['HSETNX', KEY, key, pack(now, by)]) === 1) return res.json({ ok: true })
       const after = unpack(await redis(['HGET', KEY, key]))
       return res.json(fresh(after, now) ? { ok: false, held: after } : { ok: true })
@@ -108,7 +117,12 @@ export default async function handler(req, res) {
     if (action === 'release') {
       const cur = unpack(await redis(['HGET', KEY, key]))
       // 自分の確保でなければ触らない（他の人の対応中を横から消さない）
-      if (cur && cur.by === by) await redis(['HDEL', KEY, key])
+      if (cur && cur.by === by) {
+        const removed = await redis(['HDEL', KEY, key])
+        // ブラウザ・タブを閉じた時（unload）：ステータスを選ばずに離れたので、架電対応中のままなら架電済にする。
+        // ふだんの「閉じる」はステータスを選んでから解放するので、ここでは触らない。
+        if (removed && body.unload === true) await markCalledIfAbandoned(key)
+      }
       return res.json({ ok: true })
     }
 
